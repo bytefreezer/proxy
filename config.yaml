@@ -1,0 +1,85 @@
+app:
+  name: bytefreezer-proxy
+  version: 0.0.1
+
+# Logging configuration   
+logging:
+  level: debug
+  encoding: console
+
+#this is health,API, documentation end point. 
+server:
+  port: 8088 #http port
+
+bytefreezer:
+  #token
+  token: "customer-1"
+
+  #webhook port
+  webhook_port: 8080
+
+  #webhook enabled
+  webhook_enabled: true
+
+  #udp enabled
+  udp_enabled: true
+
+  #this is the host and port of the bytefreezer collector
+  udp_host: "0.0.0.0"
+  udp_port: 2056
+  #this is internals of collector  
+  #number of data lines to keep in flight before blocking
+  data_channel_size: 100
+  #udp buffer size, make sure it matches your buffere size
+  # Increase max socket buffer sizes
+  #net.core.rmem_max = 134217728     # 128 MB
+  #net.core.wmem_max = 134217728     # 128 MB
+  # Set higher default buffer sizes
+  #net.core.rmem_default = 4194304   # 4 MB
+  #net.core.wmem_default = 4194304   # 4 MB
+  # Increase backlog queue
+  #net.core.netdev_max_backlog = 10000
+  # Increase max socket queue length
+  #net.ipv4.udp_mem = 262144 327680 393216  # min, pressure, max pages (×4096 bytes on x86)
+
+  read_buffer_size_bytes: 134217728
+  
+  #256mb for snappy performance
+  batch_bytes: 0
+  batch_rows: 100000
+  
+  #this is to enable ndjson output
+  json: true
+
+  #this is to enable parquet output
+  parquet: true
+
+  #keep source files after upload this for debug
+  keep_json_source: true
+  keep_parquet_source: true
+
+s3:
+  #this is the s3 endpoint, for minio use Host:port
+  endpoint: 192.168.86.125:9000
+
+  #the following for s3 configuration   
+  #bucket name no trailing slash
+  bucket_name: intake
+  region: us-west-2
+  access_key: AKIAQNXBAHUKIMJP26P6
+  secret_key: SECRET_KEY_AKIAQNXBAHUKIMJP26P6
+  ssl: false
+  compression: true #enable compression for s3 uploads   
+
+#this is the prometheus configuration if used
+otel:
+  enabled: false
+  endpoint: 10.0.32.106:4317
+  scrapeintervalseconds: 100
+
+#this is the housekeeping default configuration
+housekeeping:
+  enabled: true
+  intervalseconds: 60
+
+

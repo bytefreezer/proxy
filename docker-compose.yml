@@ -1,0 +1,22 @@
+version: '2.4'
+services:
+  bytefreezer-proxy:
+    image: tarsalhq/bytefreezer-proxy:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    volumes:
+      - /tmp/kflow-cache:/var/kflow-cache
+      - /etc/bytefreezer-proxy/config.yaml:/etc/app/config.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://bytefreezer-proxy:8080"]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+    ports:
+      - 8080:8080
+      #to match kflowd collector
+      - 2056:2056/udp
+    restart: always
