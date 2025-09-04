@@ -30,9 +30,9 @@ func main() {
 		showHelp       = flag.Bool("help", false, "Show help and exit")
 		configFile     = flag.String("config", "config.yaml", "Path to configuration file")
 		validateConfig = flag.Bool("validate-config", false, "Validate configuration and exit")
-		dryRun        = flag.Bool("dry-run", false, "Load configuration and exit (for testing)")
+		dryRun         = flag.Bool("dry-run", false, "Load configuration and exit (for testing)")
 	)
-	
+
 	flag.Parse()
 
 	// Handle version flag
