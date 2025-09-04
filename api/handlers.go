@@ -12,20 +12,20 @@ import (
 
 // HealthResponse represents the health check response
 type HealthResponse struct {
-	Status      string                 `json:"status"`
-	Version     string                 `json:"version"`
-	ServiceName string                 `json:"service_name"`
-	Timestamp   string                 `json:"timestamp"`
-	UDP         UDPHealthStatus        `json:"udp"`
-	Receiver    ReceiverHealthStatus   `json:"receiver"`
-	Stats       ProxyStatsResponse     `json:"stats"`
+	Status      string               `json:"status"`
+	Version     string               `json:"version"`
+	ServiceName string               `json:"service_name"`
+	Timestamp   string               `json:"timestamp"`
+	UDP         UDPHealthStatus      `json:"udp"`
+	Receiver    ReceiverHealthStatus `json:"receiver"`
+	Stats       ProxyStatsResponse   `json:"stats"`
 }
 
 type UDPHealthStatus struct {
-	Enabled   bool   `json:"enabled"`
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	Status    string `json:"status"`
+	Enabled bool   `json:"enabled"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
+	Status  string `json:"status"`
 }
 
 type ReceiverHealthStatus struct {
@@ -49,14 +49,14 @@ type ProxyStatsResponse struct {
 
 // ConfigResponse represents the current system configuration
 type ConfigResponse struct {
-	App          AppConfig          `json:"app"`
-	Server       ServerConfig       `json:"server"`
-	UDP          UDPConfig          `json:"udp"`
+	App          AppConfig            `json:"app"`
+	Server       ServerConfig         `json:"server"`
+	UDP          UDPConfig            `json:"udp"`
 	Receiver     ReceiverConfigMasked `json:"receiver"`
-	SOC          SOCConfig          `json:"soc"`
-	Otel         OtelConfig         `json:"otel"`
-	Housekeeping HousekeepingConfig `json:"housekeeping"`
-	Dev          bool               `json:"dev"`
+	SOC          SOCConfig            `json:"soc"`
+	Otel         OtelConfig           `json:"otel"`
+	Housekeeping HousekeepingConfig   `json:"housekeeping"`
+	Dev          bool                 `json:"dev"`
 }
 
 type AppConfig struct {
@@ -69,7 +69,7 @@ type ServerConfig struct {
 }
 
 type UDPConfig struct {
-	Enabled             bool  `json:"enabled"`
+	Enabled             bool   `json:"enabled"`
 	Host                string `json:"host"`
 	Port                int    `json:"port"`
 	ReadBufferSizeBytes int    `json:"read_buffer_size_bytes"`
@@ -81,12 +81,12 @@ type UDPConfig struct {
 }
 
 type ReceiverConfigMasked struct {
-	BaseURL      string `json:"base_url"`
-	TenantID     string `json:"tenant_id"`  // This will be masked
-	DatasetID    string `json:"dataset_id"`
-	TimeoutSec   int    `json:"timeout_seconds"`
-	RetryCount   int    `json:"retry_count"`
-	RetryDelaySec int   `json:"retry_delay_seconds"`
+	BaseURL       string `json:"base_url"`
+	TenantID      string `json:"tenant_id"` // This will be masked
+	DatasetID     string `json:"dataset_id"`
+	TimeoutSec    int    `json:"timeout_seconds"`
+	RetryCount    int    `json:"retry_count"`
+	RetryDelaySec int    `json:"retry_delay_seconds"`
 }
 
 type SOCConfig struct {
@@ -137,7 +137,7 @@ func (api *API) HealthCheck() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *HealthResponse) error {
 		cfg := api.Config
 		stats := api.Services.GetStats()
-		
+
 		// Determine overall status
 		overallStatus := "healthy"
 		if !api.Services.IsHealthy() {
@@ -232,11 +232,11 @@ func (api *API) GetConfig() usecase.Interactor {
 
 		// Receiver configuration (with masked ID)
 		output.Receiver = ReceiverConfigMasked{
-			BaseURL:      cfg.Receiver.BaseURL,
-			TenantID:     maskSensitiveValue(cfg.Receiver.TenantID),
-			DatasetID:    cfg.Receiver.DatasetID,
-			TimeoutSec:   cfg.Receiver.TimeoutSec,
-			RetryCount:   cfg.Receiver.RetryCount,
+			BaseURL:       cfg.Receiver.BaseURL,
+			TenantID:      maskSensitiveValue(cfg.Receiver.TenantID),
+			DatasetID:     cfg.Receiver.DatasetID,
+			TimeoutSec:    cfg.Receiver.TimeoutSec,
+			RetryCount:    cfg.Receiver.RetryCount,
 			RetryDelaySec: cfg.Receiver.RetryDelaySec,
 		}
 

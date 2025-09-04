@@ -105,7 +105,7 @@ func (l *Listener) Start() error {
 			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr, err)
 		}
 
-		log.Infof("UDP server listening on %s (tenant: %s, dataset: %s)", 
+		log.Infof("UDP server listening on %s (tenant: %s, dataset: %s)",
 			portListener.addr, portListener.tenantID, portListener.datasetID)
 
 		// Start message handler for this port
@@ -129,17 +129,17 @@ func (l *Listener) Start() error {
 // Stop stops the UDP listener
 func (l *Listener) Stop() error {
 	log.Info("UDP listener shutting down")
-	
+
 	l.stopOnce.Do(func() {
 		close(l.quit)
-		
+
 		// Close all port listeners
 		for _, portListener := range l.listeners {
 			if portListener.conn != nil {
 				portListener.conn.Close()
 			}
 		}
-		
+
 		// Stop the forwarder
 		if l.forwarder != nil {
 			l.forwarder.Stop()
@@ -165,23 +165,23 @@ func (l *Listener) handleMessagesForPort(portListener *UDPPortListener) {
 
 		buf := l.allocateBuffer()
 		readLen, remoteAddr, err := portListener.conn.ReadFromUDP(buf)
-		
+
 		if err != nil {
 			l.deallocateBuffer(buf)
-			
+
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				// Timeout is expected, continue
 				continue
 			}
-			
+
 			if l.isClosedConnError(err) {
 				// Normal shutdown
 				return
 			}
-			
+
 			log.Errorf("UDP read error on port %d: %v", portListener.port, err)
 			l.services.ProxyStats.UDPMessageErrors++
-			
+
 			// Send SOC alert for persistent errors
 			if l.config.SOCAlertClient != nil {
 				l.config.SOCAlertClient.SendUDPListenerFailureAlert(err)
@@ -200,7 +200,7 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, ten
 	// Clean up the payload
 	payload := bytes.TrimSpace(data)
 	payload = bytes.Trim(payload, "\x08\x00")
-	
+
 	if len(payload) == 0 {
 		return
 	}
@@ -272,11 +272,11 @@ func NewForwarder(services *services.Services, cfg *config.Config) *Forwarder {
 // Start starts the forwarder
 func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 	batch := &domain.DataBatch{
-		ID:          fmt.Sprintf("%d", time.Now().UnixNano()),
-		TenantID: f.config.Receiver.TenantID,
-		DatasetID:   f.config.Receiver.DatasetID,
-		Messages:    make([]domain.UDPMessage, 0),
-		CreatedAt:   time.Now(),
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		TenantID:  f.config.Receiver.TenantID,
+		DatasetID: f.config.Receiver.DatasetID,
+		Messages:  make([]domain.UDPMessage, 0),
+		CreatedAt: time.Now(),
 	}
 
 	batchTimer := time.NewTimer(f.config.GetBatchTimeout())
@@ -316,16 +316,16 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 
 			if shouldSend {
 				f.sendBatch(batch)
-				
+
 				// Reset batch
 				batch = &domain.DataBatch{
-					ID:          fmt.Sprintf("%d", time.Now().UnixNano()),
-					TenantID: f.config.Receiver.TenantID,
-					DatasetID:   f.config.Receiver.DatasetID,
-					Messages:    make([]domain.UDPMessage, 0),
-					CreatedAt:   time.Now(),
+					ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+					TenantID:  f.config.Receiver.TenantID,
+					DatasetID: f.config.Receiver.DatasetID,
+					Messages:  make([]domain.UDPMessage, 0),
+					CreatedAt: time.Now(),
 				}
-				
+
 				// Reset timer
 				batchTimer.Stop()
 				batchTimer.Reset(f.config.GetBatchTimeout())
@@ -335,17 +335,17 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 			// Timeout reached, send batch if not empty
 			if len(batch.Messages) > 0 {
 				f.sendBatch(batch)
-				
+
 				// Reset batch
 				batch = &domain.DataBatch{
-					ID:          fmt.Sprintf("%d", time.Now().UnixNano()),
-					TenantID: f.config.Receiver.TenantID,
-					DatasetID:   f.config.Receiver.DatasetID,
-					Messages:    make([]domain.UDPMessage, 0),
-					CreatedAt:   time.Now(),
+					ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+					TenantID:  f.config.Receiver.TenantID,
+					DatasetID: f.config.Receiver.DatasetID,
+					Messages:  make([]domain.UDPMessage, 0),
+					CreatedAt: time.Now(),
 				}
 			}
-			
+
 			// Reset timer
 			batchTimer.Reset(f.config.GetBatchTimeout())
 		}
@@ -398,19 +398,19 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 			f.services.ProxyStats.ForwardingErrors++
 			return
 		}
-		
+
 		if _, err := gzipWriter.Write(ndjsonData.Bytes()); err != nil {
 			log.Errorf("Failed to compress data: %v", err)
 			f.services.ProxyStats.ForwardingErrors++
 			return
 		}
-		
+
 		if err := gzipWriter.Close(); err != nil {
 			log.Errorf("Failed to close gzip writer: %v", err)
 			f.services.ProxyStats.ForwardingErrors++
 			return
 		}
-		
+
 		finalData = compressed.Bytes()
 		batch.CompressedAt = time.Now()
 	} else {
@@ -424,7 +424,7 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 	if err != nil {
 		log.Errorf("Failed to send batch %s to receiver: %v", batch.ID, err)
 		f.services.ProxyStats.ForwardingErrors++
-		
+
 		// Send SOC alert
 		if f.config.SOCAlertClient != nil {
 			f.config.SOCAlertClient.SendReceiverForwardingFailureAlert(f.config.Receiver.BaseURL, err)
@@ -434,7 +434,7 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 		f.services.ProxyStats.BytesForwarded += int64(len(finalData))
 		log.Debugf("Successfully sent batch %s (%d messages, %d bytes)", batch.ID, batch.LineCount, len(finalData))
 	}
-	
+
 	f.services.ProxyStats.BatchesCreated++
 }
 

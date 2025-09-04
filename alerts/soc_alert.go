@@ -59,6 +59,10 @@ func (client *SOCAlertClient) SendInfoAlert(title, message, details string) erro
 	return client.sendAlert("info", title, message, details)
 }
 
+func (client *SOCAlertClient) SendAlert(severity, title, message, details string) error {
+	return client.sendAlert(severity, title, message, details)
+}
+
 func (client *SOCAlertClient) SendUDPListenerFailureAlert(err error) error {
 	return client.SendCriticalAlert(
 		"UDP Listener Failure",
@@ -96,11 +100,11 @@ func (client *SOCAlertClient) sendAlert(severity, title, message, details string
 	}
 
 	payload := AlertPayload{
-		Service:   client.config.App.Name,
-		Version:   client.config.App.Version,
-		Severity:  severity,
-		Title:     title,
-		Message:   message,
+		Service:  client.config.App.Name,
+		Version:  client.config.App.Version,
+		Severity: severity,
+		Title:    title,
+		Message:  message,
 		Details: map[string]interface{}{
 			"details": details,
 		},

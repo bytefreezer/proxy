@@ -80,7 +80,7 @@ func (apiServer *APIServer) Serve(address string, router http.Handler) {
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
-	
+
 	err := apiServer.HttpServer.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Info("API server closed")

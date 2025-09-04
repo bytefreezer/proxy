@@ -74,13 +74,13 @@ func main() {
 	var udpListener *udp.Listener
 	if cfg.UDP.Enabled {
 		udpListener = udp.NewListener(svcs, &cfg)
-		
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := udpListener.Start(); err != nil {
 				log.Errorf("UDP listener failed: %v", err)
-				
+
 				// Send SOC alert
 				if cfg.SOCAlertClient != nil {
 					cfg.SOCAlertClient.SendUDPListenerFailureAlert(err)

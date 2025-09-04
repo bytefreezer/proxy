@@ -3,7 +3,6 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,13 +17,13 @@ import (
 
 // SpoolingService handles local file spooling for failed uploads
 type SpoolingService struct {
-	config       *config.Config
-	directory    string
-	maxSize      int64
-	retryAttempts int
-	retryInterval time.Duration
+	config          *config.Config
+	directory       string
+	maxSize         int64
+	retryAttempts   int
+	retryInterval   time.Duration
 	cleanupInterval time.Duration
-	
+
 	// Runtime state
 	currentSize int64
 	mutex       sync.RWMutex
@@ -34,15 +33,15 @@ type SpoolingService struct {
 
 // SpooledFile represents a file in the spooling directory
 type SpooledFile struct {
-	ID          string    `json:"id"`
-	TenantID    string    `json:"tenant_id"`
-	DatasetID   string    `json:"dataset_id"`
-	Filename    string    `json:"filename"`
-	Size        int64     `json:"size"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastRetry   time.Time `json:"last_retry"`
-	RetryCount  int       `json:"retry_count"`
-	FailureReason string  `json:"failure_reason,omitempty"`
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	DatasetID     string    `json:"dataset_id"`
+	Filename      string    `json:"filename"`
+	Size          int64     `json:"size"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastRetry     time.Time `json:"last_retry"`
+	RetryCount    int       `json:"retry_count"`
+	FailureReason string    `json:"failure_reason,omitempty"`
 }
 
 // NewSpoolingService creates a new spooling service
@@ -75,7 +74,7 @@ func (s *SpoolingService) Start() error {
 		log.Warnf("Failed to calculate current spooling size: %v", err)
 	}
 
-	log.Infof("Spooling service started - directory: %s, max size: %d bytes", 
+	log.Infof("Spooling service started - directory: %s, max size: %d bytes",
 		s.directory, s.maxSize)
 
 	// Start background goroutines
@@ -115,10 +114,10 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		if err := s.cleanupOldFiles(); err != nil {
 			log.Warnf("Failed to cleanup old files: %v", err)
 		}
-		
+
 		// Check again
 		if s.currentSize+dataSize > s.maxSize {
-			return fmt.Errorf("spooling directory full (current: %d + new: %d > max: %d)", 
+			return fmt.Errorf("spooling directory full (current: %d + new: %d > max: %d)",
 				s.currentSize, dataSize, s.maxSize)
 		}
 	}
@@ -126,11 +125,11 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 	// Generate unique ID and filename
 	id := fmt.Sprintf("%d_%s_%s", time.Now().UnixNano(), tenantID, datasetID)
 	filename := fmt.Sprintf("%s.ndjson", id)
-	filepath := filepath.Join(s.directory, filename)
+	filePath := filepath.Join(s.directory, filename)
 	metaFilepath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", id))
 
 	// Write data file
-	if err := os.WriteFile(filepath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write spooled data file: %w", err)
 	}
 
@@ -150,20 +149,20 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 	metaData, err := json.Marshal(metadata)
 	if err != nil {
 		// Clean up data file on metadata error
-		os.Remove(filepath)
+		os.Remove(filePath)
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
 	if err := os.WriteFile(metaFilepath, metaData, 0644); err != nil {
 		// Clean up data file on metadata error
-		os.Remove(filepath)
+		os.Remove(filePath)
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}
 
 	// Update current size
 	s.currentSize += dataSize
 
-	log.Debugf("Spooled data for %s/%s: %d bytes, reason: %s", 
+	log.Debugf("Spooled data for %s/%s: %d bytes, reason: %s",
 		tenantID, datasetID, dataSize, failureReason)
 
 	return nil
@@ -172,7 +171,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 // retryWorker periodically retries failed uploads
 func (s *SpoolingService) retryWorker() {
 	defer s.wg.Done()
-	
+
 	ticker := time.NewTicker(s.retryInterval)
 	defer ticker.Stop()
 
@@ -218,11 +217,11 @@ func (s *SpoolingService) processRetries() {
 					"high",
 					"Spooled File Max Retries Reached",
 					"A spooled file has exceeded the maximum retry attempts",
-					fmt.Sprintf("File: %s, Tenant: %s, Dataset: %s, Attempts: %d", 
+					fmt.Sprintf("File: %s, Tenant: %s, Dataset: %s, Attempts: %d",
 						file.ID, file.TenantID, file.DatasetID, file.RetryCount),
 				)
 			}
-			
+
 			// Mark for cleanup
 			s.markForCleanup(file)
 			failureCount++
@@ -268,7 +267,7 @@ func (s *SpoolingService) processRetries() {
 // cleanupWorker periodically cleans up old files
 func (s *SpoolingService) cleanupWorker() {
 	defer s.wg.Done()
-	
+
 	ticker := time.NewTicker(s.cleanupInterval)
 	defer ticker.Stop()
 

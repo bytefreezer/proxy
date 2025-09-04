@@ -138,7 +138,7 @@ jobs:
 
     - name: Build binary
       run: |
-        go build -o bytefreezer-proxy ./cmd/main.go
+        go build -o bytefreezer-proxy .
         chmod +x bytefreezer-proxy
 
     - name: Create test config
@@ -292,7 +292,7 @@ jobs:
         CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          -o bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} ./cmd/main.go
+          -o bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} .
 
     - name: Build binary (Windows)
       if: runner.os == 'Windows'
@@ -302,7 +302,7 @@ jobs:
         CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(Get-Date -UFormat '%Y-%m-%dT%H:%M:%SZ')" `
-          -o bytefreezer-proxy-Windows-${{ matrix.arch }}.exe ./cmd/main.go
+          -o bytefreezer-proxy-Windows-${{ matrix.arch }}.exe .
 
     - name: Test binary (Unix)
       if: runner.os != 'Windows' && matrix.arch == 'amd64'

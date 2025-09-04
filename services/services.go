@@ -9,7 +9,7 @@ import (
 type Services struct {
 	Config     *config.Config
 	ProxyStats *domain.ProxyStats
-	
+
 	// Service instances will be added here
 	// UDPListener  *udp.Listener
 	// Forwarder    *forwarder.Service
@@ -18,7 +18,7 @@ type Services struct {
 // NewServices creates a new services instance
 func NewServices(cfg *config.Config) *Services {
 	return &Services{
-		Config: cfg,
+		Config:     cfg,
 		ProxyStats: &domain.ProxyStats{},
 	}
 }

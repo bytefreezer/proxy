@@ -41,10 +41,10 @@ type ProxyStats struct {
 
 // ReceiverConfig represents configuration for forwarding to bytefreezer-receiver
 type ReceiverConfig struct {
-	BaseURL   string
-	TenantID  string
-	DatasetID string
-	Timeout   time.Duration
+	BaseURL    string
+	TenantID   string
+	DatasetID  string
+	Timeout    time.Duration
 	RetryCount int
 }
 

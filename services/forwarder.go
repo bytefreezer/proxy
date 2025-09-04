@@ -32,9 +32,9 @@ func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	// Construct URL according to bytefreezer-receiver format
 	// Based on the receiver, it should be: /data/{tenantId}/{datasetId}
-	url := fmt.Sprintf("%s/data/%s/%s", 
+	url := fmt.Sprintf("%s/data/%s/%s",
 		f.config.Receiver.BaseURL,
-		batch.TenantID, 
+		batch.TenantID,
 		batch.DatasetID,
 	)
 
@@ -46,7 +46,7 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 
 	// Set headers
 	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", f.config.App.Name, f.config.App.Version))
-	
+
 	if f.config.UDP.EnableCompression {
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Content-Type", "application/x-ndjson")
@@ -80,13 +80,13 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 
 		// Check response status
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			log.Debugf("Successfully forwarded batch %s to %s (status: %d)", 
+			log.Debugf("Successfully forwarded batch %s to %s (status: %d)",
 				batch.ID, url, resp.StatusCode)
 			return nil
 		}
 
 		lastErr = fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
-		
+
 		// Don't retry on client errors (4xx)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			break
