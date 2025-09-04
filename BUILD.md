@@ -138,9 +138,351 @@ GITHUB_TOKEN=<automatically-provided>
 
 #### 2. Repository Settings
 
-- Enable GitHub Actions in repository settings
-- Set branch protection rules for `main` branch
-- Configure required status checks before merging
+> **🚀 Quick Start**: For a step-by-step setup guide, see [GITHUB_SETUP_CHECKLIST.md](GITHUB_SETUP_CHECKLIST.md)
+
+##### General Settings
+Navigate to `Settings > General` in your GitHub repository:
+
+**Repository Visibility**:
+- Choose `Public` for open-source or `Private` for internal projects
+- Enable `Restrict pushes that create files` if needed for security
+
+**Features Configuration**:
+```yaml
+✅ Issues: Enable for bug tracking and feature requests
+✅ Projects: Enable for project management (optional)
+✅ Wiki: Enable if you need additional documentation
+✅ Discussions: Enable for community interaction (optional)
+✅ Sponsorships: Enable if accepting sponsorships
+❌ Preserve this repository: Leave unchecked unless archiving
+```
+
+**Pull Request Settings**:
+```yaml
+✅ Allow merge commits
+✅ Allow squash merging (recommended for clean history)
+❌ Allow rebase merging (can complicate history tracking)
+✅ Automatically delete head branches (keeps repo clean)
+✅ Allow auto-merge
+❌ Allow update branch (can interfere with CI)
+```
+
+##### Branch Protection Rules
+Navigate to `Settings > Branches` and add protection for `main` branch:
+
+**Basic Protection**:
+```yaml
+Branch name pattern: main
+✅ Restrict pushes that create files
+✅ Require a pull request before merging
+  ✅ Require approvals: 1 (minimum)
+  ✅ Dismiss stale reviews when new commits are pushed
+  ✅ Require review from code owners (if CODEOWNERS file exists)
+  ✅ Restrict pushes that create files
+```
+
+**Status Check Requirements**:
+```yaml
+✅ Require status checks to pass before merging
+✅ Require branches to be up to date before merging
+
+Required Status Checks:
+- Lint Code
+- Test (1.21, 1.22, 1.23)
+- Integration Tests  
+- Vulnerability Scan
+- Build Validation (ubuntu-latest, macos-latest, windows-latest)
+- Ansible Validation
+- Documentation Check
+- Quality Gate
+```
+
+**Advanced Protection**:
+```yaml
+✅ Require signed commits (recommended for security)
+✅ Require linear history (prevents merge commits)
+✅ Include administrators (applies rules to repo admins)
+❌ Allow force pushes (dangerous for main branch)
+❌ Allow deletions (protects main branch from deletion)
+```
+
+##### Actions Configuration
+Navigate to `Settings > Actions > General`:
+
+**Actions Permissions**:
+```yaml
+✅ Allow all actions and reusable workflows
+Or:
+✅ Allow actions and reusable workflows from:
+  - GitHub
+  - Verified creators
+  - Your organization (if applicable)
+```
+
+**Workflow Permissions**:
+```yaml
+✅ Read and write permissions (needed for releases)
+✅ Allow GitHub Actions to create and approve pull requests
+```
+
+**Artifact and Log Retention**:
+```yaml
+Artifact retention: 90 days (balance storage vs. debugging needs)
+Log retention: 90 days
+```
+
+##### Pages Configuration (Optional)
+Navigate to `Settings > Pages` if hosting documentation:
+
+```yaml
+Source: Deploy from a branch
+Branch: gh-pages or main
+Folder: / (root) or /docs
+Custom domain: proxy-docs.bytefreezer.com (optional)
+✅ Enforce HTTPS
+```
+
+##### Security Settings
+Navigate to `Settings > Security`:
+
+**Vulnerability Alerts**:
+```yaml
+✅ Dependency graph
+✅ Dependabot alerts
+✅ Dependabot security updates
+✅ Dependabot version updates (create dependabot.yml)
+```
+
+**Code Security and Analysis**:
+```yaml
+✅ Secret scanning (automatically enabled for public repos)
+✅ Push protection (prevents committing secrets)
+✅ Code scanning (configure CodeQL)
+```
+
+**Advanced Security Features** (GitHub Advanced Security required):
+```yaml
+✅ Secret scanning for non-provider patterns
+✅ Code scanning with third-party tools
+✅ Dependency review
+```
+
+##### Environment Configuration
+Navigate to `Settings > Environments` for deployment environments:
+
+**Production Environment**:
+```yaml
+Environment name: production
+Protection rules:
+  ✅ Required reviewers: [admin-team]
+  ✅ Wait timer: 0 minutes
+  ✅ Deployment branches: Selected branches (main only)
+Environment secrets:
+  - PRODUCTION_SSH_KEY
+  - PRODUCTION_VAULT_PASSWORD
+```
+
+**Staging Environment**:
+```yaml
+Environment name: staging
+Protection rules:
+  ✅ Deployment branches: Selected branches (main, develop)
+Environment secrets:
+  - STAGING_SSH_KEY
+```
+
+##### Repository Rules (Beta)
+Navigate to `Settings > Rules > Rulesets` for advanced rule management:
+
+**Ruleset Configuration**:
+```yaml
+Ruleset name: Main Branch Protection
+Target: Branch (main)
+Rules:
+  - Restrict creations
+  - Restrict updates  
+  - Restrict deletions
+  - Require a pull request before merging
+    - Required approving review count: 1
+    - Dismiss stale reviews: true
+  - Require status checks to pass
+    - Strict: true (require up-to-date branches)
+    - Status checks: [all CI workflow jobs]
+  - Block force pushes
+  - Require signed commits
+```
+
+##### Webhooks Configuration
+Navigate to `Settings > Webhooks` for external integrations:
+
+**AWX Integration Webhook** (if using):
+```yaml
+Payload URL: https://your-awx.example.com/api/v2/job_templates/123/github/
+Content type: application/json
+Secret: <your-webhook-secret>
+Events:
+  ✅ Push
+  ✅ Pull requests
+  ✅ Releases
+SSL verification: ✅ Enable
+```
+
+**Slack/Discord Notifications**:
+```yaml
+Payload URL: https://hooks.slack.com/services/your/webhook/url
+Events:
+  ✅ Releases
+  ✅ Issues
+  ✅ Pull requests
+  ✅ Workflow runs (for build notifications)
+```
+
+##### Advanced Repository Configuration
+
+**CODEOWNERS File**:
+Create `.github/CODEOWNERS`:
+```bash
+# Global owners
+* @bytefreezer-team @security-team
+
+# Go code specific
+*.go @go-developers
+go.mod @go-developers
+go.sum @go-developers
+
+# Ansible playbooks
+ansible/ @devops-team @infrastructure-team
+*.yml @devops-team
+
+# CI/CD workflows
+.github/workflows/ @devops-team @ci-maintainers
+
+# Security sensitive files
+Dockerfile @security-team @devops-team
+docker-compose.yml @security-team
+config.yaml @security-team
+
+# Documentation
+*.md @documentation-team
+BUILD.md @devops-team @documentation-team
+```
+
+**Issue and PR Templates**:
+Create `.github/ISSUE_TEMPLATE/bug_report.yml`:
+```yaml
+name: Bug Report
+description: File a bug report
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of ByteFreezer Proxy are you running?
+      placeholder: ex. v1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant configuration (sanitized)
+      render: yaml
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Method
+      options:
+        - Binary
+        - Docker
+        - Ansible
+        - Kubernetes
+    validations:
+      required: true
+```
+
+**PR Template**:
+Create `.github/pull_request_template.md`:
+```markdown
+## Description
+Brief description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+- [ ] Performance improvement
+- [ ] Security improvement
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
+- [ ] Tested with real UDP traffic
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] Self-review completed
+- [ ] Code comments added for complex logic
+- [ ] Documentation updated
+- [ ] No new warnings introduced
+- [ ] Backward compatibility maintained
+
+## Related Issues
+Closes #(issue_number)
+```
+
+**Dependabot Configuration**:
+Create `.github/dependabot.yml`:
+```yaml
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    reviewers:
+      - "go-developers"
+    assignees:
+      - "security-team"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "devops-team"
+    commit-message:
+      prefix: "ci"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "security-team"
+```
 
 ### Triggering Builds
 
