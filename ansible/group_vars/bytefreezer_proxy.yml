@@ -21,7 +21,6 @@ bytefreezer_proxy_spooling_dir: "/var/spool/bytefreezer-proxy"
 # Network and firewall
 bytefreezer_proxy_firewall_enabled: true
 bytefreezer_proxy_api_port: 8088
-bytefreezer_proxy_udp_port: 2056
 
 # System tuning
 bytefreezer_proxy_system_tuning_enabled: true
@@ -43,7 +42,6 @@ bytefreezer_proxy_default_config:
   udp:
     enabled: true
     host: "0.0.0.0"
-    port: "{{ bytefreezer_proxy_udp_port }}"
     read_buffer_size_bytes: "{{ bytefreezer_proxy_udp_buffer_size }}"
     max_batch_lines: 100000
     max_batch_bytes: 268435456  # 256MB
@@ -53,7 +51,7 @@ bytefreezer_proxy_default_config:
     
     # Multiple port configuration with dataset mapping
     listeners:
-      - port: "{{ bytefreezer_proxy_udp_port }}"
+      - port: 2056
         dataset_id: "syslog-data"
       - port: 2057
         dataset_id: "ebpf-data"

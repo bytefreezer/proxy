@@ -19,8 +19,6 @@ server:
 udp:
   enabled: {{ (bytefreezer_proxy_config.udp.enabled | default(bytefreezer_proxy_default_config.udp.enabled)) | lower }}
   host: "{{ (bytefreezer_proxy_config.udp.host | default(bytefreezer_proxy_default_config.udp.host)) }}"
-  # Legacy single port (deprecated - use listeners instead)
-  port: {{ (bytefreezer_proxy_config.udp.port | default(bytefreezer_proxy_default_config.udp.port)) }}
   read_buffer_size_bytes: {{ (bytefreezer_proxy_config.udp.read_buffer_size_bytes | default(bytefreezer_proxy_default_config.udp.read_buffer_size_bytes)) }}
   max_batch_lines: {{ (bytefreezer_proxy_config.udp.max_batch_lines | default(bytefreezer_proxy_default_config.udp.max_batch_lines)) }}
   max_batch_bytes: {{ (bytefreezer_proxy_config.udp.max_batch_bytes | default(bytefreezer_proxy_default_config.udp.max_batch_bytes)) }}

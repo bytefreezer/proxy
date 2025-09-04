@@ -57,7 +57,6 @@
         delete: yes
       loop:
         - "{{ bytefreezer_proxy_api_port }}"
-        - "{{ bytefreezer_proxy_udp_port }}"
       when: 
         - bytefreezer_proxy_firewall_enabled
         - ansible_os_family == "Debian"
@@ -71,7 +70,6 @@
         immediate: yes
       loop:
         - "{{ bytefreezer_proxy_api_port }}"
-        - "{{ bytefreezer_proxy_udp_port }}"
       when:
         - bytefreezer_proxy_firewall_enabled
         - ansible_os_family == "RedHat"

@@ -15,8 +15,6 @@ server:
 udp:
   enabled: true
   host: "0.0.0.0"
-  # Legacy single port (deprecated - use listeners instead)
-  port: 2056
   read_buffer_size_bytes: 134217728  # 128MB
   max_batch_lines: 100000
   max_batch_bytes: 268435456  # 256MB  
@@ -24,7 +22,7 @@ udp:
   compression_level: 6
   enable_compression: true
   
-  # Multiple port configuration with dataset mapping
+  # Port configuration with dataset mapping
   listeners:
     - port: 2056
       dataset_id: "syslog-data"

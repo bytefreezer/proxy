@@ -48,14 +48,13 @@ type Server struct {
 type UDP struct {
 	Enabled             bool          `mapstructure:"enabled"`
 	Host                string        `mapstructure:"host"`
-	Port                int           `mapstructure:"port"` // Deprecated: use Listeners instead
 	ReadBufferSizeBytes int           `mapstructure:"read_buffer_size_bytes"`
 	MaxBatchLines       int           `mapstructure:"max_batch_lines"`
 	MaxBatchBytes       int64         `mapstructure:"max_batch_bytes"`
 	BatchTimeoutSeconds int           `mapstructure:"batch_timeout_seconds"`
 	CompressionLevel    int           `mapstructure:"compression_level"`
 	EnableCompression   bool          `mapstructure:"enable_compression"`
-	Listeners           []UDPListener `mapstructure:"listeners"` // New: multiple port/dataset mapping
+	Listeners           []UDPListener `mapstructure:"listeners"`
 }
 
 type UDPListener struct {
@@ -156,17 +155,6 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	if cfg.Spooling.CleanupIntervalSec == 0 {
 		cfg.Spooling.CleanupIntervalSec = 300 // 5 minutes
-	}
-
-	// Backwards compatibility: if no listeners configured but port is set, create single listener
-	if len(cfg.UDP.Listeners) == 0 && cfg.UDP.Port > 0 {
-		cfg.UDP.Listeners = []UDPListener{
-			{
-				Port:      cfg.UDP.Port,
-				DatasetID: "default-dataset",
-				TenantID:  "", // Will use global tenant
-			},
-		}
 	}
 
 	return nil

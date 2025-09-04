@@ -96,17 +96,17 @@ func (l *Listener) Start() error {
 		if err != nil {
 			// Clean up any already started listeners
 			l.Stop()
-			return fmt.Errorf("failed to listen on UDP %s: %w", portListener.addr, err)
+			return fmt.Errorf("failed to listen on UDP %s: %w", portListener.addr.String(), err)
 		}
 
 		if err := portListener.conn.SetReadBuffer(l.config.UDP.ReadBufferSizeBytes); err != nil {
 			portListener.conn.Close()
 			l.Stop()
-			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr, err)
+			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr.String(), err)
 		}
 
 		log.Infof("UDP server listening on %s (tenant: %s, dataset: %s)",
-			portListener.addr, portListener.tenantID, portListener.datasetID)
+			portListener.addr.String(), portListener.tenantID, portListener.datasetID)
 
 		// Start message handler for this port
 		l.wg.Add(1)

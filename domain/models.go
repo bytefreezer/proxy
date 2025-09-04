@@ -51,7 +51,6 @@ type ReceiverConfig struct {
 // UDPConfig represents UDP listener configuration
 type UDPConfig struct {
 	Host              string
-	Port              int
 	ReadBufferSize    int
 	MaxBatchLines     int
 	MaxBatchBytes     int64

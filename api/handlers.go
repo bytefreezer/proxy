@@ -22,10 +22,16 @@ type HealthResponse struct {
 }
 
 type UDPHealthStatus struct {
-	Enabled bool   `json:"enabled"`
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
-	Status  string `json:"status"`
+	Enabled   bool          `json:"enabled"`
+	Host      string        `json:"host"`
+	Listeners []UDPListener `json:"listeners"`
+	Status    string        `json:"status"`
+}
+
+type UDPListener struct {
+	Port      int    `json:"port"`
+	DatasetID string `json:"dataset_id"`
+	TenantID  string `json:"tenant_id,omitempty"`
 }
 
 type ReceiverHealthStatus struct {
@@ -69,15 +75,15 @@ type ServerConfig struct {
 }
 
 type UDPConfig struct {
-	Enabled             bool   `json:"enabled"`
-	Host                string `json:"host"`
-	Port                int    `json:"port"`
-	ReadBufferSizeBytes int    `json:"read_buffer_size_bytes"`
-	MaxBatchLines       int    `json:"max_batch_lines"`
-	MaxBatchBytes       int64  `json:"max_batch_bytes"`
-	BatchTimeoutSeconds int    `json:"batch_timeout_seconds"`
-	CompressionLevel    int    `json:"compression_level"`
-	EnableCompression   bool   `json:"enable_compression"`
+	Enabled             bool          `json:"enabled"`
+	Host                string        `json:"host"`
+	Listeners           []UDPListener `json:"listeners"`
+	ReadBufferSizeBytes int           `json:"read_buffer_size_bytes"`
+	MaxBatchLines       int           `json:"max_batch_lines"`
+	MaxBatchBytes       int64         `json:"max_batch_bytes"`
+	BatchTimeoutSeconds int           `json:"batch_timeout_seconds"`
+	CompressionLevel    int           `json:"compression_level"`
+	EnableCompression   bool          `json:"enable_compression"`
 }
 
 type ReceiverConfigMasked struct {
@@ -157,10 +163,10 @@ func (api *API) HealthCheck() usecase.Interactor {
 		}
 
 		output.UDP = UDPHealthStatus{
-			Enabled: cfg.UDP.Enabled,
-			Host:    cfg.UDP.Host,
-			Port:    cfg.UDP.Port,
-			Status:  udpStatus,
+			Enabled:   cfg.UDP.Enabled,
+			Host:      cfg.UDP.Host,
+			Listeners: convertListeners(cfg.UDP.Listeners),
+			Status:    udpStatus,
 		}
 
 		// Receiver status
@@ -221,7 +227,7 @@ func (api *API) GetConfig() usecase.Interactor {
 		output.UDP = UDPConfig{
 			Enabled:             cfg.UDP.Enabled,
 			Host:                cfg.UDP.Host,
-			Port:                cfg.UDP.Port,
+			Listeners:           convertListeners(cfg.UDP.Listeners),
 			ReadBufferSizeBytes: cfg.UDP.ReadBufferSizeBytes,
 			MaxBatchLines:       cfg.UDP.MaxBatchLines,
 			MaxBatchBytes:       cfg.UDP.MaxBatchBytes,
@@ -273,4 +279,17 @@ func (api *API) GetConfig() usecase.Interactor {
 	u.SetTags("Configuration")
 
 	return u
+}
+
+// convertListeners converts config UDP listeners to API response format
+func convertListeners(configListeners []config.UDPListener) []UDPListener {
+	listeners := make([]UDPListener, len(configListeners))
+	for i, l := range configListeners {
+		listeners[i] = UDPListener{
+			Port:      l.Port,
+			DatasetID: l.DatasetID,
+			TenantID:  l.TenantID,
+		}
+	}
+	return listeners
 }
