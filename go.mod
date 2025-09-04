@@ -1,8 +1,8 @@
 module github.com/n0needt0/bytefreezer-proxy
 
-go 1.23.0
+go 1.24.4
 
-toolchain go1.24.2
+toolchain go1.24.4
 
 require (
 	github.com/knadh/koanf/parsers/yaml v0.1.0
@@ -26,7 +26,7 @@ require (
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
-	github.com/go-chi/chi/v5 v5.0.12 // indirect
+	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
