@@ -19,6 +19,7 @@ server:
 udp:
   enabled: {{ (bytefreezer_proxy_config.udp.enabled | default(bytefreezer_proxy_default_config.udp.enabled)) | lower }}
   host: "{{ (bytefreezer_proxy_config.udp.host | default(bytefreezer_proxy_default_config.udp.host)) }}"
+  # Legacy single port (deprecated - use listeners instead)
   port: {{ (bytefreezer_proxy_config.udp.port | default(bytefreezer_proxy_default_config.udp.port)) }}
   read_buffer_size_bytes: {{ (bytefreezer_proxy_config.udp.read_buffer_size_bytes | default(bytefreezer_proxy_default_config.udp.read_buffer_size_bytes)) }}
   max_batch_lines: {{ (bytefreezer_proxy_config.udp.max_batch_lines | default(bytefreezer_proxy_default_config.udp.max_batch_lines)) }}
@@ -26,6 +27,16 @@ udp:
   batch_timeout_seconds: {{ (bytefreezer_proxy_config.udp.batch_timeout_seconds | default(bytefreezer_proxy_default_config.udp.batch_timeout_seconds)) }}
   enable_compression: {{ (bytefreezer_proxy_config.udp.enable_compression | default(bytefreezer_proxy_default_config.udp.enable_compression)) | lower }}
   compression_level: {{ (bytefreezer_proxy_config.udp.compression_level | default(bytefreezer_proxy_default_config.udp.compression_level)) }}
+  
+  # Multiple port configuration with dataset mapping
+  listeners:
+{% for listener in (bytefreezer_proxy_config.udp.listeners | default(bytefreezer_proxy_default_config.udp.listeners)) %}
+    - port: {{ listener.port }}
+      dataset_id: "{{ listener.dataset_id }}"
+{% if listener.tenant_id is defined %}
+      tenant_id: "{{ listener.tenant_id }}"
+{% endif %}
+{% endfor %}
 
 # Bytefreezer-receiver configuration
 receiver:
@@ -53,6 +64,15 @@ otel:
 housekeeping:
   enabled: {{ (bytefreezer_proxy_config.housekeeping.enabled | default(bytefreezer_proxy_default_config.housekeeping.enabled)) | lower }}
   intervalseconds: {{ (bytefreezer_proxy_config.housekeeping.intervalseconds | default(bytefreezer_proxy_default_config.housekeeping.intervalseconds)) }}
+
+# Local spooling for failed uploads
+spooling:
+  enabled: {{ (bytefreezer_proxy_config.spooling.enabled | default(bytefreezer_proxy_default_config.spooling.enabled)) | lower }}
+  directory: "{{ (bytefreezer_proxy_config.spooling.directory | default(bytefreezer_proxy_default_config.spooling.directory)) }}"
+  max_size_bytes: {{ (bytefreezer_proxy_config.spooling.max_size_bytes | default(bytefreezer_proxy_default_config.spooling.max_size_bytes)) }}
+  retry_attempts: {{ (bytefreezer_proxy_config.spooling.retry_attempts | default(bytefreezer_proxy_default_config.spooling.retry_attempts)) }}
+  retry_interval_seconds: {{ (bytefreezer_proxy_config.spooling.retry_interval_seconds | default(bytefreezer_proxy_default_config.spooling.retry_interval_seconds)) }}
+  cleanup_interval_seconds: {{ (bytefreezer_proxy_config.spooling.cleanup_interval_seconds | default(bytefreezer_proxy_default_config.spooling.cleanup_interval_seconds)) }}
 
 # Development mode
 dev: {{ (bytefreezer_proxy_config.dev | default(bytefreezer_proxy_default_config.dev)) | lower }}

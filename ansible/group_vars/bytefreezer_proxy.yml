@@ -11,6 +11,12 @@ bytefreezer_proxy_binary_name: "bytefreezer-proxy"
 bytefreezer_proxy_service_name: "bytefreezer-proxy"
 bytefreezer_proxy_systemd_enabled: true
 bytefreezer_proxy_systemd_started: true
+bytefreezer_proxy_user: "bytefreezer"
+bytefreezer_proxy_group: "bytefreezer"
+bytefreezer_proxy_install_dir: "/opt/bytefreezer-proxy"
+bytefreezer_proxy_config_dir: "/etc/bytefreezer-proxy"
+bytefreezer_proxy_log_dir: "/var/log/bytefreezer-proxy"
+bytefreezer_proxy_spooling_dir: "/var/spool/bytefreezer-proxy"
 
 # Network and firewall
 bytefreezer_proxy_firewall_enabled: true
@@ -44,6 +50,15 @@ bytefreezer_proxy_default_config:
     batch_timeout_seconds: 30
     enable_compression: true
     compression_level: 6
+    
+    # Multiple port configuration with dataset mapping
+    listeners:
+      - port: "{{ bytefreezer_proxy_udp_port }}"
+        dataset_id: "syslog-data"
+      - port: 2057
+        dataset_id: "ebpf-data"
+      - port: 2058
+        dataset_id: "application-logs"
   
   receiver:
     base_url: "http://localhost:8080"
@@ -67,6 +82,14 @@ bytefreezer_proxy_default_config:
   housekeeping:
     enabled: true
     intervalseconds: 60
+  
+  spooling:
+    enabled: true
+    directory: "{{ bytefreezer_proxy_spooling_dir }}"
+    max_size_bytes: 1073741824  # 1GB
+    retry_attempts: 5
+    retry_interval_seconds: 60
+    cleanup_interval_seconds: 300
   
   dev: false
 

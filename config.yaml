@@ -15,6 +15,7 @@ server:
 udp:
   enabled: true
   host: "0.0.0.0"
+  # Legacy single port (deprecated - use listeners instead)
   port: 2056
   read_buffer_size_bytes: 134217728  # 128MB
   max_batch_lines: 100000
@@ -22,6 +23,16 @@ udp:
   batch_timeout_seconds: 30
   compression_level: 6
   enable_compression: true
+  
+  # Multiple port configuration with dataset mapping
+  listeners:
+    - port: 2056
+      dataset_id: "syslog-data"
+      # tenant_id: "custom-tenant"  # Optional: overrides global tenant
+    - port: 2057  
+      dataset_id: "ebpf-data"
+    - port: 2058
+      dataset_id: "application-logs"
 
 # Bytefreezer-receiver configuration
 receiver:
@@ -49,6 +60,15 @@ otel:
 housekeeping:
   enabled: true
   intervalseconds: 60
+
+# Local spooling for failed uploads
+spooling:
+  enabled: true
+  directory: "/tmp/bytefreezer-proxy"
+  max_size_bytes: 1073741824  # 1GB
+  retry_attempts: 5
+  retry_interval_seconds: 60  # 1 minute
+  cleanup_interval_seconds: 300  # 5 minutes
 
 # Development mode
 dev: false

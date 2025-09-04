@@ -1,0 +1,260 @@
+---
+# AWX Job Template: Configuration Update
+# Import this configuration into AWX
+
+name: "ByteFreezer Proxy - Update Configuration"
+description: "Update ByteFreezer Proxy configuration without full redeployment"
+job_type: "run"
+inventory: "ByteFreezer Proxy Servers"
+project: "ByteFreezer Proxy"
+playbook: "playbooks/update-config.yml"
+credential: "ByteFreezer Proxy SSH"
+vault_credential: null
+forks: 5
+limit: ""
+verbosity: 1
+extra_vars: ""
+job_tags: ""
+skip_tags: ""
+start_at_task: ""
+timeout: 1800
+use_fact_cache: true
+host_config_key: ""
+ask_scm_branch_on_launch: false
+ask_variables_on_launch: true
+ask_limit_on_launch: true
+ask_tags_on_launch: false
+ask_skip_tags_on_launch: false
+ask_job_type_on_launch: false
+ask_verbosity_on_launch: true
+ask_inventory_on_launch: false
+ask_credential_on_launch: false
+survey_enabled: true
+become_enabled: true
+diff_mode: true
+allow_simultaneous: false
+custom_virtualenv: null
+job_slice_count: 1
+webhook_service: ""
+webhook_credential: null
+
+# Survey specification for configuration updates
+survey_spec:
+  name: "Configuration Update Parameters"
+  description: "Modify ByteFreezer Proxy configuration settings"
+  spec:
+    - question_name: "Target Environment/Hosts"
+      question_description: "Select environment or specific hosts to update"
+      required: true
+      type: "text"
+      variable: "target_limit"
+      min: 1
+      max: 100
+      default: "production"
+
+    - question_name: "Receiver Base URL"
+      question_description: "ByteFreezer Receiver endpoint URL (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_receiver_base_url"
+      min: 0
+      max: 255
+      default: ""
+
+    - question_name: "Tenant ID"
+      question_description: "Tenant identifier (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_tenant_id"
+      min: 0
+      max: 100
+      default: ""
+
+    - question_name: "Dataset ID"
+      question_description: "Dataset identifier (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_dataset_id"
+      min: 0
+      max: 100
+      default: ""
+
+    - question_name: "UDP Listeners Configuration"
+      question_description: "UDP listeners configuration (JSON format: [{\"port\": 2056, \"dataset_id\": \"syslog-data\"}], leave empty to keep current)"
+      required: false
+      type: "textarea"
+      variable: "new_udp_listeners"
+      min: 0
+      max: 1024
+      default: ""
+
+    - question_name: "API Port"
+      question_description: "API server port (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_api_port"
+      min: 0
+      max: 10
+      default: ""
+
+    - question_name: "Log Level"
+      question_description: "Logging verbosity level"
+      required: false
+      type: "multiplechoice"
+      variable: "new_log_level"
+      min: 0
+      max: 1024
+      default: ""
+      choices:
+        - ""
+        - "debug"
+        - "info"
+        - "warn"
+        - "error"
+
+    - question_name: "Max Batch Lines"
+      question_description: "Maximum lines per batch (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_max_batch_lines"
+      min: 0
+      max: 20
+      default: ""
+
+    - question_name: "Max Batch Bytes"
+      question_description: "Maximum bytes per batch (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_max_batch_bytes"
+      min: 0
+      max: 20
+      default: ""
+
+    - question_name: "Enable Compression"
+      question_description: "Enable/disable compression"
+      required: false
+      type: "multiplechoice"
+      variable: "new_enable_compression"
+      min: 0
+      max: 1024
+      default: ""
+      choices:
+        - ""
+        - "true"
+        - "false"
+
+    - question_name: "OTEL Enabled"
+      question_description: "Enable/disable OpenTelemetry"
+      required: false
+      type: "multiplechoice"
+      variable: "new_otel_enabled"
+      min: 0
+      max: 1024
+      default: ""
+      choices:
+        - ""
+        - "true"
+        - "false"
+
+    - question_name: "OTEL Endpoint"
+      question_description: "OpenTelemetry collector endpoint (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_otel_endpoint"
+      min: 0
+      max: 255
+      default: ""
+
+    - question_name: "Spooling Enabled"
+      question_description: "Enable/disable local spooling for failed uploads"
+      required: false
+      type: "multiplechoice"
+      variable: "new_spooling_enabled"
+      min: 0
+      max: 1024
+      default: ""
+      choices:
+        - ""
+        - "true"
+        - "false"
+
+    - question_name: "Spooling Directory"
+      question_description: "Local spooling directory path (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_spooling_directory"
+      min: 0
+      max: 255
+      default: ""
+
+    - question_name: "Spooling Max Size (bytes)"
+      question_description: "Maximum spooling directory size in bytes (leave empty to keep current)"
+      required: false
+      type: "text"
+      variable: "new_spooling_max_size"
+      min: 0
+      max: 20
+      default: ""
+
+    - question_name: "Restart Service"
+      question_description: "Restart service after configuration update"
+      required: true
+      type: "multiplechoice"
+      variable: "restart_after_update"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+# Extra variables template for configuration updates
+extra_vars_template: |
+  # Target configuration
+  ansible_limit: "{{ target_limit }}"
+  bytefreezer_proxy_systemd_started: {{ restart_after_update | default('true') | bool }}
+  
+  # Configuration overrides (only set non-empty values)
+  config_updates:
+    {% if new_receiver_base_url %}
+    receiver_base_url: "{{ new_receiver_base_url }}"
+    {% endif %}
+    {% if new_tenant_id %}
+    tenant_id: "{{ new_tenant_id }}"
+    {% endif %}
+    {% if new_dataset_id %}
+    dataset_id: "{{ new_dataset_id }}"
+    {% endif %}
+    {% if new_udp_listeners %}
+    udp_listeners: {{ new_udp_listeners | from_json }}
+    {% endif %}
+    {% if new_api_port %}
+    api_port: {{ new_api_port | int }}
+    {% endif %}
+    {% if new_log_level %}
+    log_level: "{{ new_log_level }}"
+    {% endif %}
+    {% if new_max_batch_lines %}
+    max_batch_lines: {{ new_max_batch_lines | int }}
+    {% endif %}
+    {% if new_max_batch_bytes %}
+    max_batch_bytes: {{ new_max_batch_bytes | int }}
+    {% endif %}
+    {% if new_enable_compression %}
+    enable_compression: {{ new_enable_compression | bool }}
+    {% endif %}
+    {% if new_otel_enabled %}
+    otel_enabled: {{ new_otel_enabled | bool }}
+    {% endif %}
+    {% if new_otel_endpoint %}
+    otel_endpoint: "{{ new_otel_endpoint }}"
+    {% endif %}
+    {% if new_spooling_enabled %}
+    spooling_enabled: {{ new_spooling_enabled | bool }}
+    {% endif %}
+    {% if new_spooling_directory %}
+    spooling_directory: "{{ new_spooling_directory }}"
+    {% endif %}
+    {% if new_spooling_max_size %}
+    spooling_max_size: {{ new_spooling_max_size | int }}
+    {% endif %}

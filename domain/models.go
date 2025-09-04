@@ -9,6 +9,8 @@ type UDPMessage struct {
 	Data      []byte
 	From      string
 	Timestamp time.Time
+	TenantID  string
+	DatasetID string
 }
 
 // DataBatch represents a batch of UDP messages ready for forwarding

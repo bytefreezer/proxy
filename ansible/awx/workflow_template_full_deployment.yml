@@ -1,0 +1,210 @@
+---
+# AWX Workflow Template: Full Deployment
+# Complete ByteFreezer Proxy deployment with pre and post checks
+
+name: "ByteFreezer Proxy - Full Deployment Workflow"
+description: "Complete deployment workflow with validation, deployment, and verification steps"
+organization: "Default"
+survey_enabled: true
+allow_simultaneous: false
+ask_variables_on_launch: true
+ask_inventory_on_launch: false
+ask_limit_on_launch: true
+
+# Workflow survey specification
+survey_spec:
+  name: "Full Deployment Configuration"
+  description: "Configure complete deployment workflow"
+  spec:
+    - question_name: "Target Environment"
+      question_description: "Environment to deploy to"
+      required: true
+      type: "multiplechoice"
+      variable: "deployment_environment"
+      min: 0
+      max: 1024
+      default: "staging"
+      choices:
+        - "development"
+        - "staging"
+        - "production"
+
+    - question_name: "ByteFreezer Proxy Version"
+      question_description: "Version to deploy"
+      required: true
+      type: "text"
+      variable: "proxy_version"
+      min: 1
+      max: 50
+      default: "latest"
+
+    - question_name: "Pre-deployment Backup"
+      question_description: "Create backup before deployment"
+      required: true
+      type: "multiplechoice"
+      variable: "create_backup"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Skip Pre-deployment Checks"
+      question_description: "Skip connectivity and prerequisite checks"
+      required: true
+      type: "multiplechoice"
+      variable: "skip_pre_checks"
+      min: 0
+      max: 1024
+      default: "false"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Deployment Strategy"
+      question_description: "How to deploy to multiple hosts"
+      required: true
+      type: "multiplechoice"
+      variable: "deployment_strategy"
+      min: 0
+      max: 1024
+      default: "parallel"
+      choices:
+        - "parallel"
+        - "serial"
+        - "rolling"
+
+    - question_name: "Post-deployment Verification"
+      question_description: "Run verification tests after deployment"
+      required: true
+      type: "multiplechoice"
+      variable: "run_verification"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Notification Channel"
+      question_description: "Where to send deployment notifications"
+      required: false
+      type: "multiplechoice"
+      variable: "notification_channel"
+      min: 0
+      max: 1024
+      default: "none"
+      choices:
+        - "none"
+        - "slack"
+        - "email"
+        - "webhook"
+
+# Workflow job template nodes
+workflow_nodes:
+  # 1. Pre-deployment checks
+  - unified_job_template: "ByteFreezer Proxy - Pre-deployment Checks"
+    inventory: "ByteFreezer Proxy Servers"
+    limit: "{{ deployment_environment }}"
+    extra_data:
+      skip_checks: "{{ skip_pre_checks }}"
+    identifier: "pre_checks"
+    success_nodes:
+      - "backup" # If pre-checks pass, go to backup
+    failure_nodes: []
+    always_nodes: []
+
+  # 2. Backup current installation
+  - unified_job_template: "ByteFreezer Proxy - Create Backup"
+    inventory: "ByteFreezer Proxy Servers"
+    limit: "{{ deployment_environment }}"
+    extra_data:
+      backup_enabled: "{{ create_backup }}"
+    identifier: "backup"
+    success_nodes:
+      - "deploy" # If backup succeeds, go to deployment
+    failure_nodes: []
+    always_nodes: []
+
+  # 3. Main deployment
+  - unified_job_template: "ByteFreezer Proxy - Deploy"
+    inventory: "ByteFreezer Proxy Servers"
+    limit: "{{ deployment_environment }}"
+    extra_data:
+      bytefreezer_proxy_version: "{{ proxy_version }}"
+      deployment_strategy: "{{ deployment_strategy }}"
+    identifier: "deploy"
+    success_nodes:
+      - "verify" # If deployment succeeds, go to verification
+    failure_nodes:
+      - "rollback" # If deployment fails, go to rollback
+    always_nodes: []
+
+  # 4. Post-deployment verification
+  - unified_job_template: "ByteFreezer Proxy - Verify Deployment"
+    inventory: "ByteFreezer Proxy Servers"
+    limit: "{{ deployment_environment }}"
+    extra_data:
+      run_verification: "{{ run_verification }}"
+    identifier: "verify"
+    success_nodes:
+      - "notify_success" # If verification passes, send success notification
+    failure_nodes:
+      - "notify_failure" # If verification fails, send failure notification
+    always_nodes: []
+
+  # 5. Rollback on failure
+  - unified_job_template: "ByteFreezer Proxy - Rollback"
+    inventory: "ByteFreezer Proxy Servers"
+    limit: "{{ deployment_environment }}"
+    extra_data:
+      rollback_reason: "deployment_failure"
+    identifier: "rollback"
+    success_nodes:
+      - "notify_rollback" # After rollback, send notification
+    failure_nodes:
+      - "notify_failure" # If rollback fails, send failure notification
+    always_nodes: []
+
+  # 6. Success notification
+  - unified_job_template: "ByteFreezer Proxy - Send Notification"
+    inventory: "localhost"
+    extra_data:
+      notification_type: "success"
+      notification_channel: "{{ notification_channel }}"
+      message: "ByteFreezer Proxy deployment to {{ deployment_environment }} completed successfully"
+    identifier: "notify_success"
+    success_nodes: []
+    failure_nodes: []
+    always_nodes: []
+
+  # 7. Failure notification
+  - unified_job_template: "ByteFreezer Proxy - Send Notification"
+    inventory: "localhost"
+    extra_data:
+      notification_type: "failure"
+      notification_channel: "{{ notification_channel }}"
+      message: "ByteFreezer Proxy deployment to {{ deployment_environment }} failed"
+    identifier: "notify_failure"
+    success_nodes: []
+    failure_nodes: []
+    always_nodes: []
+
+  # 8. Rollback notification
+  - unified_job_template: "ByteFreezer Proxy - Send Notification"
+    inventory: "localhost"
+    extra_data:
+      notification_type: "warning"
+      notification_channel: "{{ notification_channel }}"
+      message: "ByteFreezer Proxy deployment to {{ deployment_environment }} failed and was rolled back"
+    identifier: "notify_rollback"
+    success_nodes: []
+    failure_nodes: []
+    always_nodes: []
+
+# Extra variables for the workflow
+extra_vars:
+  workflow_name: "Full Deployment"
+  workflow_version: "1.0"
+  deployment_timestamp: "{{ ansible_date_time.epoch }}"

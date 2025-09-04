@@ -24,6 +24,7 @@ type Config struct {
 	SOC          SOCAlert     `mapstructure:"soc"`
 	Otel         Otel         `mapstructure:"otel"`
 	Housekeeping Housekeeping `mapstructure:"housekeeping"`
+	Spooling     Spooling     `mapstructure:"spooling"`
 	Dev          bool         `mapstructure:"dev"`
 	
 	// Runtime components
@@ -45,15 +46,22 @@ type Server struct {
 }
 
 type UDP struct {
-	Enabled             bool  `mapstructure:"enabled"`
-	Host                string `mapstructure:"host"`
-	Port                int    `mapstructure:"port"`
-	ReadBufferSizeBytes int    `mapstructure:"read_buffer_size_bytes"`
-	MaxBatchLines       int    `mapstructure:"max_batch_lines"`
-	MaxBatchBytes       int64  `mapstructure:"max_batch_bytes"`
-	BatchTimeoutSeconds int    `mapstructure:"batch_timeout_seconds"`
-	CompressionLevel    int    `mapstructure:"compression_level"`
-	EnableCompression   bool   `mapstructure:"enable_compression"`
+	Enabled             bool       `mapstructure:"enabled"`
+	Host                string     `mapstructure:"host"`
+	Port                int        `mapstructure:"port"`                // Deprecated: use Listeners instead
+	ReadBufferSizeBytes int        `mapstructure:"read_buffer_size_bytes"`
+	MaxBatchLines       int        `mapstructure:"max_batch_lines"`
+	MaxBatchBytes       int64      `mapstructure:"max_batch_bytes"`
+	BatchTimeoutSeconds int        `mapstructure:"batch_timeout_seconds"`
+	CompressionLevel    int        `mapstructure:"compression_level"`
+	EnableCompression   bool       `mapstructure:"enable_compression"`
+	Listeners           []UDPListener `mapstructure:"listeners"`        // New: multiple port/dataset mapping
+}
+
+type UDPListener struct {
+	Port      int    `mapstructure:"port"`
+	DatasetID string `mapstructure:"dataset_id"`
+	TenantID  string `mapstructure:"tenant_id,omitempty"` // Optional: override global tenant
 }
 
 type Receiver struct {
@@ -81,6 +89,15 @@ type Otel struct {
 type Housekeeping struct {
 	Enabled         bool `mapstructure:"enabled"`
 	IntervalSeconds int  `mapstructure:"intervalseconds"`
+}
+
+type Spooling struct {
+	Enabled           bool   `mapstructure:"enabled"`
+	Directory         string `mapstructure:"directory"`
+	MaxSizeBytes      int64  `mapstructure:"max_size_bytes"`
+	RetryAttempts     int    `mapstructure:"retry_attempts"`
+	RetryIntervalSec  int    `mapstructure:"retry_interval_seconds"`
+	CleanupIntervalSec int   `mapstructure:"cleanup_interval_seconds"`
 }
 
 func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
@@ -122,6 +139,34 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	if cfg.UDP.CompressionLevel == 0 {
 		cfg.UDP.CompressionLevel = 6 // Default gzip compression level
+	}
+	
+	// Spooling defaults
+	if cfg.Spooling.Directory == "" {
+		cfg.Spooling.Directory = "/tmp/bytefreezer-proxy"
+	}
+	if cfg.Spooling.MaxSizeBytes == 0 {
+		cfg.Spooling.MaxSizeBytes = 1073741824 // 1GB default
+	}
+	if cfg.Spooling.RetryAttempts == 0 {
+		cfg.Spooling.RetryAttempts = 5
+	}
+	if cfg.Spooling.RetryIntervalSec == 0 {
+		cfg.Spooling.RetryIntervalSec = 60 // 1 minute
+	}
+	if cfg.Spooling.CleanupIntervalSec == 0 {
+		cfg.Spooling.CleanupIntervalSec = 300 // 5 minutes
+	}
+	
+	// Backwards compatibility: if no listeners configured but port is set, create single listener
+	if len(cfg.UDP.Listeners) == 0 && cfg.UDP.Port > 0 {
+		cfg.UDP.Listeners = []UDPListener{
+			{
+				Port:      cfg.UDP.Port,
+				DatasetID: "default-dataset",
+				TenantID:  "", // Will use global tenant
+			},
+		}
 	}
 
 	return nil

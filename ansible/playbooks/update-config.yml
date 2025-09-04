@@ -4,6 +4,22 @@
   hosts: bytefreezer_proxy
   become: yes
   gather_facts: yes
+  
+  vars:
+    # Merge configuration updates with defaults
+    config_overrides: "{{ config_updates | default({}) }}"
+    # Create merged config for template rendering
+    merged_config_updates:
+      receiver:
+        base_url: "{{ config_overrides.receiver_base_url | default(bytefreezer_proxy_default_config.receiver.base_url) }}"
+        tenant_id: "{{ config_overrides.tenant_id | default(bytefreezer_proxy_default_config.receiver.tenant_id) }}"
+        dataset_id: "{{ config_overrides.dataset_id | default(bytefreezer_proxy_default_config.receiver.dataset_id) }}"
+      udp:
+        listeners: "{{ config_overrides.udp_listeners | default(bytefreezer_proxy_default_config.udp.listeners) }}"
+      spooling:
+        enabled: "{{ config_overrides.spooling_enabled | default(bytefreezer_proxy_default_config.spooling.enabled) }}"
+        directory: "{{ config_overrides.spooling_directory | default(bytefreezer_proxy_default_config.spooling.directory) }}"
+        max_size_bytes: "{{ config_overrides.spooling_max_size | default(bytefreezer_proxy_default_config.spooling.max_size_bytes) }}"
 
   tasks:
     - name: Backup current configuration
@@ -16,6 +32,11 @@
         mode: '0640'
       ignore_errors: yes
 
+    - name: Apply configuration overrides
+      set_fact:
+        bytefreezer_proxy_config: "{{ bytefreezer_proxy_config | default({}) | combine(merged_config_updates, recursive=True) }}"
+      when: config_overrides | length > 0
+
     - name: Generate new configuration file
       template:
         src: config.yaml.j2
@@ -26,6 +47,17 @@
         backup: yes
       notify: restart bytefreezer-proxy
       register: config_updated
+
+    - name: Update spooling directory permissions if changed
+      file:
+        path: "{{ config_overrides.spooling_directory | default(bytefreezer_proxy_spooling_dir) }}"
+        state: directory
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0755'
+      when: 
+        - config_overrides.spooling_directory is defined
+        - config_updated.changed
 
     - name: Validate configuration syntax
       command: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }} --validate-config"
@@ -81,6 +113,8 @@
           - "Backup created: {{ config_updated.backup_file if config_updated.backup_file is defined else 'No backup needed' }}"
           - "Service restarted: {{ 'Yes' if config_updated.changed else 'No' }}"
           - "Health check: {{ 'PASSED' if health_check is defined and health_check.status == 200 else 'SKIPPED' }}"
+          - "UDP Listeners: {% if merged_config_updates.udp.listeners is defined %}{% for listener in merged_config_updates.udp.listeners %}{{ listener.port }} ({{ listener.dataset_id }}){% if not loop.last %}, {% endif %}{% endfor %}{% else %}No changes{% endif %}"
+          - "Spooling: {{ 'Enabled' if merged_config_updates.spooling.enabled else 'Disabled' }} - {{ merged_config_updates.spooling.directory }}"
 
   handlers:
     - name: restart bytefreezer-proxy

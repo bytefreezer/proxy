@@ -1,0 +1,144 @@
+---
+# AWX Job Template: Uninstall ByteFreezer Proxy
+# Import this configuration into AWX
+
+name: "ByteFreezer Proxy - Uninstall"
+description: "Safely uninstall ByteFreezer Proxy with backup creation"
+job_type: "run"
+inventory: "ByteFreezer Proxy Servers"
+project: "ByteFreezer Proxy"
+playbook: "playbooks/uninstall.yml"
+credential: "ByteFreezer Proxy SSH"
+vault_credential: null
+forks: 5
+limit: ""
+verbosity: 1
+extra_vars: |
+  force_uninstall: false
+  purge_data: false
+job_tags: ""
+skip_tags: ""
+start_at_task: ""
+timeout: 1800
+use_fact_cache: true
+host_config_key: ""
+ask_scm_branch_on_launch: false
+ask_variables_on_launch: true
+ask_limit_on_launch: true
+ask_tags_on_launch: false
+ask_skip_tags_on_launch: false
+ask_job_type_on_launch: false
+ask_verbosity_on_launch: true
+ask_inventory_on_launch: false
+ask_credential_on_launch: false
+survey_enabled: true
+become_enabled: true
+diff_mode: false
+allow_simultaneous: false
+custom_virtualenv: null
+job_slice_count: 1
+webhook_service: ""
+webhook_credential: null
+
+# Survey specification for safe uninstallation
+survey_spec:
+  name: "Uninstall Configuration"
+  description: "Configure uninstall process with safety checks"
+  spec:
+    - question_name: "Target Environment/Hosts"
+      question_description: "Select environment or specific hosts to uninstall from"
+      required: true
+      type: "text"
+      variable: "target_limit"
+      min: 1
+      max: 100
+      default: ""
+
+    - question_name: "Confirm Uninstall"
+      question_description: "Type 'CONFIRM' to proceed with uninstall"
+      required: true
+      type: "text"
+      variable: "uninstall_confirmation"
+      min: 7
+      max: 7
+      default: ""
+
+    - question_name: "Remove Configuration and Logs"
+      question_description: "Completely remove all configuration files and logs (DESTRUCTIVE)"
+      required: true
+      type: "multiplechoice"
+      variable: "remove_all_data"
+      min: 0
+      max: 1024
+      default: "false"
+      choices:
+        - "false"
+        - "true"
+
+    - question_name: "Create Final Backup"
+      question_description: "Create backup before uninstall"
+      required: true
+      type: "multiplechoice"
+      variable: "create_final_backup"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Remove System Tuning"
+      question_description: "Reset system tuning parameters to defaults"
+      required: true
+      type: "multiplechoice"
+      variable: "reset_system_tuning"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Remove Firewall Rules"
+      question_description: "Remove firewall rules created for ByteFreezer Proxy"
+      required: true
+      type: "multiplechoice"
+      variable: "remove_firewall_rules"
+      min: 0
+      max: 1024
+      default: "true"
+      choices:
+        - "true"
+        - "false"
+
+    - question_name: "Reason for Uninstall"
+      question_description: "Document why this service is being uninstalled (for audit)"
+      required: false
+      type: "text"
+      variable: "uninstall_reason"
+      min: 0
+      max: 255
+      default: "Requested via AWX"
+
+# Extra variables template for uninstall
+extra_vars_template: |
+  # Target configuration
+  ansible_limit: "{{ target_limit }}"
+  
+  # Safety check - only proceed if confirmation is correct
+  force_uninstall: {{ 'true' if uninstall_confirmation == 'CONFIRM' else 'false' }}
+  purge_data: {{ remove_all_data | default('false') | bool }}
+  
+  # Backup configuration
+  bytefreezer_proxy_backup_enabled: {{ create_final_backup | default('true') | bool }}
+  
+  # System cleanup options
+  bytefreezer_proxy_system_tuning_enabled: {{ reset_system_tuning | default('true') | bool }}
+  bytefreezer_proxy_firewall_enabled: {{ remove_firewall_rules | default('true') | bool }}
+  
+  # Audit information
+  uninstall_audit:
+    reason: "{{ uninstall_reason | default('Requested via AWX') }}"
+    requested_by: "{{ awx_user_name | default('Unknown') }}"
+    timestamp: "{{ ansible_date_time.iso8601 }}"
+    confirmation_provided: {{ 'true' if uninstall_confirmation == 'CONFIRM' else 'false' }}

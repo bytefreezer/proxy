@@ -21,8 +21,7 @@ import (
 type Listener struct {
 	services     *services.Services
 	config       *config.Config
-	addr         *net.UDPAddr
-	conn         *net.UDPConn
+	listeners    []*UDPPortListener
 	quit         chan struct{}
 	batchChannel chan *domain.UDPMessage
 	bufferPool   sync.Pool
@@ -31,17 +30,42 @@ type Listener struct {
 	forwarder    *Forwarder
 }
 
+// UDPPortListener represents a single UDP port listener
+type UDPPortListener struct {
+	port      int
+	tenantID  string
+	datasetID string
+	addr      *net.UDPAddr
+	conn      *net.UDPConn
+}
+
 // NewListener creates a new UDP listener
 func NewListener(services *services.Services, cfg *config.Config) *Listener {
-	addr := &net.UDPAddr{
-		IP:   net.ParseIP(cfg.UDP.Host),
-		Port: cfg.UDP.Port,
+	var portListeners []*UDPPortListener
+
+	// Create listeners for each configured port
+	for _, udpListener := range cfg.UDP.Listeners {
+		tenantID := udpListener.TenantID
+		if tenantID == "" {
+			tenantID = cfg.Receiver.TenantID // Use global tenant if not specified
+		}
+
+		portListener := &UDPPortListener{
+			port:      udpListener.Port,
+			tenantID:  tenantID,
+			datasetID: udpListener.DatasetID,
+			addr: &net.UDPAddr{
+				IP:   net.ParseIP(cfg.UDP.Host),
+				Port: udpListener.Port,
+			},
+		}
+		portListeners = append(portListeners, portListener)
 	}
 
 	return &Listener{
 		services:     services,
 		config:       cfg,
-		addr:         addr,
+		listeners:    portListeners,
 		quit:         make(chan struct{}),
 		batchChannel: make(chan *domain.UDPMessage, 1000), // Buffer for incoming messages
 		bufferPool: sync.Pool{
@@ -60,31 +84,43 @@ func (l *Listener) Start() error {
 		return nil
 	}
 
-	var err error
-	l.conn, err = net.ListenUDP("udp", l.addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on UDP %s: %w", l.addr, err)
+	if len(l.listeners) == 0 {
+		log.Info("No UDP listeners configured")
+		return nil
 	}
 
-	if err := l.conn.SetReadBuffer(l.config.UDP.ReadBufferSizeBytes); err != nil {
-		l.conn.Close()
-		return fmt.Errorf("failed to set read buffer: %w", err)
-	}
+	// Start listeners for each port
+	for _, portListener := range l.listeners {
+		var err error
+		portListener.conn, err = net.ListenUDP("udp", portListener.addr)
+		if err != nil {
+			// Clean up any already started listeners
+			l.Stop()
+			return fmt.Errorf("failed to listen on UDP %s: %w", portListener.addr, err)
+		}
 
-	log.Infof("UDP server listening on %s", l.addr)
+		if err := portListener.conn.SetReadBuffer(l.config.UDP.ReadBufferSizeBytes); err != nil {
+			portListener.conn.Close()
+			l.Stop()
+			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr, err)
+		}
+
+		log.Infof("UDP server listening on %s (tenant: %s, dataset: %s)", 
+			portListener.addr, portListener.tenantID, portListener.datasetID)
+
+		// Start message handler for this port
+		l.wg.Add(1)
+		go func(pl *UDPPortListener) {
+			defer l.wg.Done()
+			l.handleMessagesForPort(pl)
+		}(portListener)
+	}
 
 	// Start the forwarder
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		l.forwarder.Start(l.batchChannel)
-	}()
-
-	// Start UDP message handler
-	l.wg.Add(1)
-	go func() {
-		defer l.wg.Done()
-		l.handleMessages()
 	}()
 
 	return nil
@@ -97,8 +133,11 @@ func (l *Listener) Stop() error {
 	l.stopOnce.Do(func() {
 		close(l.quit)
 		
-		if l.conn != nil {
-			l.conn.Close()
+		// Close all port listeners
+		for _, portListener := range l.listeners {
+			if portListener.conn != nil {
+				portListener.conn.Close()
+			}
 		}
 		
 		// Stop the forwarder
@@ -112,10 +151,8 @@ func (l *Listener) Stop() error {
 	return nil
 }
 
-// handleMessages handles incoming UDP messages
-func (l *Listener) handleMessages() {
-	defer close(l.batchChannel)
-
+// handleMessagesForPort handles incoming UDP messages for a specific port
+func (l *Listener) handleMessagesForPort(portListener *UDPPortListener) {
 	for {
 		select {
 		case <-l.quit:
@@ -124,10 +161,10 @@ func (l *Listener) handleMessages() {
 		}
 
 		// Set read timeout
-		l.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		portListener.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 
 		buf := l.allocateBuffer()
-		readLen, remoteAddr, err := l.conn.ReadFromUDP(buf)
+		readLen, remoteAddr, err := portListener.conn.ReadFromUDP(buf)
 		
 		if err != nil {
 			l.deallocateBuffer(buf)
@@ -142,7 +179,7 @@ func (l *Listener) handleMessages() {
 				return
 			}
 			
-			log.Errorf("UDP read error: %v", err)
+			log.Errorf("UDP read error on port %d: %v", portListener.port, err)
 			l.services.ProxyStats.UDPMessageErrors++
 			
 			// Send SOC alert for persistent errors
@@ -152,14 +189,14 @@ func (l *Listener) handleMessages() {
 			continue
 		}
 
-		// Process the message
-		l.processMessage(buf[:readLen], remoteAddr)
+		// Process the message with port-specific tenant/dataset info
+		l.processMessageWithContext(buf[:readLen], remoteAddr, portListener.tenantID, portListener.datasetID)
 		l.deallocateBuffer(buf)
 	}
 }
 
-// processMessage processes a single UDP message
-func (l *Listener) processMessage(data []byte, from *net.UDPAddr) {
+// processMessageWithContext processes a single UDP message with tenant/dataset context
+func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, tenantID, datasetID string) {
 	// Clean up the payload
 	payload := bytes.TrimSpace(data)
 	payload = bytes.Trim(payload, "\x08\x00")
@@ -168,11 +205,13 @@ func (l *Listener) processMessage(data []byte, from *net.UDPAddr) {
 		return
 	}
 
-	// Create UDP message
+	// Create UDP message with context
 	msg := &domain.UDPMessage{
 		Data:      make([]byte, len(payload)),
 		From:      from.String(),
 		Timestamp: time.Now(),
+		TenantID:  tenantID,
+		DatasetID: datasetID,
 	}
 	copy(msg.Data, payload)
 
