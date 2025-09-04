@@ -227,37 +227,51 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Set target OS
+      id: target-os
+      run: |
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          echo "goos=linux" >> $GITHUB_OUTPUT
+          echo "binary_name=bytefreezer-proxy-linux-${{ matrix.arch }}" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          echo "goos=darwin" >> $GITHUB_OUTPUT
+          echo "binary_name=bytefreezer-proxy-darwin-${{ matrix.arch }}" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "Windows" ]]; then
+          echo "goos=windows" >> $GITHUB_OUTPUT
+          echo "binary_name=bytefreezer-proxy-windows-${{ matrix.arch }}.exe" >> $GITHUB_OUTPUT
+        fi
+
     - name: Build binary (Unix)
       if: runner.os != 'Windows'
       env:
-        GOOS: ${{ runner.os == 'Ubuntu' && 'linux' || runner.os == 'macOS' && 'darwin' || 'windows' }}
+        GOOS: ${{ steps.target-os.outputs.goos }}
         GOARCH: ${{ matrix.arch }}
         CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          -o bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} .
+          -o ${{ steps.target-os.outputs.binary_name }} .
 
     - name: Build binary (Windows)
       if: runner.os == 'Windows'
       env:
-        GOOS: windows
+        GOOS: ${{ steps.target-os.outputs.goos }}
         GOARCH: ${{ matrix.arch }}
         CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(Get-Date -UFormat '%Y-%m-%dT%H:%M:%SZ')" `
-          -o bytefreezer-proxy-Windows-${{ matrix.arch }}.exe .
+          -o ${{ steps.target-os.outputs.binary_name }} .
 
-    - name: Test binary (Unix)
+    - name: Test binary (Unix/macOS - amd64 only)
       if: runner.os != 'Windows' && matrix.arch == 'amd64'
       run: |
-        ./bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} --version
-        ./bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} --help
+        ./${{ steps.target-os.outputs.binary_name }} --version
+        ./${{ steps.target-os.outputs.binary_name }} --help
 
-    - name: Test binary (Windows)
+    - name: Test binary (Windows - amd64 only)
       if: runner.os == 'Windows' && matrix.arch == 'amd64'
       run: |
-        .\bytefreezer-proxy-Windows-${{ matrix.arch }}.exe --version
-        .\bytefreezer-proxy-Windows-${{ matrix.arch }}.exe --help
+        .${{ steps.target-os.outputs.binary_name }} --version
+        .${{ steps.target-os.outputs.binary_name }} --help
 
 
   documentation:
