@@ -2,9 +2,9 @@
 # ByteFreezer Proxy Deployment Playbook
 - name: Deploy ByteFreezer Proxy
   hosts: bytefreezer_proxy
-  become: yes
-  gather_facts: yes
-  
+  become: true
+  gather_facts: true
+
   vars:
     # Architecture mapping for binary downloads
     arch_map:
@@ -14,18 +14,17 @@
     
     target_arch: "{{ arch_map[ansible_architecture] | default('amd64') }}"
     binary_name: "bytefreezer-proxy-linux-{{ target_arch }}"
-    
+
     # AWX compatibility - merge survey variables with host-specific config
     merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
-    
   pre_tasks:
     - name: Update package cache
-      package:
-        update_cache: yes
+      ansible.builtin.package:
+        update_cache: true
       when: ansible_os_family in ['Debian', 'RedHat']
 
     - name: Install required packages
-      package:
+      ansible.builtin.package:
         name:
           - curl
           - wget
@@ -36,22 +35,22 @@
 
   tasks:
     - name: Create bytefreezer user and group
-      group:
+      ansible.builtin.group:
         name: "{{ bytefreezer_proxy_group }}"
         state: present
-      
+
     - name: Create bytefreezer user
-      user:
+      ansible.builtin.user:
         name: "{{ bytefreezer_proxy_user }}"
         group: "{{ bytefreezer_proxy_group }}"
-        system: yes
+        system: true
         shell: /bin/false
         home: "{{ bytefreezer_proxy_install_dir }}"
-        create_home: no
+        create_home: false
         state: present
 
     - name: Create required directories
-      file:
+      ansible.builtin.file:
         path: "{{ item }}"
         state: directory
         owner: "{{ bytefreezer_proxy_user }}"
@@ -65,10 +64,10 @@
         - "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') if bytefreezer_proxy_backup_enabled else omit }}"
 
     - name: Get latest release information from GitHub
-      uri:
+      ansible.builtin.uri:
         url: "{{ bytefreezer_proxy_release_url }}"
         method: GET
-        return_content: yes
+        return_content: true
       register: github_release
       when: bytefreezer_proxy_version == "latest"
       delegate_to: localhost

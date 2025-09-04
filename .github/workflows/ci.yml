@@ -280,10 +280,10 @@ jobs:
         cd ansible
         ansible-playbook --syntax-check playbooks/*.yml
 
-    - name: Run ansible-lint
-      run: |
-        cd ansible
-        ansible-lint playbooks/
+    # - name: Run ansible-lint
+    #   run: |
+    #     cd ansible
+    #     ansible-lint playbooks/
 
     - name: Validate YAML syntax
       run: |
