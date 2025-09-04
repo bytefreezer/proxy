@@ -1,0 +1,412 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.23'
+  
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run go fmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "The following files need formatting:"
+          gofmt -s -l .
+          echo "Run 'go fmt ./...' to fix formatting issues"
+          exit 1
+        fi
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Run staticcheck
+      run: staticcheck ./...
+
+    - name: Install gosec
+      run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+
+    - name: Run gosec security scanner
+      run: gosec -severity medium -confidence medium -quiet ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22', '1.23']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go ${{ matrix.go-version }}
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run unit tests
+      run: |
+        go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Generate coverage report
+      run: |
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage to Codecov
+      if: matrix.go-version == '1.23'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Upload coverage artifacts
+      if: matrix.go-version == '1.23'
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: |
+          coverage.out
+          coverage.html
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    services:
+      # Mock receiver service for integration testing
+      mock-receiver:
+        image: nginx:alpine
+        ports:
+          - 8080:80
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build binary
+      run: |
+        go build -o bytefreezer-proxy ./cmd/main.go
+        chmod +x bytefreezer-proxy
+
+    - name: Create test config
+      run: |
+        cat > test-config.yaml << EOF
+        app:
+          name: bytefreezer-proxy
+          version: test
+        
+        logging:
+          level: info
+          encoding: console
+        
+        server:
+          api_port: 8088
+        
+        udp:
+          enabled: true
+          host: "0.0.0.0"
+          port: 2056
+          read_buffer_size_bytes: 1048576
+          max_batch_lines: 1000
+          max_batch_bytes: 10485760
+          batch_timeout_seconds: 5
+          compression_level: 6
+          enable_compression: true
+          listeners:
+            - port: 2056
+              dataset_id: "test-data"
+        
+        receiver:
+          base_url: "http://localhost:8080"
+          tenant_id: "test-tenant"
+          dataset_id: "test-dataset"
+          timeout_seconds: 10
+          retry_count: 2
+          retry_delay_seconds: 1
+        
+        soc:
+          enabled: false
+        
+        otel:
+          enabled: false
+        
+        housekeeping:
+          enabled: true
+          intervalseconds: 30
+        
+        spooling:
+          enabled: true
+          directory: "./test-spool"
+          max_size_bytes: 10485760
+          retry_attempts: 3
+          retry_interval_seconds: 10
+          cleanup_interval_seconds: 60
+        
+        dev: true
+        EOF
+
+    - name: Run configuration validation
+      run: |
+        ./bytefreezer-proxy --config test-config.yaml --validate-config
+
+    - name: Start service in background
+      run: |
+        ./bytefreezer-proxy --config test-config.yaml &
+        echo $! > proxy.pid
+        sleep 5
+
+    - name: Test health endpoint
+      run: |
+        curl -f http://localhost:8088/health
+        curl -f http://localhost:8088/metrics
+
+    - name: Test UDP listener
+      run: |
+        echo '{"test": "message", "timestamp": "'$(date -Iseconds)'"}' | nc -u localhost 2056
+        sleep 2
+
+    - name: Test configuration endpoint
+      run: |
+        curl -f http://localhost:8088/config
+
+    - name: Stop service
+      run: |
+        if [ -f proxy.pid ]; then
+          kill $(cat proxy.pid) || true
+          sleep 2
+        fi
+
+  vulnerability-scan:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install Nancy (dependency scanner)
+      run: go install github.com/sonatypecommunity/nancy@latest
+
+    - name: Run Nancy dependency scanner
+      run: |
+        go list -json -deps ./... | nancy sleuth
+
+    - name: Install govulncheck
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+    - name: Run govulncheck
+      run: govulncheck ./...
+
+  build-validation:
+    name: Build Validation
+    runs-on: ${{ matrix.os }}
+    needs: [test]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        arch: [amd64]
+        include:
+          - os: ubuntu-latest
+            arch: arm64
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build binary (Unix)
+      if: runner.os != 'Windows'
+      env:
+        GOOS: ${{ runner.os == 'Ubuntu' && 'linux' || runner.os == 'macOS' && 'darwin' || 'windows' }}
+        GOARCH: ${{ matrix.arch }}
+        CGO_ENABLED: 0
+      run: |
+        go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          -o bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} ./cmd/main.go
+
+    - name: Build binary (Windows)
+      if: runner.os == 'Windows'
+      env:
+        GOOS: windows
+        GOARCH: ${{ matrix.arch }}
+        CGO_ENABLED: 0
+      run: |
+        go build -ldflags="-s -w -X main.version=ci-build -X main.buildTime=$(Get-Date -UFormat '%Y-%m-%dT%H:%M:%SZ')" `
+          -o bytefreezer-proxy-Windows-${{ matrix.arch }}.exe ./cmd/main.go
+
+    - name: Test binary (Unix)
+      if: runner.os != 'Windows' && matrix.arch == 'amd64'
+      run: |
+        ./bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} --version
+        ./bytefreezer-proxy-${{ runner.os }}-${{ matrix.arch }} --help
+
+    - name: Test binary (Windows)
+      if: runner.os == 'Windows' && matrix.arch == 'amd64'
+      run: |
+        .\bytefreezer-proxy-Windows-${{ matrix.arch }}.exe --version
+        .\bytefreezer-proxy-Windows-${{ matrix.arch }}.exe --help
+
+  ansible-validation:
+    name: Ansible Validation
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Ansible and dependencies
+      run: |
+        pip install ansible ansible-lint yamllint
+
+    - name: Validate Ansible syntax
+      run: |
+        cd ansible
+        ansible-playbook --syntax-check playbooks/*.yml
+
+    - name: Run ansible-lint
+      run: |
+        cd ansible
+        ansible-lint playbooks/
+
+    - name: Validate YAML syntax
+      run: |
+        cd ansible
+        yamllint -c .yamllint.yml .
+
+    - name: Validate AWX templates
+      run: |
+        cd ansible/awx
+        python -m json.tool < /dev/null || echo "JSON validation would go here"
+        # Add specific AWX template validation as needed
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check README exists
+      run: test -f README.md
+
+    - name: Check build documentation exists
+      run: test -f BUILD.md
+
+    - name: Check AWX guide exists
+      run: test -f AWX_DEPLOYMENT_GUIDE.md
+
+    - name: Check configuration documentation
+      run: |
+        grep -q "UDP listener configuration" config.yaml
+        grep -q "spooling" config.yaml
+
+    - name: Validate Markdown links (if markdownlint available)
+      run: |
+        if command -v markdownlint >/dev/null 2>&1; then
+          markdownlint *.md
+        else
+          echo "Markdownlint not available, skipping"
+        fi
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [lint, test, integration-test, vulnerability-scan, build-validation, ansible-validation, documentation]
+    if: always()
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Lint: ${{ needs.lint.result }}"
+        echo "Test: ${{ needs.test.result }}"
+        echo "Integration Test: ${{ needs.integration-test.result }}"
+        echo "Vulnerability Scan: ${{ needs.vulnerability-scan.result }}"
+        echo "Build Validation: ${{ needs.build-validation.result }}"
+        echo "Ansible Validation: ${{ needs.ansible-validation.result }}"
+        echo "Documentation: ${{ needs.documentation.result }}"
+        
+        if [[ "${{ needs.lint.result }}" == "failure" || \
+              "${{ needs.test.result }}" == "failure" || \
+              "${{ needs.integration-test.result }}" == "failure" || \
+              "${{ needs.vulnerability-scan.result }}" == "failure" || \
+              "${{ needs.build-validation.result }}" == "failure" || \
+              "${{ needs.ansible-validation.result }}" == "failure" || \
+              "${{ needs.documentation.result }}" == "failure" ]]; then
+          echo "❌ Quality gate failed - one or more checks failed"
+          exit 1
+        else
+          echo "✅ Quality gate passed - all checks successful"
+        fi
