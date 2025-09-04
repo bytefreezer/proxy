@@ -253,6 +253,51 @@ on:
     done
 ```
 
+### Issue 11: "Deprecated GitHub Actions"
+
+**Symptoms:**
+- "This request has been automatically failed because it uses a deprecated version"
+- Warnings about deprecated actions in workflow runs
+- Build failures with deprecation notices
+
+**Common Deprecated Actions and Their Replacements:**
+```yaml
+# ❌ Deprecated actions
+uses: actions/upload-artifact@v3
+uses: actions/download-artifact@v3
+uses: actions/cache@v3
+uses: actions/setup-python@v4
+uses: actions/create-release@v1
+uses: docker/setup-buildx-action@v3
+uses: docker/login-action@v3
+uses: docker/metadata-action@v5
+uses: docker/build-push-action@v5
+
+# ✅ Updated actions
+uses: actions/upload-artifact@v4
+uses: actions/download-artifact@v4
+uses: actions/cache@v4
+uses: actions/setup-python@v5
+uses: softprops/action-gh-release@v2
+uses: docker/setup-buildx-action@v4
+uses: docker/login-action@v4
+uses: docker/metadata-action@v6
+uses: docker/build-push-action@v6
+```
+
+**Solutions:**
+```bash
+# Update all deprecated actions in your workflows
+# Search and replace across all workflow files:
+sed -i 's/actions\/upload-artifact@v3/actions\/upload-artifact@v4/g' .github/workflows/*.yml
+sed -i 's/actions\/download-artifact@v3/actions\/download-artifact@v4/g' .github/workflows/*.yml
+sed -i 's/actions\/cache@v3/actions\/cache@v4/g' .github/workflows/*.yml
+sed -i 's/actions\/setup-python@v4/actions\/setup-python@v5/g' .github/workflows/*.yml
+
+# For releases, replace deprecated create-release with modern approach:
+# Replace actions/create-release@v1 with softprops/action-gh-release@v2
+```
+
 ## Debugging Steps
 
 ### 1. Check Workflow Syntax
@@ -325,6 +370,9 @@ tree -a -I '.git'
 | `tests fail in CI only` | Add service dependencies |
 | `matrix job fails on Windows` | Use conditional steps |
 | `workflow not triggering` | Check branch names in `on:` |
+| `deprecated version of actions/upload-artifact: v3` | Update to `actions/upload-artifact@v4` |
+| `deprecated version of actions/download-artifact: v3` | Update to `actions/download-artifact@v4` |
+| `deprecated version of actions/cache: v3` | Update to `actions/cache@v4` |
 
 ## Getting Help
 
