@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
@@ -30,13 +31,10 @@ func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 
 // ForwardBatch forwards a data batch to bytefreezer-receiver
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
-	// Construct URL according to bytefreezer-receiver format
-	// Based on the receiver, it should be: /data/{tenantId}/{datasetId}
-	url := fmt.Sprintf("%s/data/%s/%s",
-		f.config.Receiver.BaseURL,
-		batch.TenantID,
-		batch.DatasetID,
-	)
+	// Replace placeholders in base URL with actual tenant and dataset IDs
+	url := f.config.Receiver.BaseURL
+	url = strings.ReplaceAll(url, "{tenantid}", batch.TenantID)
+	url = strings.ReplaceAll(url, "{datasetid}", batch.DatasetID)
 
 	// Create request
 	req, err := http.NewRequest("POST", url, bytes.NewReader(batch.Data))
@@ -46,6 +44,11 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 
 	// Set headers
 	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", f.config.App.Name, f.config.App.Version))
+
+	// Add Bearer authentication header if token is configured
+	if f.config.BearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", f.config.BearerToken))
+	}
 
 	if f.config.UDP.EnableCompression {
 		req.Header.Set("Content-Encoding", "gzip")

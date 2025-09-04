@@ -7,8 +7,9 @@ import (
 
 // Services holds all service instances and shared state
 type Services struct {
-	Config     *config.Config
-	ProxyStats *domain.ProxyStats
+	Config         *config.Config
+	ProxyStats     *domain.ProxyStats
+	SpoolingService *SpoolingService
 
 	// Service instances will be added here
 	// UDPListener  *udp.Listener
@@ -18,8 +19,9 @@ type Services struct {
 // NewServices creates a new services instance
 func NewServices(cfg *config.Config) *Services {
 	return &Services{
-		Config:     cfg,
-		ProxyStats: &domain.ProxyStats{},
+		Config:          cfg,
+		ProxyStats:      &domain.ProxyStats{},
+		SpoolingService: NewSpoolingService(cfg),
 	}
 }
 

@@ -35,10 +35,8 @@ type UDPListener struct {
 }
 
 type ReceiverHealthStatus struct {
-	BaseURL   string `json:"base_url"`
-	TenantID  string `json:"tenant_id"`
-	DatasetID string `json:"dataset_id"`
-	Status    string `json:"status"`
+	BaseURL string `json:"base_url"`
+	Status  string `json:"status"`
 }
 
 type ProxyStatsResponse struct {
@@ -59,6 +57,8 @@ type ConfigResponse struct {
 	Server       ServerConfig         `json:"server"`
 	UDP          UDPConfig            `json:"udp"`
 	Receiver     ReceiverConfigMasked `json:"receiver"`
+	TenantID     string               `json:"tenant_id"`     // This will be masked
+	BearerToken  string               `json:"bearer_token"`  // This will be masked
 	SOC          SOCConfig            `json:"soc"`
 	Otel         OtelConfig           `json:"otel"`
 	Housekeeping HousekeepingConfig   `json:"housekeeping"`
@@ -88,8 +88,6 @@ type UDPConfig struct {
 
 type ReceiverConfigMasked struct {
 	BaseURL       string `json:"base_url"`
-	TenantID      string `json:"tenant_id"` // This will be masked
-	DatasetID     string `json:"dataset_id"`
 	TimeoutSec    int    `json:"timeout_seconds"`
 	RetryCount    int    `json:"retry_count"`
 	RetryDelaySec int    `json:"retry_delay_seconds"`
@@ -177,10 +175,8 @@ func (api *API) HealthCheck() usecase.Interactor {
 		}
 
 		output.Receiver = ReceiverHealthStatus{
-			BaseURL:   cfg.Receiver.BaseURL,
-			TenantID:  maskSensitiveValue(cfg.Receiver.TenantID),
-			DatasetID: cfg.Receiver.DatasetID,
-			Status:    receiverStatus,
+			BaseURL: cfg.Receiver.BaseURL,
+			Status:  receiverStatus,
 		}
 
 		// Stats
@@ -236,15 +232,17 @@ func (api *API) GetConfig() usecase.Interactor {
 			EnableCompression:   cfg.UDP.EnableCompression,
 		}
 
-		// Receiver configuration (with masked ID)
+		// Receiver configuration
 		output.Receiver = ReceiverConfigMasked{
 			BaseURL:       cfg.Receiver.BaseURL,
-			TenantID:      maskSensitiveValue(cfg.Receiver.TenantID),
-			DatasetID:     cfg.Receiver.DatasetID,
 			TimeoutSec:    cfg.Receiver.TimeoutSec,
 			RetryCount:    cfg.Receiver.RetryCount,
 			RetryDelaySec: cfg.Receiver.RetryDelaySec,
 		}
+		
+		// Global tenant ID and bearer token (masked)
+		output.TenantID = maskSensitiveValue(cfg.TenantID)
+		output.BearerToken = maskSensitiveValue(cfg.BearerToken)
 
 		// SOC configuration
 		output.SOC = SOCConfig{

@@ -47,7 +47,7 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 	for _, udpListener := range cfg.UDP.Listeners {
 		tenantID := udpListener.TenantID
 		if tenantID == "" {
-			tenantID = cfg.Receiver.TenantID // Use global tenant if not specified
+			tenantID = cfg.TenantID // Use global tenant if not specified
 		}
 
 		portListener := &UDPPortListener{
@@ -273,33 +273,48 @@ func NewForwarder(services *services.Services, cfg *config.Config) *Forwarder {
 
 // Start starts the forwarder
 func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
-	batch := &domain.DataBatch{
-		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-		TenantID:  f.config.Receiver.TenantID,
-		DatasetID: f.config.Receiver.DatasetID,
-		Messages:  make([]domain.UDPMessage, 0),
-		CreatedAt: time.Now(),
-	}
-
+	// Track batches by tenant+dataset combination
+	batches := make(map[string]*domain.DataBatch)
+	
 	batchTimer := time.NewTimer(f.config.GetBatchTimeout())
 	defer batchTimer.Stop()
 
 	for {
 		select {
 		case <-f.quit:
-			// Send final batch if not empty
-			if len(batch.Messages) > 0 {
-				f.sendBatch(batch)
+			// Send all remaining batches
+			for _, batch := range batches {
+				if len(batch.Messages) > 0 {
+					f.sendBatch(batch)
+				}
 			}
 			return
 
 		case msg, ok := <-messageChannel:
 			if !ok {
-				// Channel closed, send final batch
-				if len(batch.Messages) > 0 {
-					f.sendBatch(batch)
+				// Channel closed, send all remaining batches
+				for _, batch := range batches {
+					if len(batch.Messages) > 0 {
+						f.sendBatch(batch)
+					}
 				}
 				return
+			}
+
+			// Create batch key from tenant+dataset
+			batchKey := fmt.Sprintf("%s:%s", msg.TenantID, msg.DatasetID)
+			
+			// Get or create batch for this tenant+dataset
+			batch, exists := batches[batchKey]
+			if !exists {
+				batch = &domain.DataBatch{
+					ID:        fmt.Sprintf("%d_%s", time.Now().UnixNano(), batchKey),
+					TenantID:  msg.TenantID,
+					DatasetID: msg.DatasetID,
+					Messages:  make([]domain.UDPMessage, 0),
+					CreatedAt: time.Now(),
+				}
+				batches[batchKey] = batch
 			}
 
 			// Add message to batch
@@ -318,36 +333,22 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 
 			if shouldSend {
 				f.sendBatch(batch)
-
-				// Reset batch
-				batch = &domain.DataBatch{
-					ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-					TenantID:  f.config.Receiver.TenantID,
-					DatasetID: f.config.Receiver.DatasetID,
-					Messages:  make([]domain.UDPMessage, 0),
-					CreatedAt: time.Now(),
-				}
-
-				// Reset timer
+				delete(batches, batchKey)
+				
+				// Reset timer since we sent a batch
 				batchTimer.Stop()
 				batchTimer.Reset(f.config.GetBatchTimeout())
 			}
 
 		case <-batchTimer.C:
-			// Timeout reached, send batch if not empty
-			if len(batch.Messages) > 0 {
-				f.sendBatch(batch)
-
-				// Reset batch
-				batch = &domain.DataBatch{
-					ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-					TenantID:  f.config.Receiver.TenantID,
-					DatasetID: f.config.Receiver.DatasetID,
-					Messages:  make([]domain.UDPMessage, 0),
-					CreatedAt: time.Now(),
+			// Timeout reached, send all non-empty batches
+			for batchKey, batch := range batches {
+				if len(batch.Messages) > 0 {
+					f.sendBatch(batch)
+					delete(batches, batchKey)
 				}
 			}
-
+			
 			// Reset timer
 			batchTimer.Reset(f.config.GetBatchTimeout())
 		}
@@ -426,6 +427,15 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 	if err != nil {
 		log.Errorf("Failed to send batch %s to receiver: %v", batch.ID, err)
 		f.services.ProxyStats.ForwardingErrors++
+
+		// Spool the failed batch using the correct tenant/dataset from the batch
+		if f.services.SpoolingService != nil {
+			if spoolErr := f.services.SpoolingService.SpoolData(batch.TenantID, batch.DatasetID, finalData, err.Error()); spoolErr != nil {
+				log.Errorf("Failed to spool batch %s: %v", batch.ID, spoolErr)
+			} else {
+				log.Debugf("Spooled failed batch %s for tenant=%s, dataset=%s", batch.ID, batch.TenantID, batch.DatasetID)
+			}
+		}
 
 		// Send SOC alert
 		if f.config.SOCAlertClient != nil {

@@ -90,6 +90,11 @@ func main() {
 	// Create services
 	svcs := services.NewServices(&cfg)
 
+	// Start spooling service if enabled
+	if err := svcs.SpoolingService.Start(); err != nil {
+		log.Fatalf("Failed to start spooling service: %v", err)
+	}
+
 	// Initialize uptime tracking
 	startTime := time.Now()
 	go func() {
@@ -150,6 +155,13 @@ func main() {
 	// Shutdown services gracefully
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop spooling service
+	go func() {
+		if err := svcs.SpoolingService.Stop(); err != nil {
+			log.Errorf("Error stopping spooling service: %v", err)
+		}
+	}()
 
 	// Stop UDP listener
 	if udpListener != nil {

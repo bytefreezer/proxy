@@ -21,6 +21,8 @@ type Config struct {
 	Server       Server        `mapstructure:"server"`
 	UDP          UDP           `mapstructure:"udp"`
 	Receiver     Receiver      `mapstructure:"receiver"`
+	TenantID     string        `mapstructure:"tenant_id"`
+	BearerToken  string        `mapstructure:"bearer_token"`
 	SOC          SOCAlert      `mapstructure:"soc"`
 	Otel         Otel          `mapstructure:"otel"`
 	Housekeeping Housekeeping  `mapstructure:"housekeeping"`
@@ -65,8 +67,6 @@ type UDPListener struct {
 
 type Receiver struct {
 	BaseURL       string `mapstructure:"base_url"`
-	TenantID      string `mapstructure:"tenant_id"`
-	DatasetID     string `mapstructure:"dataset_id"`
 	TimeoutSec    int    `mapstructure:"timeout_seconds"`
 	RetryCount    int    `mapstructure:"retry_count"`
 	RetryDelaySec int    `mapstructure:"retry_delay_seconds"`
