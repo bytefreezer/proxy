@@ -275,7 +275,7 @@ func NewForwarder(services *services.Services, cfg *config.Config) *Forwarder {
 func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 	// Track batches by tenant+dataset combination
 	batches := make(map[string]*domain.DataBatch)
-	
+
 	batchTimer := time.NewTimer(f.config.GetBatchTimeout())
 	defer batchTimer.Stop()
 
@@ -303,7 +303,7 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 
 			// Create batch key from tenant+dataset
 			batchKey := fmt.Sprintf("%s:%s", msg.TenantID, msg.DatasetID)
-			
+
 			// Get or create batch for this tenant+dataset
 			batch, exists := batches[batchKey]
 			if !exists {
@@ -334,7 +334,7 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 			if shouldSend {
 				f.sendBatch(batch)
 				delete(batches, batchKey)
-				
+
 				// Reset timer since we sent a batch
 				batchTimer.Stop()
 				batchTimer.Reset(f.config.GetBatchTimeout())
@@ -348,7 +348,7 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 					delete(batches, batchKey)
 				}
 			}
-			
+
 			// Reset timer
 			batchTimer.Reset(f.config.GetBatchTimeout())
 		}

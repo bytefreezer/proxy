@@ -148,10 +148,11 @@ jobs:
           api_port: 8088
         udp:
           enabled: false
+          listeners: []
         receiver:
-          base_url: "http://localhost:8080"
-          tenant_id: "test-tenant"
-          dataset_id: "test-dataset"
+          base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+        tenant_id: "test-tenant"
+        bearer_token: "test-token"
         soc:
           enabled: false
         otel:

@@ -7,8 +7,8 @@ import (
 
 // Services holds all service instances and shared state
 type Services struct {
-	Config         *config.Config
-	ProxyStats     *domain.ProxyStats
+	Config          *config.Config
+	ProxyStats      *domain.ProxyStats
 	SpoolingService *SpoolingService
 
 	// Service instances will be added here

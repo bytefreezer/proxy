@@ -57,8 +57,8 @@ type ConfigResponse struct {
 	Server       ServerConfig         `json:"server"`
 	UDP          UDPConfig            `json:"udp"`
 	Receiver     ReceiverConfigMasked `json:"receiver"`
-	TenantID     string               `json:"tenant_id"`     // This will be masked
-	BearerToken  string               `json:"bearer_token"`  // This will be masked
+	TenantID     string               `json:"tenant_id"`    // This will be masked
+	BearerToken  string               `json:"bearer_token"` // This will be masked
 	SOC          SOCConfig            `json:"soc"`
 	Otel         OtelConfig           `json:"otel"`
 	Housekeeping HousekeepingConfig   `json:"housekeeping"`
@@ -239,7 +239,7 @@ func (api *API) GetConfig() usecase.Interactor {
 			RetryCount:    cfg.Receiver.RetryCount,
 			RetryDelaySec: cfg.Receiver.RetryDelaySec,
 		}
-		
+
 		// Global tenant ID and bearer token (masked)
 		output.TenantID = maskSensitiveValue(cfg.TenantID)
 		output.BearerToken = maskSensitiveValue(cfg.BearerToken)
