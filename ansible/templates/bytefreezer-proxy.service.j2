@@ -1,0 +1,60 @@
+[Unit]
+Description=ByteFreezer Proxy - UDP Data Collection and Forwarding Service
+Documentation=https://github.com/{{ bytefreezer_proxy_github_repo }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ bytefreezer_proxy_user }}
+Group={{ bytefreezer_proxy_group }}
+WorkingDirectory={{ bytefreezer_proxy_install_dir }}
+ExecStart={{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Restart settings
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security settings
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ bytefreezer_proxy_config_dir }} {{ bytefreezer_proxy_log_dir }} /tmp
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+RestrictNamespaces=yes
+
+# Network settings
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow={{ (bytefreezer_proxy_config.udp.host | default('0.0.0.0')) }}
+{% if bytefreezer_proxy_config.receiver is defined and bytefreezer_proxy_config.receiver.base_url is defined %}
+# Allow outbound to receiver
+IPAddressAllow={{ bytefreezer_proxy_config.receiver.base_url | regex_replace('^https?://([^:/]+).*', '\\1') }}
+{% endif %}
+
+# Environment
+Environment=CONFIG_FILE={{ bytefreezer_proxy_config_dir }}/config.yaml
+Environment=LOG_LEVEL={{ (bytefreezer_proxy_config.logging.level | default('info')) | upper }}
+
+[Install]
+WantedBy=multi-user.target

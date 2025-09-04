@@ -1,0 +1,76 @@
+---
+# Default configuration for bytefreezer-proxy deployments
+# These values can be overridden in host_vars/ or inventory
+
+# Installation settings
+bytefreezer_proxy_github_repo: "n0needt0/bytefreezer-proxy"
+bytefreezer_proxy_release_url: "https://api.github.com/repos/{{ bytefreezer_proxy_github_repo }}/releases/latest"
+bytefreezer_proxy_binary_name: "bytefreezer-proxy"
+
+# System settings
+bytefreezer_proxy_service_name: "bytefreezer-proxy"
+bytefreezer_proxy_systemd_enabled: true
+bytefreezer_proxy_systemd_started: true
+
+# Network and firewall
+bytefreezer_proxy_firewall_enabled: true
+bytefreezer_proxy_api_port: 8088
+bytefreezer_proxy_udp_port: 2056
+
+# System tuning
+bytefreezer_proxy_system_tuning_enabled: true
+bytefreezer_proxy_udp_buffer_size: 134217728  # 128MB
+
+# Default configuration template
+bytefreezer_proxy_default_config:
+  app:
+    name: "bytefreezer-proxy"
+    version: "0.0.1"
+  
+  logging:
+    level: "info"
+    encoding: "console"
+  
+  server:
+    api_port: "{{ bytefreezer_proxy_api_port }}"
+  
+  udp:
+    enabled: true
+    host: "0.0.0.0"
+    port: "{{ bytefreezer_proxy_udp_port }}"
+    read_buffer_size_bytes: "{{ bytefreezer_proxy_udp_buffer_size }}"
+    max_batch_lines: 100000
+    max_batch_bytes: 268435456  # 256MB
+    batch_timeout_seconds: 30
+    enable_compression: true
+    compression_level: 6
+  
+  receiver:
+    base_url: "http://localhost:8080"
+    tenant_id: "default-tenant"
+    dataset_id: "default-dataset"
+    timeout_seconds: 30
+    retry_count: 3
+    retry_delay_seconds: 1
+  
+  soc:
+    enabled: false
+    endpoint: ""
+    timeout: 30
+  
+  otel:
+    enabled: false
+    endpoint: "localhost:4317"
+    service_name: "bytefreezer-proxy"
+    scrapeIntervalseconds: 100
+  
+  housekeeping:
+    enabled: true
+    intervalseconds: 60
+  
+  dev: false
+
+# Backup settings
+bytefreezer_proxy_backup_enabled: true
+bytefreezer_proxy_backup_dir: "/opt/backups/bytefreezer-proxy"
+bytefreezer_proxy_backup_retention_days: 7

@@ -1,54 +1,54 @@
-# Use the official Go image as the base image
-FROM golang:1.22.1 AS builder
+# Build stage
+FROM golang:1.23-alpine AS builder
 
-# Set the working directory inside the container
-WORKDIR /src
+WORKDIR /app
 
-ENV GOPRIVATE=github.com/n0needt0/goodies
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates
 
-ARG GH_PAT
-
-RUN echo "machine github.com login ci password ${GH_PAT}" > ~/.netrc
-
-# Copy the Go module files and download dependencies
+# Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the entire project into the container
+# Copy source code
 COPY . .
 
-# Build the Go server
-RUN CGO_ENABLED=0 go build -o /app main.go
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o bytefreezer-proxy .
 
-# Use the ls command to list the contents of the /app directory
-RUN ls -l /app
+# Runtime stage
+FROM alpine:3.19
 
-# Use a minimal image as the final image
-FROM alpine:latest
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata wget
 
+# Create non-root user
+RUN addgroup -g 1001 -S proxy && \
+    adduser -u 1001 -S proxy -G proxy
 
-# Copy the binary built in the previous stage
-COPY --from=builder /app /app
+# Create directories
+RUN mkdir -p /app /etc/bytefreezer-proxy /var/log/bytefreezer-proxy && \
+    chown -R proxy:proxy /app /etc/bytefreezer-proxy /var/log/bytefreezer-proxy
 
-# Create the directory in case it doesn't already exist
-RUN mkdir -p /etc/app
+# Copy binary and config
+COPY --from=builder /app/bytefreezer-proxy /app/
+COPY --from=builder /app/config.yaml /etc/bytefreezer-proxy/config.yaml.example
 
-# Create the directory for cache
-RUN mkdir -p /var/kflow-cache
+# Set permissions
+RUN chmod +x /app/bytefreezer-proxy
 
+# Switch to non-root user
+USER proxy
 
-# Use the ls command to list the contents of the /app directory
-RUN ls /app
+# Set working directory
+WORKDIR /app
 
-# Expose the port your Go service listens on
-EXPOSE 8080
+# Expose ports
+EXPOSE 8088/tcp 2056/udp
 
-# Copy config file
-COPY ./config.yaml /etc/app/config.yaml
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8088/health || exit 1
 
-# Expose the config volume
-VOLUME ["/etc/app", "/var/kflow-cache"]
-
-
-# Command to run your Go server
-CMD ["/app", "--config", "/etc/app/config.yaml"]
+# Default command
+CMD ["./bytefreezer-proxy"]

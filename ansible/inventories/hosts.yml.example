@@ -1,0 +1,143 @@
+---
+# ByteFreezer Proxy Inventory Example
+# Copy this file to hosts.yml and customize for your environment
+
+all:
+  children:
+    # Production environment
+    production:
+      children:
+        bytefreezer_proxy:
+          hosts:
+            proxy-prod-01:
+              ansible_host: 10.1.1.10
+              bytefreezer_proxy_config:
+                receiver:
+                  base_url: "http://receiver.prod.example.com:8080"
+                  tenant_id: "production-tenant"
+                  dataset_id: "prod-proxy-01"
+                udp:
+                  port: 2056
+                  max_batch_lines: 100000
+                logging:
+                  level: "info"
+                otel:
+                  enabled: true
+                  endpoint: "otel-collector.prod.example.com:4317"
+            
+            proxy-prod-02:
+              ansible_host: 10.1.1.11
+              bytefreezer_proxy_config:
+                receiver:
+                  base_url: "http://receiver.prod.example.com:8080"
+                  tenant_id: "production-tenant"
+                  dataset_id: "prod-proxy-02"
+                udp:
+                  port: 2056
+                  max_batch_lines: 100000
+                logging:
+                  level: "info"
+
+    # Staging environment  
+    staging:
+      children:
+        bytefreezer_proxy:
+          hosts:
+            proxy-staging-01:
+              ansible_host: 10.2.1.10
+              bytefreezer_proxy_config:
+                receiver:
+                  base_url: "http://receiver.staging.example.com:8080"
+                  tenant_id: "staging-tenant"
+                  dataset_id: "staging-proxy-01"
+                udp:
+                  port: 2056
+                  max_batch_lines: 50000
+                logging:
+                  level: "debug"
+
+    # Development environment
+    development:
+      children:
+        bytefreezer_proxy:
+          hosts:
+            proxy-dev-01:
+              ansible_host: 192.168.1.100
+              bytefreezer_proxy_config:
+                receiver:
+                  base_url: "http://localhost:8080"
+                  tenant_id: "dev-tenant"
+                  dataset_id: "dev-proxy-01"
+                udp:
+                  port: 2056
+                  max_batch_lines: 10000
+                logging:
+                  level: "debug"
+                dev: true
+
+  vars:
+    # Global SSH settings
+    ansible_user: ubuntu  # Change to your SSH user
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_become: yes
+    ansible_become_method: sudo
+
+    # Global ByteFreezer Proxy settings
+    bytefreezer_proxy_version: "latest"
+    bytefreezer_proxy_install_dir: "/opt/bytefreezer-proxy"
+    bytefreezer_proxy_config_dir: "/etc/bytefreezer-proxy"
+    bytefreezer_proxy_log_dir: "/var/log/bytefreezer-proxy"
+    bytefreezer_proxy_user: "bytefreezer"
+    bytefreezer_proxy_group: "bytefreezer"
+
+    # System settings
+    bytefreezer_proxy_systemd_enabled: true
+    bytefreezer_proxy_systemd_started: true
+    bytefreezer_proxy_firewall_enabled: true
+    bytefreezer_proxy_system_tuning_enabled: true
+
+    # Backup settings
+    bytefreezer_proxy_backup_enabled: true
+    bytefreezer_proxy_backup_dir: "/opt/backups/bytefreezer-proxy"
+    bytefreezer_proxy_backup_retention_days: 7
+
+# Environment-specific variables
+production:
+  vars:
+    # Production-specific settings
+    bytefreezer_proxy_default_config:
+      logging:
+        level: "info"
+        encoding: "json"  # Structured logging for production
+      otel:
+        enabled: true
+        endpoint: "otel-collector.prod.example.com:4317"
+        service_name: "bytefreezer-proxy-prod"
+      soc:
+        enabled: true
+        endpoint: "https://soc.example.com/alerts"
+
+staging:
+  vars:
+    # Staging-specific settings
+    bytefreezer_proxy_default_config:
+      logging:
+        level: "debug"
+        encoding: "console"
+      otel:
+        enabled: true
+        endpoint: "otel-collector.staging.example.com:4317"
+        service_name: "bytefreezer-proxy-staging"
+
+development:
+  vars:
+    # Development-specific settings
+    bytefreezer_proxy_system_tuning_enabled: false
+    bytefreezer_proxy_firewall_enabled: false
+    bytefreezer_proxy_default_config:
+      logging:
+        level: "debug"
+        encoding: "console"
+      dev: true
+      otel:
+        enabled: false

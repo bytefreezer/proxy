@@ -1,0 +1,90 @@
+---
+# ByteFreezer Proxy Configuration Update Playbook
+- name: Update ByteFreezer Proxy Configuration
+  hosts: bytefreezer_proxy
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Backup current configuration
+      copy:
+        src: "{{ bytefreezer_proxy_config_dir }}/config.yaml"
+        dest: "{{ bytefreezer_proxy_backup_dir if bytefreezer_proxy_backup_enabled else '/tmp' }}/config-backup-{{ ansible_date_time.epoch }}.yaml"
+        remote_src: yes
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0640'
+      ignore_errors: yes
+
+    - name: Generate new configuration file
+      template:
+        src: config.yaml.j2
+        dest: "{{ bytefreezer_proxy_config_dir }}/config.yaml"
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0640'
+        backup: yes
+      notify: restart bytefreezer-proxy
+      register: config_updated
+
+    - name: Validate configuration syntax
+      command: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }} --validate-config"
+      environment:
+        CONFIG_FILE: "{{ bytefreezer_proxy_config_dir }}/config.yaml"
+      become_user: "{{ bytefreezer_proxy_user }}"
+      register: config_validation
+      ignore_errors: yes
+      when: config_updated.changed
+
+    - name: Display validation results
+      debug:
+        msg:
+          - "Configuration validation: {{ 'PASSED' if config_validation.rc == 0 else 'FAILED' }}"
+          - "Validation output: {{ config_validation.stdout | default('No output') }}"
+          - "Validation errors: {{ config_validation.stderr | default('None') }}"
+      when: config_validation is defined
+
+    - name: Restart service if configuration changed
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: restarted
+      when: 
+        - config_updated.changed
+        - config_validation is not defined or config_validation.rc == 0
+        - bytefreezer_proxy_systemd_started
+
+    - name: Wait for service to be ready after restart
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 3
+      when: 
+        - config_updated.changed
+        - bytefreezer_proxy_systemd_started
+
+    - name: Display updated configuration summary
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/config"
+        method: GET
+        return_content: yes
+      register: current_config
+      when: bytefreezer_proxy_systemd_started
+
+    - name: Show configuration update results
+      debug:
+        msg:
+          - "Configuration update completed!"
+          - "Config file: {{ bytefreezer_proxy_config_dir }}/config.yaml"
+          - "Backup created: {{ config_updated.backup_file if config_updated.backup_file is defined else 'No backup needed' }}"
+          - "Service restarted: {{ 'Yes' if config_updated.changed else 'No' }}"
+          - "Health check: {{ 'PASSED' if health_check is defined and health_check.status == 200 else 'SKIPPED' }}"
+
+  handlers:
+    - name: restart bytefreezer-proxy
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: restarted
+      when: bytefreezer_proxy_systemd_started

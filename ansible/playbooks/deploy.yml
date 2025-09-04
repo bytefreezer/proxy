@@ -1,0 +1,244 @@
+---
+# ByteFreezer Proxy Deployment Playbook
+- name: Deploy ByteFreezer Proxy
+  hosts: bytefreezer_proxy
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    # Architecture mapping for binary downloads
+    arch_map:
+      x86_64: "amd64"
+      aarch64: "arm64"
+      armv7l: "arm"
+    
+    target_arch: "{{ arch_map[ansible_architecture] | default('amd64') }}"
+    binary_name: "bytefreezer-proxy-linux-{{ target_arch }}"
+    
+  pre_tasks:
+    - name: Update package cache
+      package:
+        update_cache: yes
+      when: ansible_os_family in ['Debian', 'RedHat']
+
+    - name: Install required packages
+      package:
+        name:
+          - curl
+          - wget
+          - unzip
+          - tar
+          - systemd
+        state: present
+
+  tasks:
+    - name: Create bytefreezer user and group
+      group:
+        name: "{{ bytefreezer_proxy_group }}"
+        state: present
+      
+    - name: Create bytefreezer user
+      user:
+        name: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        system: yes
+        shell: /bin/false
+        home: "{{ bytefreezer_proxy_install_dir }}"
+        create_home: no
+        state: present
+
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0755'
+      loop:
+        - "{{ bytefreezer_proxy_install_dir }}"
+        - "{{ bytefreezer_proxy_config_dir }}"
+        - "{{ bytefreezer_proxy_log_dir }}"
+        - "{{ bytefreezer_proxy_backup_dir if bytefreezer_proxy_backup_enabled else omit }}"
+
+    - name: Get latest release information from GitHub
+      uri:
+        url: "{{ bytefreezer_proxy_release_url }}"
+        method: GET
+        return_content: yes
+      register: github_release
+      when: bytefreezer_proxy_version == "latest"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set version facts
+      set_fact:
+        release_version: "{{ github_release.json.tag_name if bytefreezer_proxy_version == 'latest' else bytefreezer_proxy_version }}"
+        download_url: "{{ github_release.json.assets | selectattr('name', 'match', '.*' + binary_name + '.tar.gz$') | map(attribute='browser_download_url') | first if bytefreezer_proxy_version == 'latest' else 'https://github.com/' + bytefreezer_proxy_github_repo + '/releases/download/' + bytefreezer_proxy_version + '/' + binary_name + '.tar.gz' }}"
+
+    - name: Display download information
+      debug:
+        msg: 
+          - "Downloading version: {{ release_version }}"
+          - "Architecture: {{ target_arch }}"
+          - "URL: {{ download_url }}"
+
+    - name: Stop existing service
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: stopped
+      ignore_errors: yes
+
+    - name: Backup existing installation
+      archive:
+        path: "{{ bytefreezer_proxy_install_dir }}"
+        dest: "{{ bytefreezer_proxy_backup_dir }}/bytefreezer-proxy-backup-{{ ansible_date_time.epoch }}.tar.gz"
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+      when: 
+        - bytefreezer_proxy_backup_enabled
+        - bytefreezer_proxy_install_dir is directory
+      ignore_errors: yes
+
+    - name: Download and extract binary
+      unarchive:
+        src: "{{ download_url }}"
+        dest: "{{ bytefreezer_proxy_install_dir }}"
+        remote_src: yes
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0755'
+        extra_opts:
+          - --strip-components=0
+      notify: restart bytefreezer-proxy
+
+    - name: Rename binary to standard name
+      command: >
+        mv "{{ bytefreezer_proxy_install_dir }}/{{ binary_name }}" 
+           "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
+      args:
+        creates: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
+      notify: restart bytefreezer-proxy
+
+    - name: Set binary permissions
+      file:
+        path: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0755'
+
+    - name: Generate configuration file
+      template:
+        src: config.yaml.j2
+        dest: "{{ bytefreezer_proxy_config_dir }}/config.yaml"
+        owner: "{{ bytefreezer_proxy_user }}"
+        group: "{{ bytefreezer_proxy_group }}"
+        mode: '0640'
+        backup: yes
+      notify: restart bytefreezer-proxy
+
+    - name: Create systemd service file
+      template:
+        src: bytefreezer-proxy.service.j2
+        dest: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - reload systemd
+        - restart bytefreezer-proxy
+
+    - name: Configure system tuning for UDP
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: "net.core.rmem_max", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
+        - { name: "net.core.rmem_default", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
+        - { name: "net.core.wmem_max", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
+        - { name: "net.core.wmem_default", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
+        - { name: "net.core.netdev_max_backlog", value: "10000" }
+      when: bytefreezer_proxy_system_tuning_enabled
+
+    - name: Configure firewall (ufw)
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: "{{ 'tcp' if item == bytefreezer_proxy_api_port else 'udp' }}"
+        comment: "ByteFreezer Proxy {{ 'API' if item == bytefreezer_proxy_api_port else 'UDP' }}"
+      loop:
+        - "{{ bytefreezer_proxy_api_port }}"
+        - "{{ bytefreezer_proxy_udp_port }}"
+      when: 
+        - bytefreezer_proxy_firewall_enabled
+        - ansible_os_family == "Debian"
+      ignore_errors: yes
+
+    - name: Configure firewall (firewalld)
+      firewalld:
+        port: "{{ item }}/{{ 'tcp' if item == bytefreezer_proxy_api_port else 'udp' }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - "{{ bytefreezer_proxy_api_port }}"
+        - "{{ bytefreezer_proxy_udp_port }}"
+      when:
+        - bytefreezer_proxy_firewall_enabled 
+        - ansible_os_family == "RedHat"
+      ignore_errors: yes
+
+    - name: Enable and start service
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        enabled: "{{ bytefreezer_proxy_systemd_enabled }}"
+        state: "{{ 'started' if bytefreezer_proxy_systemd_started else 'stopped' }}"
+        daemon_reload: yes
+
+    - name: Clean up old backups
+      find:
+        paths: "{{ bytefreezer_proxy_backup_dir }}"
+        patterns: "bytefreezer-proxy-backup-*.tar.gz"
+        age: "{{ bytefreezer_proxy_backup_retention_days }}d"
+      register: old_backups
+      when: bytefreezer_proxy_backup_enabled
+
+    - name: Remove old backups
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files | default([]) }}"
+      when: bytefreezer_proxy_backup_enabled
+
+  post_tasks:
+    - name: Wait for service to be ready
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 3
+      when: bytefreezer_proxy_systemd_started
+
+    - name: Display service status
+      debug:
+        msg:
+          - "ByteFreezer Proxy deployment completed!"
+          - "Service status: {{ 'Running' if bytefreezer_proxy_systemd_started else 'Stopped' }}"
+          - "API endpoint: http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
+          - "UDP listener: {{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_udp_port }}"
+          - "Config file: {{ bytefreezer_proxy_config_dir }}/config.yaml"
+          - "Logs: journalctl -u {{ bytefreezer_proxy_service_name }} -f"
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart bytefreezer-proxy
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: restarted
+      when: bytefreezer_proxy_systemd_started

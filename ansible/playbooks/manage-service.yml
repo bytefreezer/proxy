@@ -1,0 +1,102 @@
+---
+# ByteFreezer Proxy Service Management Playbook
+- name: Manage ByteFreezer Proxy Service
+  hosts: bytefreezer_proxy
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Default action if not specified
+    service_action: "{{ action | default('status') }}"
+    
+  tasks:
+    - name: Validate service action
+      assert:
+        that:
+          - service_action in ['start', 'stop', 'restart', 'reload', 'status', 'enable', 'disable']
+        fail_msg: "Invalid action: {{ service_action }}. Valid actions: start, stop, restart, reload, status, enable, disable"
+
+    - name: Get current service status
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+      register: service_status
+
+    - name: Display current service status
+      debug:
+        msg:
+          - "Current service status:"
+          - "  State: {{ service_status.status.ActiveState }}"
+          - "  Enabled: {{ service_status.status.UnitFileState }}"
+          - "  Main PID: {{ service_status.status.MainPID | default('N/A') }}"
+          - "  Memory: {{ service_status.status.MemoryCurrent | default('N/A') }}"
+
+    - name: Execute service action - start
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: started
+      when: service_action == 'start'
+
+    - name: Execute service action - stop
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: stopped
+      when: service_action == 'stop'
+
+    - name: Execute service action - restart
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: restarted
+      when: service_action == 'restart'
+
+    - name: Execute service action - reload
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: reloaded
+      when: service_action == 'reload'
+
+    - name: Execute service action - enable
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        enabled: yes
+      when: service_action == 'enable'
+
+    - name: Execute service action - disable
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        enabled: no
+      when: service_action == 'disable'
+
+    - name: Wait for service to be ready (if started)
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 3
+      when: service_action in ['start', 'restart']
+
+    - name: Get updated service status
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+      register: updated_service_status
+      when: service_action != 'status'
+
+    - name: Display updated service status
+      debug:
+        msg:
+          - "Action '{{ service_action }}' completed!"
+          - "Updated service status:"
+          - "  State: {{ updated_service_status.status.ActiveState if updated_service_status is defined else service_status.status.ActiveState }}"
+          - "  Enabled: {{ updated_service_status.status.UnitFileState if updated_service_status is defined else service_status.status.UnitFileState }}"
+          - "  Health check: {{ 'PASSED' if health_check is defined and health_check.status == 200 else 'N/A' }}"
+
+    - name: Show recent log entries
+      command: journalctl -u {{ bytefreezer_proxy_service_name }} --no-pager -n 20
+      register: recent_logs
+      when: service_action in ['start', 'restart', 'status']
+
+    - name: Display recent logs
+      debug:
+        msg: "{{ recent_logs.stdout_lines }}"
+      when: recent_logs is defined

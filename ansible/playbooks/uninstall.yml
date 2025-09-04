@@ -1,0 +1,132 @@
+---
+# ByteFreezer Proxy Uninstall Playbook
+- name: Uninstall ByteFreezer Proxy
+  hosts: bytefreezer_proxy
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Safety check - set this to true to actually perform uninstall
+    confirm_uninstall: "{{ force_uninstall | default(false) }}"
+    # Whether to remove configuration and logs
+    remove_data: "{{ purge_data | default(false) }}"
+
+  pre_tasks:
+    - name: Confirm uninstall
+      assert:
+        that: confirm_uninstall | bool
+        fail_msg: |
+          SAFETY CHECK: To proceed with uninstall, run with:
+          ansible-playbook uninstall.yml -e force_uninstall=true
+          
+          To also remove all data and configuration:
+          ansible-playbook uninstall.yml -e force_uninstall=true -e purge_data=true
+
+  tasks:
+    - name: Create final backup before uninstall
+      archive:
+        path:
+          - "{{ bytefreezer_proxy_install_dir }}"
+          - "{{ bytefreezer_proxy_config_dir }}"
+          - "{{ bytefreezer_proxy_log_dir }}"
+        dest: "{{ bytefreezer_proxy_backup_dir if bytefreezer_proxy_backup_enabled else '/tmp' }}/bytefreezer-proxy-final-backup-{{ ansible_date_time.epoch }}.tar.gz"
+        owner: root
+        group: root
+        mode: '0600'
+      when: bytefreezer_proxy_backup_enabled
+      ignore_errors: yes
+
+    - name: Stop and disable service
+      systemd:
+        name: "{{ bytefreezer_proxy_service_name }}"
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    - name: Remove systemd service file
+      file:
+        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        state: absent
+      notify: reload systemd
+
+    - name: Remove firewall rules (ufw)
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: "{{ 'tcp' if item == bytefreezer_proxy_api_port else 'udp' }}"
+        delete: yes
+      loop:
+        - "{{ bytefreezer_proxy_api_port }}"
+        - "{{ bytefreezer_proxy_udp_port }}"
+      when: 
+        - bytefreezer_proxy_firewall_enabled
+        - ansible_os_family == "Debian"
+      ignore_errors: yes
+
+    - name: Remove firewall rules (firewalld)
+      firewalld:
+        port: "{{ item }}/{{ 'tcp' if item == bytefreezer_proxy_api_port else 'udp' }}"
+        permanent: yes
+        state: disabled
+        immediate: yes
+      loop:
+        - "{{ bytefreezer_proxy_api_port }}"
+        - "{{ bytefreezer_proxy_udp_port }}"
+      when:
+        - bytefreezer_proxy_firewall_enabled
+        - ansible_os_family == "RedHat"
+      ignore_errors: yes
+
+    - name: Remove installation directory
+      file:
+        path: "{{ bytefreezer_proxy_install_dir }}"
+        state: absent
+
+    - name: Remove configuration and logs (if purge requested)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ bytefreezer_proxy_config_dir }}"
+        - "{{ bytefreezer_proxy_log_dir }}"
+      when: remove_data | bool
+
+    - name: Remove user and group
+      user:
+        name: "{{ bytefreezer_proxy_user }}"
+        state: absent
+        remove: yes
+      
+    - name: Remove group
+      group:
+        name: "{{ bytefreezer_proxy_group }}"
+        state: absent
+
+    - name: Remove system tuning (reset to defaults)
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: "net.core.rmem_max", value: "212992" }
+        - { name: "net.core.rmem_default", value: "212992" }
+        - { name: "net.core.wmem_max", value: "212992" }
+        - { name: "net.core.wmem_default", value: "212992" }
+        - { name: "net.core.netdev_max_backlog", value: "1000" }
+      when: bytefreezer_proxy_system_tuning_enabled
+
+    - name: Display uninstall summary
+      debug:
+        msg:
+          - "ByteFreezer Proxy uninstallation completed!"
+          - "Service removed: {{ bytefreezer_proxy_service_name }}"
+          - "Installation directory removed: {{ bytefreezer_proxy_install_dir }}"
+          - "Configuration and logs removed: {{ 'Yes' if remove_data else 'No' }}"
+          - "User/group removed: {{ bytefreezer_proxy_user }}/{{ bytefreezer_proxy_group }}"
+          - "Backup created: {{ bytefreezer_proxy_backup_dir if bytefreezer_proxy_backup_enabled else '/tmp' }}/bytefreezer-proxy-final-backup-{{ ansible_date_time.epoch }}.tar.gz"
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
