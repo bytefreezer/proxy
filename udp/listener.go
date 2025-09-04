@@ -235,6 +235,8 @@ func (l *Listener) allocateBuffer() []byte {
 
 // deallocateBuffer returns a buffer to the pool
 func (l *Listener) deallocateBuffer(buf []byte) {
+	// Ignore SA6002: sync.Pool.Put expects the same interface type that New() returns
+	//lint:ignore SA6002 sync.Pool requires putting back the same type that New() returns
 	l.bufferPool.Put(buf)
 }
 

@@ -298,6 +298,46 @@ sed -i 's/actions\/setup-python@v4/actions\/setup-python@v5/g' .github/workflows
 # Replace actions/create-release@v1 with softprops/action-gh-release@v2
 ```
 
+### Issue 12: "Go version compatibility errors"
+
+**Symptoms:**
+- "file requires newer Go version go1.24 (application built with go1.23)"
+- Staticcheck fails with compilation errors
+- Dependencies require newer Go versions
+
+**Solutions:**
+```bash
+# Option 1: Downgrade problematic dependencies
+go get golang.org/x/net@v0.29.0
+go get golang.org/x/sys@v0.25.0
+go get go.opentelemetry.io/otel/sdk@v1.30.0
+go mod tidy
+
+# Option 2: Update Go version in CI workflows
+# Update .github/workflows/*.yml:
+env:
+  GO_VERSION: '1.24'  # Change from 1.23 to 1.24
+
+# Update go.mod minimum version:
+go mod edit -go=1.24
+
+# Option 3: Pin toolchain version in go.mod
+# This allows local development with newer Go while CI uses older
+go 1.23
+toolchain go1.24.2
+```
+
+**Root Cause:**
+Some dependencies use newer Go language features that aren't available in older Go versions. The Go toolchain directive allows using a newer toolchain locally while maintaining backward compatibility.
+
+**Prevention:**
+```yaml
+# In CI workflows, test against multiple Go versions
+strategy:
+  matrix:
+    go-version: ['1.21', '1.22', '1.23']
+```
+
 ## Debugging Steps
 
 ### 1. Check Workflow Syntax
@@ -373,6 +413,7 @@ tree -a -I '.git'
 | `deprecated version of actions/upload-artifact: v3` | Update to `actions/upload-artifact@v4` |
 | `deprecated version of actions/download-artifact: v3` | Update to `actions/download-artifact@v4` |
 | `deprecated version of actions/cache: v3` | Update to `actions/cache@v4` |
+| `file requires newer Go version go1.24` | Downgrade dependencies or update Go version |
 
 ## Getting Help
 
