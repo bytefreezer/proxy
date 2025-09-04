@@ -2,8 +2,6 @@ module github.com/n0needt0/bytefreezer-proxy
 
 go 1.24.4
 
-toolchain go1.24.4
-
 require (
 	github.com/knadh/koanf/parsers/yaml v0.1.0
 	github.com/knadh/koanf/providers/env v0.1.0
