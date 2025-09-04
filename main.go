@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -17,11 +18,54 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
+var (
+	version   = "dev"
+	buildTime = "unknown"
+)
+
 func main() {
+	// Define command line flags
+	var (
+		showVersion    = flag.Bool("version", false, "Show version and exit")
+		showHelp       = flag.Bool("help", false, "Show help and exit")
+		configFile     = flag.String("config", "config.yaml", "Path to configuration file")
+		validateConfig = flag.Bool("validate-config", false, "Validate configuration and exit")
+		dryRun        = flag.Bool("dry-run", false, "Load configuration and exit (for testing)")
+	)
+	
+	flag.Parse()
+
+	// Handle version flag
+	if *showVersion {
+		fmt.Printf("bytefreezer-proxy version %s (built %s)\n", version, buildTime)
+		os.Exit(0)
+	}
+
+	// Handle help flag
+	if *showHelp {
+		fmt.Printf("ByteFreezer Proxy - UDP log forwarding service\n\n")
+		fmt.Printf("Usage: %s [options]\n\n", os.Args[0])
+		fmt.Printf("Options:\n")
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
+
 	// Load configuration
 	var cfg config.Config
-	if err := config.LoadConfig("config.yaml", "BYTEFREEZER_PROXY_", &cfg); err != nil {
+	if err := config.LoadConfig(*configFile, "BYTEFREEZER_PROXY_", &cfg); err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Handle config validation
+	if *validateConfig {
+		fmt.Printf("Configuration validation successful: %s\n", *configFile)
+		os.Exit(0)
+	}
+
+	// Handle dry run
+	if *dryRun {
+		fmt.Printf("Dry run successful - configuration loaded from: %s\n", *configFile)
+		os.Exit(0)
 	}
 
 	// Initialize logging

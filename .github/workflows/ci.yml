@@ -163,14 +163,14 @@ jobs:
         dev: true
         EOF
 
-    - name: Test configuration validation
-      run: |
-        ./bytefreezer-proxy --config test-config.yaml --validate-config
-
     - name: Test binary help and version
       run: |
         ./bytefreezer-proxy --help
         ./bytefreezer-proxy --version
+
+    - name: Test configuration validation
+      run: |
+        ./bytefreezer-proxy --config test-config.yaml --validate-config
 
   vulnerability-scan:
     name: Vulnerability Scan
