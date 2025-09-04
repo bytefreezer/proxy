@@ -52,7 +52,7 @@ jobs:
       run: staticcheck ./...
 
     - name: Install gosec
-      run: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+      run: go install github.com/securecodewarrior/gosec/cmd/gosec@latest
 
     - name: Run gosec security scanner
       run: gosec -severity medium -confidence medium -quiet ./...
