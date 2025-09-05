@@ -21,12 +21,16 @@ COPY . .
 # Disable CGO for a fully static binary
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -a -installsuffix cgo \
+    -ldflags="-s -w -extldflags '-static' -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o bytefreezer-proxy .
 
+# Debug: Check what we built
+RUN file bytefreezer-proxy
+
 # Verify the binary is statically linked
-RUN ldd bytefreezer-proxy 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static!" && exit 1)
+RUN ldd bytefreezer-proxy 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static!" && ldd bytefreezer-proxy && exit 1)
 
 # Stage 2: Create minimal runtime image
 FROM alpine:3.19
