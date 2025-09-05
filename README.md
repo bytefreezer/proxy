@@ -10,6 +10,69 @@ ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. I
 - Compresses and forwards batches to bytefreezer-receiver via HTTP
 - Provides health and configuration APIs
 
+## Installation
+
+### Docker (Recommended)
+
+Pull and run the latest version:
+```bash
+# Pull the latest image
+docker pull ghcr.io/n0needt0/bytefreezer-proxy:latest
+
+# Run with default configuration
+docker run -p 8088:8088 -p 2056-2058:2056-2058/udp ghcr.io/n0needt0/bytefreezer-proxy:latest
+```
+
+With custom configuration:
+```bash
+# Create your config file
+wget https://raw.githubusercontent.com/n0needt0/bytefreezer-proxy/main/config.yaml
+
+# Run with custom config
+docker run -p 8088:8088 -p 2056-2058:2056-2058/udp -v $(pwd)/config.yaml:/config.yaml ghcr.io/n0needt0/bytefreezer-proxy:latest
+```
+
+### Binary Extraction
+
+Extract the binary from the container for direct use:
+```bash
+# Extract binary
+docker run --rm -v $(pwd):/output ghcr.io/n0needt0/bytefreezer-proxy:latest sh -c "cp /bytefreezer-proxy /output/"
+
+# Make executable and run
+chmod +x bytefreezer-proxy
+./bytefreezer-proxy --config config.yaml
+```
+
+### Production Deployment
+
+**Ansible (Recommended):**
+```bash
+# Clone repository
+git clone https://github.com/n0needt0/bytefreezer-proxy.git
+cd bytefreezer-proxy/ansible
+
+# Configure inventory and run
+ansible-playbook -i inventory.yml playbooks/install.yml
+```
+
+**Docker Compose:**
+```yaml
+version: '3.8'
+services:
+  bytefreezer-proxy:
+    image: ghcr.io/n0needt0/bytefreezer-proxy:latest
+    ports:
+      - "8088:8088"
+      - "2056:2056/udp"
+      - "2057:2057/udp"
+      - "2058:2058/udp"
+    volumes:
+      - ./config.yaml:/config.yaml
+      - ./logs:/var/log/bytefreezer-proxy
+    restart: unless-stopped
+```
+
 ## Architecture
 
 ```

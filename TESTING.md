@@ -2,6 +2,21 @@
 
 This document explains how to test the ByteFreezer Proxy UDP functionality and spooling behavior.
 
+## Quick Start with Docker
+
+The easiest way to test ByteFreezer Proxy is with Docker:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/n0needt0/bytefreezer-proxy:latest
+
+# Run with default config (adjust config.yaml as needed)
+docker run -p 8088:8088 -p 2056-2058:2056-2058/udp -v $(pwd)/config.yaml:/config.yaml ghcr.io/n0needt0/bytefreezer-proxy:latest
+
+# Or use Docker Compose for full setup
+docker-compose up -d
+```
+
 ## Test Scripts
 
 ### 1. `test_udp_streams.sh` - Single Test Run

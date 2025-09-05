@@ -187,33 +187,53 @@ jobs:
           **Docker (Recommended):**
           ```bash
           docker pull ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:${{ github.ref_name }}
+          docker run -p 8088:8088 -v $(pwd)/config.yaml:/config.yaml ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:${{ github.ref_name }}
           ```
           
-          **Binary Download:**
-          - **Linux AMD64**: `bytefreezer-proxy-linux-amd64.tar.gz`
+          **Binary Extraction from Container:**
+          ```bash
+          # Extract binary from container for direct use
+          docker run --rm -v $(pwd):/output ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:${{ github.ref_name }} sh -c "cp /bytefreezer-proxy /output/"
+          chmod +x bytefreezer-proxy
+          ./bytefreezer-proxy --config config.yaml
+          ```
                  
           **Quick Start:**
           ```bash
-          # Extract binary
-          tar -xzf bytefreezer-proxy-linux-amd64.tar.gz
+          # Download sample config
+          wget https://raw.githubusercontent.com/${{ github.repository }}/main/config.yaml
           
-          # Configure (edit config.yaml as needed)
-          ./bytefreezer-proxy-linux-amd64
+          # Run with Docker
+          docker run -p 8088:8088 -v $(pwd)/config.yaml:/config.yaml ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:${{ github.ref_name }}
           ```
           
-          ### 🎯 Deployment
+          ### 🎯 Production Deployment
           
-          **Ansible (Production):**
+          **Ansible (Recommended for Production):**
           ```bash
-          # Use the included Ansible playbooks
-          cd ansible
-          ansible-playbook -i inventories/hosts.yml playbooks/deploy.yml
+          # Clone repository
+          git clone https://github.com/${{ github.repository }}.git
+          cd bytefreezer-proxy/ansible
+          
+          # Configure your inventory and variables
+          ansible-playbook -i inventory.yml playbooks/install.yml
           ```
           
           **Docker Compose:**
-          ```bash
-          # Use the included docker-compose.yml
-          docker-compose up -d
+          ```yaml
+          version: '3.8'
+          services:
+            bytefreezer-proxy:
+              image: ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}:${{ github.ref_name }}
+              ports:
+                - "8088:8088"
+                - "2056:2056/udp"
+                - "2057:2057/udp" 
+                - "2058:2058/udp"
+              volumes:
+                - ./config.yaml:/config.yaml
+                - ./logs:/var/log/bytefreezer-proxy
+              restart: unless-stopped
           ```
           
           ### 📚 Documentation

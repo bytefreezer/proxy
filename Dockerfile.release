@@ -1,0 +1,4 @@
+# Dockerfile for distributing binary via GitHub Container Registry
+FROM scratch
+COPY bytefreezer-proxy /bytefreezer-proxy
+ENTRYPOINT ["/bytefreezer-proxy"]
