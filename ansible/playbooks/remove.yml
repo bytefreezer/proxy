@@ -7,21 +7,21 @@
 
   vars:
     # Default values for all variables used in playbook
-    bytefreezer_proxy_service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
-    bytefreezer_proxy_user: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
-    bytefreezer_proxy_group: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
-    bytefreezer_proxy_install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
-    bytefreezer_proxy_config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
-    bytefreezer_proxy_log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
-    bytefreezer_proxy_spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
-    bytefreezer_proxy_backup_on_remove: "{{ bytefreezer_proxy_backup_on_remove | default(false) }}"
-    bytefreezer_proxy_backup_dir: "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}"
-    bytefreezer_proxy_remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
+    service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
+    user_name: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
+    group_name: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
+    install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
+    config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
+    log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
+    spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
+    backup_on_remove: "{{ backup_on_remove }}"
+    backup_dir: "{{ backup_dir }}"
+    remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
   pre_tasks:
     - name: Check if service exists
       ansible.builtin.stat:
-        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        path: /etc/systemd/system/{{ service_name }}.service
       register: service_exists
 
     - name: Display removal information
@@ -29,12 +29,12 @@
         msg:
           - "Removing ByteFreezer Proxy service..."
           - "Service exists: {{ service_exists.stat.exists }}"
-          - "Backup data: {{ bytefreezer_proxy_backup_on_remove | default(false) }}"
+          - "Backup data: {{ backup_on_remove }}"
 
   tasks:
     - name: Stop and disable service
       systemd:
-        name: "{{ bytefreezer_proxy_service_name }}"
+        name: "{{ service_name }}"
         state: stopped
         enabled: no
         daemon_reload: yes
@@ -43,27 +43,27 @@
 
     - name: Create backup directory
       ansible.builtin.file:
-        path: "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}"
+        path: "{{ backup_dir }}"
         state: directory
         owner: root
         group: root
         mode: '0755'
-      when: bytefreezer_proxy_backup_on_remove | default(false)
+      when: backup_on_remove | default(false)
 
     - name: Backup configuration and data
       ansible.builtin.shell: |
-        tar -czf "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}/bytefreezer-proxy-removal-backup-{{ ansible_date_time.epoch }}.tar.gz" \
+        tar -czf "{{ backup_dir }}/bytefreezer-proxy-removal-backup-{{ ansible_date_time.epoch }}.tar.gz" \
           --ignore-failed-read \
-          "{{ bytefreezer_proxy_config_dir }}" \
-          "{{ bytefreezer_proxy_log_dir }}" \
-          "{{ bytefreezer_proxy_spooling_dir }}" \
+          "{{ config_dir }}" \
+          "{{ log_dir }}" \
+          "{{ spooling_dir }}" \
           2>/dev/null || true
-      when: bytefreezer_proxy_backup_on_remove | default(false)
+      when: backup_on_remove | default(false)
       ignore_errors: yes
 
     - name: Remove systemd service file
       ansible.builtin.file:
-        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        path: /etc/systemd/system/{{ service_name }}.service
         state: absent
       notify: reload systemd
 
@@ -74,40 +74,40 @@
 
     - name: Remove installation directory
       ansible.builtin.file:
-        path: "{{ bytefreezer_proxy_install_dir }}"
+        path: "{{ install_dir }}"
         state: absent
 
     - name: Remove configuration directory
       ansible.builtin.file:
-        path: "{{ bytefreezer_proxy_config_dir }}"
+        path: "{{ config_dir }}"
         state: absent
 
     - name: Remove log directory
       ansible.builtin.file:
-        path: "{{ bytefreezer_proxy_log_dir }}"
+        path: "{{ log_dir }}"
         state: absent
 
     - name: Remove spooling directory (only if explicitly requested)
       ansible.builtin.file:
-        path: "{{ bytefreezer_proxy_spooling_dir }}"
+        path: "{{ spooling_dir }}"
         state: absent
-      when: bytefreezer_proxy_remove_spooling_dir | default(false)
+      when: remove_spooling_dir | default(false)
 
     - name: Remove system user
       ansible.builtin.user:
-        name: "{{ bytefreezer_proxy_user }}"
+        name: "{{ user_name }}"
         state: absent
         remove: yes
 
     - name: Remove system group
       ansible.builtin.group:
-        name: "{{ bytefreezer_proxy_group }}"
+        name: "{{ group_name }}"
         state: absent
 
   post_tasks:
     - name: Verify removal
       ansible.builtin.stat:
-        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        path: /etc/systemd/system/{{ service_name }}.service
       register: service_removed
 
     - name: Display removal status
@@ -115,10 +115,10 @@
         msg:
           - "ByteFreezer Proxy complete removal completed!"
           - "Service removed: {{ not service_removed.stat.exists }}"
-          - "Directories removed: {{ bytefreezer_proxy_install_dir }}, {{ bytefreezer_proxy_config_dir }}, {{ bytefreezer_proxy_log_dir }}"
-          - "Spooling directory preserved: {{ bytefreezer_proxy_spooling_dir }} (unless bytefreezer_proxy_remove_spooling_dir=true)"
+          - "Directories removed: {{ install_dir }}, {{ config_dir }}, {{ log_dir }}"
+          - "Spooling directory preserved: {{ spooling_dir }} (unless bytefreezer_proxy_remove_spooling_dir=true)"
           - "System user and group removed"
-          - "Backup created: {{ bytefreezer_proxy_backup_on_remove | default(false) }}"
+          - "Backup created: {{ backup_on_remove }}"
           - "NOTE: Firewall rules and system tuning must be reverted manually"
 
   handlers:

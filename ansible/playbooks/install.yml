@@ -7,20 +7,20 @@
 
   vars:
     # Default values for all variables used in playbook
-    bytefreezer_proxy_service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
-    bytefreezer_proxy_user: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
-    bytefreezer_proxy_group: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
-    bytefreezer_proxy_install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
-    bytefreezer_proxy_config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
-    bytefreezer_proxy_log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
-    bytefreezer_proxy_spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
-    bytefreezer_proxy_binary_name: "{{ bytefreezer_proxy_binary_name | default('bytefreezer-proxy') }}"
-    bytefreezer_proxy_version: "{{ bytefreezer_proxy_version | default('latest') }}"
-    bytefreezer_proxy_github_repo: "{{ bytefreezer_proxy_github_repo | default('n0needt0/bytefreezer-proxy') }}"
-    bytefreezer_proxy_release_url: "https://api.github.com/repos/{{ bytefreezer_proxy_github_repo }}/releases/latest"
-    bytefreezer_proxy_systemd_enabled: "{{ bytefreezer_proxy_systemd_enabled | default(true) }}"
-    bytefreezer_proxy_systemd_started: "{{ bytefreezer_proxy_systemd_started | default(true) }}"
-    bytefreezer_proxy_api_port: "{{ bytefreezer_proxy_api_port | default(8088) }}"
+    service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
+    user_name: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
+    group_name: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
+    install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
+    config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
+    log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
+    spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
+    binary_name: "{{ bytefreezer_proxy_binary_name | default('bytefreezer-proxy') }}"
+    version: "{{ bytefreezer_proxy_version | default('latest') }}"
+    github_repo: "{{ bytefreezer_proxy_github_repo | default('n0needt0/bytefreezer-proxy') }}"
+    release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
+    systemd_enabled: "{{ bytefreezer_proxy_systemd_enabled | default(true) }}"
+    systemd_started: "{{ bytefreezer_proxy_systemd_started | default(true) }}"
+    api_port: "{{ bytefreezer_proxy_api_port | default(8088) }}"
 
     # Architecture mapping for binary downloads
     arch_map:
@@ -40,7 +40,7 @@
         level: "info"
         encoding: "console"
       server:
-        api_port: "{{ bytefreezer_proxy_api_port }}"
+        api_port: "{{ api_port }}"
       udp:
         enabled: true
         host: "0.0.0.0"
@@ -78,7 +78,7 @@
         intervalseconds: 60
       spooling:
         enabled: true
-        directory: "{{ bytefreezer_proxy_spooling_dir }}"
+        directory: "{{ spooling_dir }}"
         max_size_bytes: 1073741824  # 1GB
         retry_attempts: 5
         retry_interval_seconds: 60
@@ -91,7 +91,7 @@
   pre_tasks:
     - name: Check if service already exists
       ansible.builtin.stat:
-        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        path: /etc/systemd/system/{{ service_name }}.service
       register: service_exists
 
     - name: Fail if service already installed
@@ -116,16 +116,16 @@
   tasks:
     - name: Create bytefreezer user and group
       ansible.builtin.group:
-        name: "{{ bytefreezer_proxy_group }}"
+        name: "{{ group_name }}"
         state: present
 
     - name: Create bytefreezer user
       ansible.builtin.user:
-        name: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
+        name: "{{ user_name }}"
+        group: "{{ group_name }}"
         system: true
         shell: /bin/false
-        home: "{{ bytefreezer_proxy_install_dir }}"
+        home: "{{ install_dir }}"
         create_home: false
         state: present
 
@@ -133,18 +133,18 @@
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        owner: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
+        owner: "{{ user_name }}"
+        group: "{{ group_name }}"
         mode: '0755'
       loop:
-        - "{{ bytefreezer_proxy_install_dir }}"
-        - "{{ bytefreezer_proxy_config_dir }}"
-        - "{{ bytefreezer_proxy_log_dir }}"
-        - "{{ bytefreezer_proxy_spooling_dir }}"
+        - "{{ install_dir }}"
+        - "{{ config_dir }}"
+        - "{{ log_dir }}"
+        - "{{ spooling_dir }}"
 
     - name: Get latest release information from GitHub
       ansible.builtin.uri:
-        url: "{{ bytefreezer_proxy_release_url }}"
+        url: "{{ release_url }}"
         method: GET
         return_content: true
       register: github_release
@@ -167,34 +167,34 @@
     - name: Download and extract binary
       unarchive:
         src: "{{ download_url }}"
-        dest: "{{ bytefreezer_proxy_install_dir }}"
+        dest: "{{ install_dir }}"
         remote_src: yes
-        owner: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
+        owner: "{{ user_name }}"
+        group: "{{ group_name }}"
         mode: '0755'
         extra_opts:
           - --strip-components=0
 
     - name: Rename binary to standard name
       command: >
-        mv "{{ bytefreezer_proxy_install_dir }}/{{ binary_name }}" 
-           "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
+        mv "{{ install_dir }}/{{ binary_name }}" 
+           "{{ install_dir }}/{{ binary_name }}"
       args:
-        creates: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
+        creates: "{{ install_dir }}/{{ binary_name }}"
 
     - name: Set binary permissions
       file:
-        path: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
-        owner: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
+        path: "{{ install_dir }}/{{ binary_name }}"
+        owner: "{{ user_name }}"
+        group: "{{ group_name }}"
         mode: '0755'
 
     - name: Generate configuration file
       template:
         src: config.yaml.j2
-        dest: "{{ bytefreezer_proxy_config_dir }}/config.yaml"
-        owner: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
+        dest: "{{ config_dir }}/config.yaml"
+        owner: "{{ user_name }}"
+        group: "{{ group_name }}"
         mode: '0640'
 
     - name: Setup log rotation
@@ -209,7 +209,7 @@
     - name: Create systemd service file
       template:
         src: bytefreezer-proxy.service.j2
-        dest: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+        dest: /etc/systemd/system/{{ service_name }}.service
         owner: root
         group: root
         mode: '0644'
@@ -218,15 +218,15 @@
 
     - name: Enable and start service
       systemd:
-        name: "{{ bytefreezer_proxy_service_name }}"
-        enabled: "{{ bytefreezer_proxy_systemd_enabled }}"
+        name: "{{ service_name }}"
+        enabled: "{{ systemd_enabled }}"
         state: "{{ 'started' if bytefreezer_proxy_systemd_started else 'stopped' }}"
         daemon_reload: yes
 
   post_tasks:
     - name: Wait for service to be ready
       uri:
-        url: "http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
+        url: "http://{{ ansible_default_ipv4.address }}:{{ api_port }}/health"
         method: GET
         status_code: 200
       register: health_check
@@ -240,11 +240,11 @@
         msg:
           - "ByteFreezer Proxy installation completed!"
           - "Service status: {{ 'Running' if bytefreezer_proxy_systemd_started else 'Stopped' }}"
-          - "Config file: {{ bytefreezer_proxy_config_dir }}/config.yaml"
-          - "Install directory: {{ bytefreezer_proxy_install_dir }}"
-          - "Log directory: {{ bytefreezer_proxy_log_dir }}"
-          - "Spooling directory: {{ bytefreezer_proxy_spooling_dir }}"
-          - "Logs: journalctl -u {{ bytefreezer_proxy_service_name }} -f"
+          - "Config file: {{ config_dir }}/config.yaml"
+          - "Install directory: {{ install_dir }}"
+          - "Log directory: {{ log_dir }}"
+          - "Spooling directory: {{ spooling_dir }}"
+          - "Logs: journalctl -u {{ service_name }} -f"
           - "NOTE: Firewall and system tuning must be configured manually"
 
   handlers:
