@@ -83,7 +83,7 @@
       
     - name: Generate configuration file
       ansible.builtin.template:
-        src: config.yaml.j2
+        src: ../templates/config.yaml.j2
         dest: "{{ bytefreezer_config_path }}"
         owner: root
         group: root
@@ -110,7 +110,7 @@
       
     - name: Create systemd service file
       ansible.builtin.template:
-        src: bytefreezer-proxy.service.j2
+        src: ../templates/bytefreezer-proxy.service.j2
         dest: "{{ bytefreezer_service_path }}"
         mode: '0644'
       become: yes
