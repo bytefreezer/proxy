@@ -58,31 +58,28 @@
         state: absent
 
     - name: Ensure config directory exists
-      ansible.builtin.file:
-        path: "{{ bytefreezer_config_path | dirname }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ bytefreezer_config_path | dirname }}"
+        sudo chown root:root "{{ bytefreezer_config_path | dirname }}"
+        sudo chmod 755 "{{ bytefreezer_config_path | dirname }}"
+      args:
+        creates: "{{ bytefreezer_config_path | dirname }}"
       
     - name: Ensure log directory exists
-      ansible.builtin.file:
-        path: "{{ bytefreezer_log_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ bytefreezer_log_dir }}"
+        sudo chown root:root "{{ bytefreezer_log_dir }}"
+        sudo chmod 755 "{{ bytefreezer_log_dir }}"
+      args:
+        creates: "{{ bytefreezer_log_dir }}"
       
     - name: Ensure spooling directory exists
-      ansible.builtin.file:
-        path: "{{ bytefreezer_spooling_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ bytefreezer_spooling_dir }}"
+        sudo chown root:root "{{ bytefreezer_spooling_dir }}"
+        sudo chmod 755 "{{ bytefreezer_spooling_dir }}"
+      args:
+        creates: "{{ bytefreezer_spooling_dir }}"
       
     - name: Generate configuration file
       ansible.builtin.template:
@@ -94,23 +91,22 @@
       become: yes
       
     - name: Install logrotate configuration
-      ansible.builtin.copy:
-        dest: "{{ bytefreezer_logrotate_path }}"
-        content: |
-          {{ bytefreezer_log_dir }}/*.log {
-            daily
-            rotate 7
-            compress
-            missingok
-            notifempty
-            create 0644 root root
-            sharedscripts
-            postrotate
-              systemctl restart bytefreezer-proxy >/dev/null 2>&1 || true
-            endscript
-          }
-        mode: '0644'
-      become: yes
+      ansible.builtin.shell: |
+        sudo tee "{{ bytefreezer_logrotate_path }}" > /dev/null <<EOF
+        {{ bytefreezer_log_dir }}/*.log {
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          create 0644 root root
+          sharedscripts
+          postrotate
+            systemctl restart bytefreezer-proxy >/dev/null 2>&1 || true
+          endscript
+        }
+        EOF
+        sudo chmod 644 "{{ bytefreezer_logrotate_path }}"
       
     - name: Create systemd service file
       ansible.builtin.template:
@@ -121,12 +117,10 @@
       notify: Reload systemd
 
     - name: Enable and start service
-      ansible.builtin.systemd:
-        name: bytefreezer-proxy
-        enabled: yes
-        state: started
-        daemon_reload: true
-      become: yes
+      ansible.builtin.shell: |
+        sudo systemctl daemon-reload
+        sudo systemctl enable bytefreezer-proxy
+        sudo systemctl start bytefreezer-proxy
 
     - name: Clean up temporary directory
       ansible.builtin.file:
