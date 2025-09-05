@@ -1,6 +1,6 @@
 ---
-# ByteFreezer Proxy Deployment Playbook
-- name: Deploy ByteFreezer Proxy
+# ByteFreezer Proxy Installation Playbook (Install Only)
+- name: Install ByteFreezer Proxy
   hosts: bytefreezer_proxy
   become: true
   gather_facts: true
@@ -17,7 +17,18 @@
 
     # AWX compatibility - merge survey variables with host-specific config
     merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
+
   pre_tasks:
+    - name: Check if service already exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/{{ bytefreezer_proxy_service_name }}.service
+      register: service_exists
+
+    - name: Fail if service already installed
+      fail:
+        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first or deploy playbook for upgrades."
+      when: service_exists.stat.exists
+
     - name: Update package cache
       ansible.builtin.package:
         update_cache: true
@@ -61,7 +72,6 @@
         - "{{ bytefreezer_proxy_config_dir }}"
         - "{{ bytefreezer_proxy_log_dir }}"
         - "{{ bytefreezer_proxy_spooling_dir }}"
-        - "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') if bytefreezer_proxy_backup_enabled else omit }}"
 
     - name: Get latest release information from GitHub
       ansible.builtin.uri:
@@ -81,26 +91,9 @@
     - name: Display download information
       debug:
         msg: 
-          - "Downloading version: {{ release_version }}"
+          - "Installing version: {{ release_version }}"
           - "Architecture: {{ target_arch }}"
           - "URL: {{ download_url }}"
-
-    - name: Stop existing service
-      systemd:
-        name: "{{ bytefreezer_proxy_service_name }}"
-        state: stopped
-      ignore_errors: yes
-
-    - name: Backup existing installation
-      archive:
-        path: "{{ bytefreezer_proxy_install_dir }}"
-        dest: "{{ bytefreezer_proxy_backup_dir }}/bytefreezer-proxy-backup-{{ ansible_date_time.epoch }}.tar.gz"
-        owner: "{{ bytefreezer_proxy_user }}"
-        group: "{{ bytefreezer_proxy_group }}"
-      when: 
-        - bytefreezer_proxy_backup_enabled
-        - bytefreezer_proxy_install_dir is directory
-      ignore_errors: yes
 
     - name: Download and extract binary
       unarchive:
@@ -112,7 +105,6 @@
         mode: '0755'
         extra_opts:
           - --strip-components=0
-      notify: restart bytefreezer-proxy
 
     - name: Rename binary to standard name
       command: >
@@ -120,7 +112,6 @@
            "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
       args:
         creates: "{{ bytefreezer_proxy_install_dir }}/{{ bytefreezer_proxy_binary_name }}"
-      notify: restart bytefreezer-proxy
 
     - name: Set binary permissions
       file:
@@ -136,8 +127,6 @@
         owner: "{{ bytefreezer_proxy_user }}"
         group: "{{ bytefreezer_proxy_group }}"
         mode: '0640'
-        backup: yes
-      notify: restart bytefreezer-proxy
 
     - name: Setup log rotation
       template:
@@ -157,7 +146,6 @@
         mode: '0644'
       notify:
         - reload systemd
-        - restart bytefreezer-proxy
 
     - name: Configure system tuning for UDP
       sysctl:
@@ -226,21 +214,6 @@
         state: "{{ 'started' if bytefreezer_proxy_systemd_started else 'stopped' }}"
         daemon_reload: yes
 
-    - name: Clean up old backups
-      find:
-        paths: "{{ bytefreezer_proxy_backup_dir }}"
-        patterns: "bytefreezer-proxy-backup-*.tar.gz"
-        age: "{{ bytefreezer_proxy_backup_retention_days }}d"
-      register: old_backups
-      when: bytefreezer_proxy_backup_enabled
-
-    - name: Remove old backups
-      file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ old_backups.files | default([]) }}"
-      when: bytefreezer_proxy_backup_enabled
-
   post_tasks:
     - name: Wait for service to be ready
       uri:
@@ -252,10 +225,10 @@
       delay: 3
       when: bytefreezer_proxy_systemd_started
 
-    - name: Display service status
+    - name: Display installation status
       debug:
         msg:
-          - "ByteFreezer Proxy deployment completed!"
+          - "ByteFreezer Proxy installation completed!"
           - "Service status: {{ 'Running' if bytefreezer_proxy_systemd_started else 'Stopped' }}"
           - "API endpoint: http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
           - "UDP listeners: {% for listener in merged_config.udp.listeners %}{{ ansible_default_ipv4.address }}:{{ listener.port }} ({{ listener.dataset_id }}){% if not loop.last %}, {% endif %}{% endfor %}"
@@ -267,12 +240,6 @@
     - name: reload systemd
       systemd:
         daemon_reload: yes
-
-    - name: restart bytefreezer-proxy
-      systemd:
-        name: "{{ bytefreezer_proxy_service_name }}"
-        state: restarted
-      when: bytefreezer_proxy_systemd_started
 
     - name: test-logrotate
       command: logrotate -t /etc/logrotate.d/bytefreezer-proxy

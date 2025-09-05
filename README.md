@@ -13,9 +13,11 @@ ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. I
 ## Architecture
 
 ```
-bytefreezerA--udp:2056--\
-                          ---> bytefreezer-proxy --HTTP--> bytefreezer-receiver
-bytefreezerB--udp:2056--/                              
+Syslog Sources---udp:2056--\
+                            \
+eBPF Data-------udp:2057-----> bytefreezer-proxy --HTTP--> bytefreezer-receiver
+                            /
+App Logs--------udp:2058---/
 ```
 
 The proxy follows the same architectural patterns as bytefreezer-receiver:
@@ -30,29 +32,36 @@ The proxy follows the same architectural patterns as bytefreezer-receiver:
 
 The service is configured via `config.yaml` file. Key configuration sections:
 
-### UDP Listener
+### UDP Listeners
 ```yaml
 udp:
   enabled: true
   host: "0.0.0.0"
-  port: 2056
   read_buffer_size_bytes: 134217728  # 128MB
   max_batch_lines: 100000
   max_batch_bytes: 268435456  # 256MB
   batch_timeout_seconds: 30
   enable_compression: true
   compression_level: 6
+  listeners:
+    - port: 2056
+      dataset_id: "syslog-data"
+    - port: 2057  
+      dataset_id: "ebpf-data"
+    - port: 2058
+      dataset_id: "application-logs"
 ```
 
 ### Receiver Configuration  
 ```yaml
 receiver:
   base_url: "http://localhost:8080"
-  tenant_id: "customer-1"
-  dataset_id: "default-dataset" 
   timeout_seconds: 30
   retry_count: 3
   retry_delay_seconds: 1
+
+# Global tenant configuration
+tenant_id: "customer-1"
 ```
 
 ### API Server
@@ -121,7 +130,10 @@ Data is forwarded to bytefreezer-receiver using the URI format:
 POST {base_url}/data/{tenant_id}/{dataset_id}
 ```
 
-Example: `POST http://localhost:8080/data/customer-1/default-dataset`
+Examples:
+- Syslog data: `POST http://localhost:8080/data/customer-1/syslog-data`
+- eBPF data: `POST http://localhost:8080/data/customer-1/ebpf-data`
+- App logs: `POST http://localhost:8080/data/customer-1/application-logs`
 
 ## Monitoring
 

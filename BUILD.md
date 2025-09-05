@@ -589,6 +589,8 @@ docker run -d \
   --name bytefreezer-proxy \
   -p 8088:8088 \
   -p 2056:2056/udp \
+  -p 2057:2057/udp \
+  -p 2058:2058/udp \
   -v ./config.yaml:/etc/bytefreezer-proxy/config.yaml \
   bytefreezer-proxy:latest
 ```
@@ -709,6 +711,8 @@ docker run -d \
   -p 2056:2056/udp \
   -p 2057:2057/udp \
   -p 2058:2058/udp \
+  -p 2057:2057/udp \
+  -p 2058:2058/udp \
   -v /etc/bytefreezer-proxy:/etc/bytefreezer-proxy \
   -v /var/log/bytefreezer-proxy:/var/log/bytefreezer-proxy \
   -v /var/spool/bytefreezer-proxy:/var/spool/bytefreezer-proxy \
@@ -735,8 +739,10 @@ curl http://localhost:8088/metrics
 ### Load Testing
 
 ```bash
-# Send test UDP packets
-echo '{"test": "message", "timestamp": "'$(date -Iseconds)'"}' | nc -u localhost 2056
+# Send test UDP packets to different listeners
+echo '{"test": "syslog message", "timestamp": "'$(date -Iseconds)'"}' | nc -u localhost 2056
+echo '{"test": "ebpf data", "timestamp": "'$(date -Iseconds)'"}' | nc -u localhost 2057
+echo '{"test": "app log", "timestamp": "'$(date -Iseconds)'"}' | nc -u localhost 2058
 
 # Monitor metrics
 curl -s http://localhost:8088/metrics | grep bytefreezer
