@@ -36,11 +36,13 @@ udp:
 {% endif %}
 {% endfor %}
 
+# Global tenant configuration
+tenant_id: "{{ (bytefreezer_proxy_config.tenant_id | default(bytefreezer_proxy_default_config.tenant_id)) }}"
+bearer_token: "{{ (bytefreezer_proxy_config.bearer_token | default(bytefreezer_proxy_default_config.bearer_token)) }}"
+
 # Bytefreezer-receiver configuration
 receiver:
   base_url: "{{ (bytefreezer_proxy_config.receiver.base_url | default(bytefreezer_proxy_default_config.receiver.base_url)) }}"
-  tenant_id: "{{ (bytefreezer_proxy_config.receiver.tenant_id | default(bytefreezer_proxy_default_config.receiver.tenant_id)) }}"
-  dataset_id: "{{ (bytefreezer_proxy_config.receiver.dataset_id | default(bytefreezer_proxy_default_config.receiver.dataset_id)) }}"
   timeout_seconds: {{ (bytefreezer_proxy_config.receiver.timeout_seconds | default(bytefreezer_proxy_default_config.receiver.timeout_seconds)) }}
   retry_count: {{ (bytefreezer_proxy_config.receiver.retry_count | default(bytefreezer_proxy_default_config.receiver.retry_count)) }}
   retry_delay_seconds: {{ (bytefreezer_proxy_config.receiver.retry_delay_seconds | default(bytefreezer_proxy_default_config.receiver.retry_delay_seconds)) }}

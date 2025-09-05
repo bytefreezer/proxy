@@ -49,7 +49,7 @@ bytefreezer_proxy_default_config:
     enable_compression: true
     compression_level: 6
     
-    # Multiple port configuration with dataset mapping
+    # Example multiple port configuration with dataset mapping
     listeners:
       - port: 2056
         dataset_id: "syslog-data"
@@ -58,10 +58,12 @@ bytefreezer_proxy_default_config:
       - port: 2058
         dataset_id: "application-logs"
   
+  # Global tenant configuration
+  tenant_id: "customer-1"
+  bearer_token: "bearer-token-customer-1-dev"
+
   receiver:
-    base_url: "http://localhost:8080"
-    tenant_id: "default-tenant"
-    dataset_id: "default-dataset"
+    base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
     timeout_seconds: 30
     retry_count: 3
     retry_delay_seconds: 1
