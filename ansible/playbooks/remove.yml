@@ -2,7 +2,7 @@
 # ByteFreezer Proxy Removal Playbook (Simplified - Service Only)
 - name: Remove ByteFreezer Proxy
   hosts: all
-  become: true
+  become: yes
   gather_facts: true
 
   vars:
@@ -23,6 +23,15 @@
       ansible.builtin.stat:
         path: /etc/systemd/system/{{ service_name }}.service
       register: service_exists
+
+    - name: Wait for apt lock to be released
+      ansible.builtin.wait_for:
+        path: /var/lib/dpkg/lock-frontend
+        state: absent
+        timeout: 300
+      when: ansible_os_family == 'Debian'
+      become: yes
+      ignore_errors: yes
 
     - name: Display removal information
       debug:

@@ -2,7 +2,7 @@
 # ByteFreezer Proxy Installation Playbook (Simplified - Service Only)
 - name: Install ByteFreezer Proxy
   hosts: all
-  become: true
+  become: yes
   gather_facts: true
 
   vars:
@@ -14,7 +14,6 @@
     config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
     log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
     spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
-    binary_name: "{{ bytefreezer_proxy_binary_name | default('bytefreezer-proxy') }}"
     version: "{{ bytefreezer_proxy_version | default('latest') }}"
     github_repo: "{{ bytefreezer_proxy_github_repo | default('n0needt0/bytefreezer-proxy') }}"
     release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
@@ -99,10 +98,24 @@
         msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
       when: service_exists.stat.exists
 
+    - name: Wait for apt lock to be released
+      ansible.builtin.wait_for:
+        path: /var/lib/dpkg/lock-frontend
+        state: absent
+        timeout: 300
+      when: ansible_os_family == 'Debian'
+      become: yes
+      ignore_errors: yes
+
     - name: Update package cache
       ansible.builtin.package:
         update_cache: true
       when: ansible_os_family in ['Debian', 'RedHat']
+      become: yes
+      retries: 5
+      delay: 30
+      register: package_cache_update
+      until: package_cache_update is succeeded
 
     - name: Install required packages
       ansible.builtin.package:
@@ -112,6 +125,11 @@
           - tar
           - systemd
         state: present
+      become: yes
+      retries: 5
+      delay: 30
+      register: package_install
+      until: package_install is succeeded
 
   tasks:
     - name: Create bytefreezer user and group
