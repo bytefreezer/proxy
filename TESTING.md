@@ -9,7 +9,7 @@ This document explains how to test the ByteFreezer Proxy UDP functionality and s
 Sends test data to all three configured UDP ports and checks the spooling directory.
 
 ```bash
-./test_udp_streams.sh
+./testing_scripts/test_udp_streams.sh
 ```
 
 **What it does:**
@@ -22,7 +22,7 @@ Sends test data to all three configured UDP ports and checks the spooling direct
 Sends data continuously to test batching behavior and load handling.
 
 ```bash
-./test_continuous.sh
+./testing_scripts/test_continuous.sh
 ```
 
 **Configuration (edit the script to modify):**
@@ -35,10 +35,10 @@ Sends data continuously to test batching behavior and load handling.
 Checks and displays the current state of the spooling directory.
 
 ```bash
-./check_spooling.sh
+./testing_scripts/check_spooling.sh
 
 # For real-time monitoring:
-watch -n2 ./check_spooling.sh
+watch -n2 ./testing_scripts/check_spooling.sh
 ```
 
 ## Test Scenarios
@@ -52,11 +52,11 @@ watch -n2 ./check_spooling.sh
    ```
 3. **Send test data:**
    ```bash
-   ./test_udp_streams.sh
+   ./testing_scripts/test_udp_streams.sh
    ```
 4. **Check spooling directory:**
    ```bash
-   ./check_spooling.sh
+   ./testing_scripts/check_spooling.sh
    ```
 
 **Expected Result:** Files should appear in `/tmp/bytefreezer-proxy/`
@@ -70,11 +70,11 @@ watch -n2 ./check_spooling.sh
    ```
 3. **Send test data:**
    ```bash
-   ./test_udp_streams.sh
+   ./testing_scripts/test_udp_streams.sh
    ```
 4. **Check results:**
    ```bash
-   ./check_spooling.sh  # Should show no spooled files
+   ./testing_scripts/check_spooling.sh  # Should show no spooled files
    ```
 
 **Expected Result:** No files in spooling directory (data forwarded successfully)
@@ -84,12 +84,12 @@ watch -n2 ./check_spooling.sh
 1. **Start the proxy**
 2. **Run continuous test:**
    ```bash
-   ./test_continuous.sh
+   ./testing_scripts/test_continuous.sh
    ```
 3. **Monitor in real-time:**
    ```bash
    # In another terminal:
-   watch -n2 ./check_spooling.sh
+   watch -n2 ./testing_scripts/check_spooling.sh
    ```
 
 ## Port Configuration
