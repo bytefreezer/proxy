@@ -13,6 +13,63 @@
     version: "{{ bytefreezer_proxy_version | default('latest') }}"
     release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
     binary_name: "bytefreezer-proxy-linux-amd64"
+    
+    # Default configuration for template
+    bytefreezer_proxy_default_config:
+      app:
+        name: "bytefreezer-proxy"
+        version: "0.0.1"
+      logging:
+        level: "info"
+        encoding: "console"
+      server:
+        api_port: 8088
+      udp:
+        enabled: true
+        host: "0.0.0.0"
+        read_buffer_size_bytes: 134217728
+        max_batch_lines: 100000
+        max_batch_bytes: 268435456
+        batch_timeout_seconds: 30
+        enable_compression: true
+        compression_level: 6
+        listeners:
+          - port: 2056
+            dataset_id: "syslog-data"
+          - port: 2057
+            dataset_id: "ebpf-data"
+          - port: 2058
+            dataset_id: "application-logs"
+      tenant_id: "customer-1"
+      bearer_token: "bearer-token-customer-1-dev"
+      receiver:
+        base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+        timeout_seconds: 30
+        retry_count: 3
+        retry_delay_seconds: 1
+      soc:
+        enabled: false
+        endpoint: ""
+        timeout: 30
+      otel:
+        enabled: false
+        endpoint: "localhost:4317"
+        service_name: "bytefreezer-proxy"
+        scrapeIntervalseconds: 100
+      housekeeping:
+        enabled: true
+        intervalseconds: 60
+      spooling:
+        enabled: true
+        directory: "{{ bytefreezer_spooling_dir }}"
+        max_size_bytes: 1073741824
+        retry_attempts: 5
+        retry_interval_seconds: 60
+        cleanup_interval_seconds: 300
+      dev: false
+    
+    # Merge with user config (empty by default)
+    merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
 
   pre_tasks:
     - name: Check if service already exists

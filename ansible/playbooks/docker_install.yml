@@ -37,6 +37,7 @@
       ansible.builtin.shell: docker info
       register: docker_test
       failed_when: docker_test.rc != 0
+      become: yes
 
   tasks:
     - name: Create temporary directory
