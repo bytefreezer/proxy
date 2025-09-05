@@ -39,6 +39,7 @@
         enabled: no
         daemon_reload: yes
       when: service_exists.stat.exists
+      become: yes
       ignore_errors: yes
 
     - name: Create backup directory
@@ -49,6 +50,7 @@
         group: root
         mode: '0755'
       when: backup_on_remove | default(false)
+      become: yes
 
     - name: Backup configuration and data
       ansible.builtin.shell: |
@@ -65,12 +67,14 @@
       ansible.builtin.file:
         path: /etc/systemd/system/{{ service_name }}.service
         state: absent
+      become: yes
       notify: reload systemd
 
     - name: Remove logrotate configuration
       ansible.builtin.file:
         path: /etc/logrotate.d/bytefreezer-proxy
         state: absent
+      become: yes
 
     - name: Remove installation directory
       ansible.builtin.file:
@@ -93,11 +97,13 @@
         name: "{{ user_name }}"
         state: absent
         remove: yes
+      become: yes
 
     - name: Remove system group
       ansible.builtin.group:
         name: "{{ group_name }}"
         state: absent
+      become: yes
 
   post_tasks:
     - name: Verify removal
