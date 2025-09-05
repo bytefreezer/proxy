@@ -165,7 +165,7 @@
 
     - name: Generate configuration file
       ansible.builtin.template:
-        src: templates/config.yaml.j2
+        src: config.yaml.j2
         dest: "{{ paths.config_path }}"
         owner: "{{ service.user }}"
         group: "{{ service.group }}"
@@ -173,7 +173,7 @@
  
     - name: Install logrotate configuration
       ansible.builtin.template:
-        src: templates/logrotate.j2
+        src: logrotate.j2
         dest: "{{ paths.logrotate_path }}"
         owner: root
         group: root
@@ -181,7 +181,7 @@
   
     - name: Create systemd service file
       ansible.builtin.template:
-        src: templates/bytefreezer-proxy.service.j2
+        src: bytefreezer-proxy.service.j2
         dest: "{{ paths.service_path }}"
         owner: root
         group: root
