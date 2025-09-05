@@ -3,7 +3,7 @@
 FROM golang:1.24.4 AS builder
 
 # Set working directory
-WORKDIR /app
+WORKDIR /src
 
 # Copy go mod files first for better layer caching
 COPY go.mod go.sum ./
@@ -20,13 +20,14 @@ ARG VERSION=unknown
 ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
-    -o bytefreezer-proxy .
+    -o /app .
 
 # Debug: Check what we built
-RUN file bytefreezer-proxy
+RUN ls -l /app
+RUN file /app
 
 # Verify the binary is statically linked
-RUN ldd bytefreezer-proxy 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static!" && ldd bytefreezer-proxy && exit 1)
+RUN ldd /app 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static!" && ldd /app && exit 1)
 
 # Stage 2: Create minimal runtime image
 FROM alpine:3.19
@@ -46,15 +47,13 @@ RUN addgroup -g 1000 -S bytefreezer && \
 # Create required directories
 RUN mkdir -p /etc/bytefreezer-proxy \
              /var/log/bytefreezer-proxy \
-             /var/spool/bytefreezer-proxy \
-             /opt/bytefreezer-proxy && \
+             /var/spool/bytefreezer-proxy && \
     chown -R bytefreezer:bytefreezer /etc/bytefreezer-proxy \
                                     /var/log/bytefreezer-proxy \
-                                    /var/spool/bytefreezer-proxy \
-                                    /opt/bytefreezer-proxy
+                                    /var/spool/bytefreezer-proxy
 
 # Copy the binary from builder stage
-COPY --from=builder /app/bytefreezer-proxy /opt/bytefreezer-proxy/bytefreezer-proxy
+COPY --from=builder /app /app
 
 # Copy default configuration
 COPY --chown=bytefreezer:bytefreezer config.yaml /etc/bytefreezer-proxy/config.yaml
@@ -63,14 +62,16 @@ COPY --chown=bytefreezer:bytefreezer config.yaml /etc/bytefreezer-proxy/config.y
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Set up proper permissions
-RUN chmod +x /opt/bytefreezer-proxy/bytefreezer-proxy
+RUN chmod +x /app
+
+# Debug: Check the binary is there
+RUN ls -l /app
 
 # Switch to non-root user
 USER bytefreezer
 
 # Set environment variables
 ENV CONFIG_FILE=/etc/bytefreezer-proxy/config.yaml
-ENV PATH="/opt/bytefreezer-proxy:${PATH}"
 
 # Expose ports
 # 8088: API/Health endpoint
@@ -82,10 +83,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8088/health || exit 1
 
 # Set working directory
-WORKDIR /opt/bytefreezer-proxy
+WORKDIR /
 
 # Default command
-CMD ["./bytefreezer-proxy", "--config", "/etc/bytefreezer-proxy/config.yaml"]
+CMD ["/app", "--config", "/etc/bytefreezer-proxy/config.yaml"]
 
 # Metadata labels following OCI standards
 ARG VERSION=unknown
