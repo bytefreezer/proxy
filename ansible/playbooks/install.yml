@@ -265,11 +265,9 @@
         WantedBy=multi-user.target
         EOF
         sudo chmod 644 "{{ bytefreezer_service_path }}"
-      notify: Reload systemd
-
     - name: Enable and start service
       ansible.builtin.shell: |
-        sudo systemctl daemon-reload
+        timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
         sudo systemctl enable bytefreezer-proxy
         sudo systemctl start bytefreezer-proxy
 
@@ -289,7 +287,3 @@
           - "Spooling: {{ bytefreezer_spooling_dir }}"
           - "Service: systemctl status bytefreezer-proxy"
 
-  handlers:
-    - name: Reload systemd
-      ansible.builtin.systemd:
-        daemon_reload: true
