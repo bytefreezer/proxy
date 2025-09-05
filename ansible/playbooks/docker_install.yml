@@ -143,32 +143,32 @@
       ansible.builtin.file:
         path: "{{ paths.config_dir }}"
         state: directory
-        owner: "{{ service.user }}"
-        group: "{{ service.group }}"
+        owner: root
+        group: root
         mode: '0755'
 
     - name: Ensure log directory exists
       ansible.builtin.file:
         path: "{{ paths.log_dir }}"
         state: directory
-        owner: "{{ service.user }}"
-        group: "{{ service.group }}"
+        owner: root
+        group: root
         mode: '0755'
 
     - name: Ensure spooling directory exists
       ansible.builtin.file:
         path: "{{ paths.spool_dir }}"
         state: directory
-        owner: "{{ service.user }}"
-        group: "{{ service.group }}"
+        owner: root
+        group: root
         mode: '0755'
 
     - name: Generate configuration file
       ansible.builtin.template:
         src: config.yaml.j2
         dest: "{{ paths.config_path }}"
-        owner: "{{ service.user }}"
-        group: "{{ service.group }}"
+        owner: root
+        group: root
         mode: '0644'
  
     - name: Install logrotate configuration

@@ -111,30 +111,37 @@
         sudo chmod 755 "{{ paths.binary_path }}"
 
     - name: Ensure config directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.config_dir }}"
-        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.config_dir }}"
-        sudo chmod 755 "{{ paths.config_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
     - name: Ensure log directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.log_dir }}"
-        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.log_dir }}"
-        sudo chmod 755 "{{ paths.log_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
       
     - name: Ensure spooling directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.spool_dir }}"
-        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.spool_dir }}"
-        sudo chmod 755 "{{ paths.spool_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.spool_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
       
     - name: Generate configuration file
       ansible.builtin.template:
         src: config.yaml.j2
         dest: "{{ paths.config_path }}"
-        owner: "{{ service.user }}"
-        group: "{{ service.group }}"
+        owner: root
+        group: root
         mode: '0644'
+      become: yes
       
     - name: Install logrotate configuration
       ansible.builtin.template:
