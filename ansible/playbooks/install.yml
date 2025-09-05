@@ -98,27 +98,6 @@
         msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
       when: service_exists.stat.exists
 
-    - name: Update package cache
-      ansible.builtin.package:
-        update_cache: true
-      when: ansible_os_family in ['Debian', 'RedHat']
-      retries: 5
-      delay: 30
-      register: package_cache_update
-      until: package_cache_update is succeeded
-
-    - name: Install required packages
-      ansible.builtin.package:
-        name:
-          - curl
-          - wget
-          - tar
-          - systemd
-        state: present
-      retries: 5
-      delay: 30
-      register: package_install
-      until: package_install is succeeded
 
   tasks:
     - name: Create bytefreezer user and group
