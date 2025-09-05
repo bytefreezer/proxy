@@ -98,20 +98,10 @@
         msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
       when: service_exists.stat.exists
 
-    - name: Wait for apt lock to be released
-      ansible.builtin.wait_for:
-        path: /var/lib/dpkg/lock-frontend
-        state: absent
-        timeout: 300
-      when: ansible_os_family == 'Debian'
-      become: yes
-      ignore_errors: yes
-
     - name: Update package cache
       ansible.builtin.package:
         update_cache: true
       when: ansible_os_family in ['Debian', 'RedHat']
-      become: yes
       retries: 5
       delay: 30
       register: package_cache_update
@@ -125,7 +115,6 @@
           - tar
           - systemd
         state: present
-      become: yes
       retries: 5
       delay: 30
       register: package_install
