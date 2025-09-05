@@ -1,7 +1,7 @@
 ---
 # ByteFreezer Proxy Removal Playbook (Simplified - Service Only)
 - name: Remove ByteFreezer Proxy
-  hosts: bytefreezer_proxy
+  hosts: all
   become: true
   gather_facts: true
 

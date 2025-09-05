@@ -1,7 +1,7 @@
 ---
 # ByteFreezer Proxy Installation Playbook (Simplified - Service Only)
 - name: Install ByteFreezer Proxy
-  hosts: bytefreezer_proxy
+  hosts: all
   become: true
   gather_facts: true
 
