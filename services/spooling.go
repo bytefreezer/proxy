@@ -400,7 +400,7 @@ func (s *SpoolingService) markAsPermanentlyFailed(file SpooledFile) {
 	file.Status = "failed"
 	file.LastRetry = time.Now()
 	file.FailureReason = "Exceeded maximum retry attempts - manual recovery required"
-	
+
 	metaPath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", file.ID))
 	metaData, err := json.Marshal(file)
 	if err != nil {
