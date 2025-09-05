@@ -9,8 +9,6 @@
     bytefreezer_service_path: "/etc/systemd/system/bytefreezer-proxy.service"
     bytefreezer_logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
     bytefreezer_spooling_dir: "/var/spool/bytefreezer-proxy"
-    backup_on_remove: "{{ bytefreezer_proxy_backup_on_remove | default(false) }}"
-    backup_dir: "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}"
     remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
   pre_tasks:
@@ -24,7 +22,6 @@
         msg:
           - "Removing ByteFreezer Proxy service..."
           - "Service exists: {{ service_exists.stat.exists }}"
-          - "Backup data: {{ backup_on_remove }}"
 
   tasks:
     - name: Stop and disable service
@@ -35,25 +32,6 @@
       when: service_exists.stat.exists
       ignore_errors: yes
 
-    - name: Create backup directory
-      ansible.builtin.file:
-        path: "{{ backup_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      when: backup_on_remove
-
-    - name: Backup configuration and data
-      ansible.builtin.shell: |
-        tar -czf "{{ backup_dir }}/bytefreezer-proxy-removal-backup-{{ ansible_date_time.epoch }}.tar.gz" \
-          --ignore-failed-read \
-          "{{ bytefreezer_config_dir }}" \
-          "{{ bytefreezer_log_dir }}" \
-          "{{ bytefreezer_spooling_dir }}" \
-          2>/dev/null || true
-      when: backup_on_remove
-      ignore_errors: yes
 
     - name: Remove systemd service file
       ansible.builtin.shell: |
@@ -101,5 +79,4 @@
           - "Binary removed: {{ bytefreezer_binary_dest }}"
           - "Directories removed: {{ bytefreezer_config_dir }}, {{ bytefreezer_log_dir }}"
           - "Spooling directory preserved: {{ bytefreezer_spooling_dir }} (unless remove_spooling_dir=true)"
-          - "Backup created: {{ backup_on_remove }}"
 
