@@ -1,94 +1,23 @@
 ---
-# ByteFreezer Proxy Installation Playbook (Simplified - Service Only)
-- name: Install ByteFreezer Proxy
+- name: Install and configure ByteFreezer Proxy service
   hosts: all
   become: yes
-  gather_facts: true
-
   vars:
-    # Default values for all variables used in playbook
-    service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
-    user_name: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
-    group_name: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
-    install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
-    config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
-    log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
-    spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
-    version: "{{ bytefreezer_proxy_version | default('latest') }}"
+    bytefreezer_binary_dest: "/usr/local/bin/bytefreezer-proxy"
+    bytefreezer_config_path: "/etc/bytefreezer-proxy/config.yaml"
+    bytefreezer_log_dir: "/var/log/bytefreezer-proxy"
+    bytefreezer_service_path: "/etc/systemd/system/bytefreezer-proxy.service"
+    bytefreezer_logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
+    bytefreezer_spooling_dir: "/var/spool/bytefreezer-proxy"
     github_repo: "{{ bytefreezer_proxy_github_repo | default('n0needt0/bytefreezer-proxy') }}"
+    version: "{{ bytefreezer_proxy_version | default('latest') }}"
     release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
-    systemd_enabled: "{{ bytefreezer_proxy_systemd_enabled | default(true) }}"
-    systemd_started: "{{ bytefreezer_proxy_systemd_started | default(true) }}"
-    api_port: "{{ bytefreezer_proxy_api_port | default(8088) }}"
-
-    # Architecture mapping for binary downloads
-    arch_map:
-      x86_64: "amd64"
-    
-    target_arch: "{{ arch_map[ansible_architecture] | default('amd64') }}"
-    binary_name: "bytefreezer-proxy-linux-{{ target_arch }}"
-
-    # Default configuration
-    bytefreezer_proxy_default_config:
-      app:
-        name: "bytefreezer-proxy"
-        version: "0.0.1"
-      logging:
-        level: "info"
-        encoding: "console"
-      server:
-        api_port: "{{ bytefreezer_proxy_api_port | default(8088) }}"
-      udp:
-        enabled: true
-        host: "0.0.0.0"
-        read_buffer_size_bytes: 134217728  # 128MB
-        max_batch_lines: 100000
-        max_batch_bytes: 268435456  # 256MB
-        batch_timeout_seconds: 30
-        enable_compression: true
-        compression_level: 6
-        listeners:
-          - port: 2056
-            dataset_id: "syslog-data"
-          - port: 2057
-            dataset_id: "ebpf-data"
-          - port: 2058
-            dataset_id: "application-logs"
-      tenant_id: "customer-1"
-      bearer_token: "bearer-token-customer-1-dev"
-      receiver:
-        base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
-        timeout_seconds: 30
-        retry_count: 3
-        retry_delay_seconds: 1
-      soc:
-        enabled: false
-        endpoint: ""
-        timeout: 30
-      otel:
-        enabled: false
-        endpoint: "localhost:4317"
-        service_name: "bytefreezer-proxy"
-        scrapeIntervalseconds: 100
-      housekeeping:
-        enabled: true
-        intervalseconds: 60
-      spooling:
-        enabled: true
-        directory: "{{ spooling_dir }}"
-        max_size_bytes: 1073741824  # 1GB
-        retry_attempts: 5
-        retry_interval_seconds: 60
-        cleanup_interval_seconds: 300
-      dev: false
-
-    # AWX compatibility - merge survey variables with host-specific config
-    merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
+    binary_name: "bytefreezer-proxy-linux-amd64"
 
   pre_tasks:
     - name: Check if service already exists
       ansible.builtin.stat:
-        path: /etc/systemd/system/{{ service_name }}.service
+        path: "{{ bytefreezer_service_path }}"
       register: service_exists
 
     - name: Fail if service already installed
@@ -96,152 +25,122 @@
         msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
       when: service_exists.stat.exists
 
-
   tasks:
-    - name: Create bytefreezer user and group
-      ansible.builtin.group:
-        name: "{{ group_name }}"
-        state: present
-      become: yes
-
-    - name: Create bytefreezer user
-      ansible.builtin.user:
-        name: "{{ user_name }}"
-        group: "{{ group_name }}"
-        system: true
-        shell: /bin/false
-        home: "{{ install_dir }}"
-        create_home: false
-        state: present
-      become: yes
-
-    - name: Create required directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: "{{ user_name }}"
-        group: "{{ group_name }}"
-        mode: '0755'
-      loop:
-        - "{{ install_dir }}"
-        - "{{ config_dir }}"
-        - "{{ log_dir }}"
-        - "{{ spooling_dir }}"
-      become: yes
-
     - name: Get latest release information from GitHub
       ansible.builtin.uri:
         url: "{{ release_url }}"
         method: GET
         return_content: true
       register: github_release
-      when: bytefreezer_proxy_version == "latest"
+      when: version == "latest"
       delegate_to: localhost
       run_once: true
 
     - name: Set version facts
       set_fact:
-        release_version: "{{ github_release.json.tag_name if bytefreezer_proxy_version == 'latest' else bytefreezer_proxy_version }}"
-        download_url: "{{ github_release.json.assets | selectattr('name', 'match', '.*' + binary_name + '.tar.gz$') | map(attribute='browser_download_url') | first if bytefreezer_proxy_version == 'latest' else 'https://github.com/' + bytefreezer_proxy_github_repo + '/releases/download/' + bytefreezer_proxy_version + '/' + binary_name + '.tar.gz' }}"
+        release_version: "{{ github_release.json.tag_name if version == 'latest' else version }}"
+        download_url: "{{ github_release.json.assets | selectattr('name', 'match', '.*' + binary_name + '.tar.gz$') | map(attribute='browser_download_url') | first if version == 'latest' else 'https://github.com/' + github_repo + '/releases/download/' + version + '/' + binary_name + '.tar.gz' }}"
 
-    - name: Display download information
-      debug:
-        msg: 
-          - "Installing version: {{ release_version }}"
-          - "Architecture: {{ target_arch }}"
-          - "URL: {{ download_url }}"
+    - name: Create temporary directory for download
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: bytefreezer
+      register: temp_dir
 
     - name: Download and extract binary
-      unarchive:
+      ansible.builtin.unarchive:
         src: "{{ download_url }}"
-        dest: "{{ install_dir }}"
+        dest: "{{ temp_dir.path }}"
         remote_src: yes
-        owner: "{{ user_name }}"
-        group: "{{ group_name }}"
+
+    - name: Copy binary to /usr/local/bin
+      ansible.builtin.copy:
+        src: "{{ temp_dir.path }}/{{ binary_name }}"
+        dest: "{{ bytefreezer_binary_dest }}"
         mode: '0755'
-        extra_opts:
-          - --strip-components=0
+        remote_src: yes
 
-    - name: Rename binary to standard name
-      command: >
-        mv "{{ install_dir }}/{{ binary_name }}" 
-           "{{ install_dir }}/{{ binary_name }}"
-      args:
-        creates: "{{ install_dir }}/{{ binary_name }}"
+    - name: Ensure config directory exists
+      ansible.builtin.file:
+        path: "{{ bytefreezer_config_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
-    - name: Set binary permissions
-      file:
-        path: "{{ install_dir }}/{{ binary_name }}"
-        owner: "{{ user_name }}"
-        group: "{{ group_name }}"
+    - name: Ensure log directory exists
+      ansible.builtin.file:
+        path: "{{ bytefreezer_log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Ensure spooling directory exists
+      ansible.builtin.file:
+        path: "{{ bytefreezer_spooling_dir }}"
+        state: directory
+        owner: root
+        group: root
         mode: '0755'
 
     - name: Generate configuration file
-      template:
+      ansible.builtin.template:
         src: config.yaml.j2
-        dest: "{{ config_dir }}/config.yaml"
-        owner: "{{ user_name }}"
-        group: "{{ group_name }}"
-        mode: '0640'
-
-    - name: Setup log rotation
-      template:
-        src: logrotate.conf.j2
-        dest: /etc/logrotate.d/bytefreezer-proxy
+        dest: "{{ bytefreezer_config_path }}"
         owner: root
         group: root
         mode: '0644'
-      become: yes
-      notify: test-logrotate
+
+    - name: Install logrotate configuration
+      ansible.builtin.copy:
+        dest: "{{ bytefreezer_logrotate_path }}"
+        content: |
+          {{ bytefreezer_log_dir }}/*.log {
+            daily
+            rotate 7
+            compress
+            missingok
+            notifempty
+            create 0644 root root
+            sharedscripts
+            postrotate
+              systemctl restart bytefreezer-proxy >/dev/null 2>&1 || true
+            endscript
+          }
+        mode: '0644'
 
     - name: Create systemd service file
-      template:
+      ansible.builtin.template:
         src: bytefreezer-proxy.service.j2
-        dest: /etc/systemd/system/{{ service_name }}.service
-        owner: root
-        group: root
+        dest: "{{ bytefreezer_service_path }}"
         mode: '0644'
-      become: yes
-      notify:
-        - reload systemd
+      notify: Reload systemd
 
     - name: Enable and start service
-      systemd:
-        name: "{{ service_name }}"
-        enabled: "{{ systemd_enabled }}"
-        state: "{{ 'started' if bytefreezer_proxy_systemd_started else 'stopped' }}"
-        daemon_reload: yes
-      become: yes
+      ansible.builtin.systemd:
+        name: bytefreezer-proxy
+        enabled: yes
+        state: started
+        daemon_reload: true
+
+    - name: Clean up temporary directory
+      ansible.builtin.file:
+        path: "{{ temp_dir.path }}"
+        state: absent
 
   post_tasks:
-    - name: Wait for service to be ready
-      uri:
-        url: "http://{{ ansible_default_ipv4.address }}:{{ api_port }}/health"
-        method: GET
-        status_code: 200
-      register: health_check
-      retries: 10
-      delay: 3
-      when: bytefreezer_proxy_systemd_started
-      ignore_errors: yes
-
     - name: Display installation status
       debug:
         msg:
           - "ByteFreezer Proxy installation completed!"
-          - "Service status: {{ 'Running' if bytefreezer_proxy_systemd_started else 'Stopped' }}"
-          - "Config file: {{ config_dir }}/config.yaml"
-          - "Install directory: {{ install_dir }}"
-          - "Log directory: {{ log_dir }}"
-          - "Spooling directory: {{ spooling_dir }}"
-          - "Logs: journalctl -u {{ service_name }} -f"
-          - "NOTE: Firewall and system tuning must be configured manually"
+          - "Binary: {{ bytefreezer_binary_dest }}"
+          - "Config: {{ bytefreezer_config_path }}"
+          - "Logs: {{ bytefreezer_log_dir }}"
+          - "Spooling: {{ bytefreezer_spooling_dir }}"
+          - "Service: systemctl status bytefreezer-proxy"
 
   handlers:
-    - name: reload systemd
-      systemd:
-        daemon_reload: yes
-
-    - name: test-logrotate
-      command: logrotate -t /etc/logrotate.d/bytefreezer-proxy
-      ignore_errors: yes
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
