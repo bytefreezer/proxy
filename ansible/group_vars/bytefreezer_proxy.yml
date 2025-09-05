@@ -18,13 +18,8 @@ bytefreezer_proxy_config_dir: "/etc/bytefreezer-proxy"
 bytefreezer_proxy_log_dir: "/var/log/bytefreezer-proxy"
 bytefreezer_proxy_spooling_dir: "/var/spool/bytefreezer-proxy"
 
-# Network and firewall
-bytefreezer_proxy_firewall_enabled: true
+# Network settings
 bytefreezer_proxy_api_port: 8088
-
-# System tuning
-bytefreezer_proxy_system_tuning_enabled: true
-bytefreezer_proxy_udp_buffer_size: 134217728  # 128MB
 
 # Default configuration template
 bytefreezer_proxy_default_config:
@@ -42,7 +37,7 @@ bytefreezer_proxy_default_config:
   udp:
     enabled: true
     host: "0.0.0.0"
-    read_buffer_size_bytes: "{{ bytefreezer_proxy_udp_buffer_size }}"
+    read_buffer_size_bytes: 134217728  # 128MB
     max_batch_lines: 100000
     max_batch_bytes: 268435456  # 256MB
     batch_timeout_seconds: 30

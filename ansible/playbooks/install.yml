@@ -1,5 +1,5 @@
 ---
-# ByteFreezer Proxy Installation Playbook (Install Only)
+# ByteFreezer Proxy Installation Playbook (Simplified - Service Only)
 - name: Install ByteFreezer Proxy
   hosts: bytefreezer_proxy
   become: true
@@ -26,7 +26,7 @@
 
     - name: Fail if service already installed
       fail:
-        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first or deploy playbook for upgrades."
+        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
       when: service_exists.stat.exists
 
     - name: Update package cache
@@ -39,7 +39,6 @@
         name:
           - curl
           - wget
-          - unzip
           - tar
           - systemd
         state: present
@@ -147,66 +146,6 @@
       notify:
         - reload systemd
 
-    - name: Configure system tuning for UDP
-      sysctl:
-        name: "{{ item.name }}"
-        value: "{{ item.value }}"
-        state: present
-        reload: yes
-      loop:
-        - { name: "net.core.rmem_max", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
-        - { name: "net.core.rmem_default", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
-        - { name: "net.core.wmem_max", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
-        - { name: "net.core.wmem_default", value: "{{ bytefreezer_proxy_udp_buffer_size }}" }
-        - { name: "net.core.netdev_max_backlog", value: "10000" }
-      when: bytefreezer_proxy_system_tuning_enabled
-
-    - name: Configure firewall for API (ufw)
-      ufw:
-        rule: allow
-        port: "{{ bytefreezer_proxy_api_port }}"
-        proto: tcp
-        comment: "ByteFreezer Proxy API"
-      when: 
-        - bytefreezer_proxy_firewall_enabled
-        - ansible_os_family == "Debian"
-      ignore_errors: yes
-
-    - name: Configure firewall for UDP listeners (ufw)
-      ufw:
-        rule: allow
-        port: "{{ item.port }}"
-        proto: udp
-        comment: "ByteFreezer Proxy UDP - {{ item.dataset_id }}"
-      loop: "{{ merged_config.udp.listeners }}"
-      when: 
-        - bytefreezer_proxy_firewall_enabled
-        - ansible_os_family == "Debian"
-      ignore_errors: yes
-
-    - name: Configure firewall for API (firewalld)
-      firewalld:
-        port: "{{ bytefreezer_proxy_api_port }}/tcp"
-        permanent: yes
-        state: enabled
-        immediate: yes
-      when:
-        - bytefreezer_proxy_firewall_enabled 
-        - ansible_os_family == "RedHat"
-      ignore_errors: yes
-
-    - name: Configure firewall for UDP listeners (firewalld)
-      firewalld:
-        port: "{{ item.port }}/udp"
-        permanent: yes
-        state: enabled
-        immediate: yes
-      loop: "{{ merged_config.udp.listeners }}"
-      when:
-        - bytefreezer_proxy_firewall_enabled 
-        - ansible_os_family == "RedHat"
-      ignore_errors: yes
-
     - name: Enable and start service
       systemd:
         name: "{{ bytefreezer_proxy_service_name }}"
@@ -224,17 +163,19 @@
       retries: 10
       delay: 3
       when: bytefreezer_proxy_systemd_started
+      ignore_errors: yes
 
     - name: Display installation status
       debug:
         msg:
           - "ByteFreezer Proxy installation completed!"
           - "Service status: {{ 'Running' if bytefreezer_proxy_systemd_started else 'Stopped' }}"
-          - "API endpoint: http://{{ ansible_default_ipv4.address }}:{{ bytefreezer_proxy_api_port }}/health"
-          - "UDP listeners: {% for listener in merged_config.udp.listeners %}{{ ansible_default_ipv4.address }}:{{ listener.port }} ({{ listener.dataset_id }}){% if not loop.last %}, {% endif %}{% endfor %}"
-          - "Spooling directory: {{ bytefreezer_proxy_spooling_dir }}"
           - "Config file: {{ bytefreezer_proxy_config_dir }}/config.yaml"
+          - "Install directory: {{ bytefreezer_proxy_install_dir }}"
+          - "Log directory: {{ bytefreezer_proxy_log_dir }}"
+          - "Spooling directory: {{ bytefreezer_proxy_spooling_dir }}"
           - "Logs: journalctl -u {{ bytefreezer_proxy_service_name }} -f"
+          - "NOTE: Firewall and system tuning must be configured manually"
 
   handlers:
     - name: reload systemd

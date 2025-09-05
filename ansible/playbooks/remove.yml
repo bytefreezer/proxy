@@ -1,13 +1,9 @@
 ---
-# ByteFreezer Proxy Removal Playbook (Remove Only)
+# ByteFreezer Proxy Removal Playbook (Simplified - Service Only)
 - name: Remove ByteFreezer Proxy
   hosts: bytefreezer_proxy
   become: true
   gather_facts: true
-
-  vars:
-    # AWX compatibility - merge survey variables with host-specific config
-    merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
 
   pre_tasks:
     - name: Check if service exists
@@ -63,52 +59,6 @@
         path: /etc/logrotate.d/bytefreezer-proxy
         state: absent
 
-    - name: Remove firewall rules (ufw)
-      ufw:
-        rule: allow
-        port: "{{ bytefreezer_proxy_api_port }}"
-        proto: tcp
-        delete: yes
-      when: 
-        - bytefreezer_proxy_firewall_enabled
-        - ansible_os_family == "Debian"
-      ignore_errors: yes
-
-    - name: Remove UDP firewall rules (ufw)
-      ufw:
-        rule: allow
-        port: "{{ item.port }}"
-        proto: udp
-        delete: yes
-      loop: "{{ merged_config.udp.listeners }}"
-      when: 
-        - bytefreezer_proxy_firewall_enabled
-        - ansible_os_family == "Debian"
-      ignore_errors: yes
-
-    - name: Remove firewall rules (firewalld)
-      firewalld:
-        port: "{{ bytefreezer_proxy_api_port }}/tcp"
-        permanent: yes
-        state: disabled
-        immediate: yes
-      when:
-        - bytefreezer_proxy_firewall_enabled 
-        - ansible_os_family == "RedHat"
-      ignore_errors: yes
-
-    - name: Remove UDP firewall rules (firewalld)
-      firewalld:
-        port: "{{ item.port }}/udp"
-        permanent: yes
-        state: disabled
-        immediate: yes
-      loop: "{{ merged_config.udp.listeners }}"
-      when:
-        - bytefreezer_proxy_firewall_enabled 
-        - ansible_os_family == "RedHat"
-      ignore_errors: yes
-
     - name: Remove installation directory
       ansible.builtin.file:
         path: "{{ bytefreezer_proxy_install_dir }}"
@@ -124,10 +74,11 @@
         path: "{{ bytefreezer_proxy_log_dir }}"
         state: absent
 
-    - name: Remove spooling directory
+    - name: Remove spooling directory (only if explicitly requested)
       ansible.builtin.file:
         path: "{{ bytefreezer_proxy_spooling_dir }}"
         state: absent
+      when: bytefreezer_proxy_remove_spooling_dir | default(false)
 
     - name: Remove system user
       ansible.builtin.user:
@@ -140,20 +91,6 @@
         name: "{{ bytefreezer_proxy_group }}"
         state: absent
 
-    - name: Remove system tuning (reset to defaults)
-      sysctl:
-        name: "{{ item.name }}"
-        value: "{{ item.default_value }}"
-        state: present
-        reload: yes
-      loop:
-        - { name: "net.core.rmem_max", default_value: "212992" }
-        - { name: "net.core.rmem_default", default_value: "212992" }
-        - { name: "net.core.wmem_max", default_value: "212992" }
-        - { name: "net.core.wmem_default", default_value: "212992" }
-        - { name: "net.core.netdev_max_backlog", default_value: "1000" }
-      when: bytefreezer_proxy_system_tuning_enabled
-
   post_tasks:
     - name: Verify removal
       ansible.builtin.stat:
@@ -165,11 +102,11 @@
         msg:
           - "ByteFreezer Proxy complete removal completed!"
           - "Service removed: {{ not service_removed.stat.exists }}"
-          - "All directories removed: {{ bytefreezer_proxy_install_dir }}, {{ bytefreezer_proxy_config_dir }}, {{ bytefreezer_proxy_log_dir }}, {{ bytefreezer_proxy_spooling_dir }}"
+          - "Directories removed: {{ bytefreezer_proxy_install_dir }}, {{ bytefreezer_proxy_config_dir }}, {{ bytefreezer_proxy_log_dir }}"
+          - "Spooling directory preserved: {{ bytefreezer_proxy_spooling_dir }} (unless bytefreezer_proxy_remove_spooling_dir=true)"
           - "System user and group removed"
-          - "System tuning reset to defaults"
-          - "Firewall rules removed"
           - "Backup created: {{ bytefreezer_proxy_backup_on_remove | default(false) }}"
+          - "NOTE: Firewall rules and system tuning must be reverted manually"
 
   handlers:
     - name: reload systemd
