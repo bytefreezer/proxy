@@ -47,6 +47,8 @@
         src: "{{ temp_dir.path }}/{{ binary_name }}"
         dest: "{{ bytefreezer_binary_dest }}"
         mode: '0755'
+        remote_src: yes
+      become: yes
 
     - name: Clean up temporary directory
       ansible.builtin.file:
@@ -60,6 +62,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
       
     - name: Ensure log directory exists
       ansible.builtin.file:
@@ -68,6 +71,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
       
     - name: Ensure spooling directory exists
       ansible.builtin.file:
@@ -76,6 +80,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
       
     - name: Generate configuration file
       ansible.builtin.template:
@@ -84,6 +89,7 @@
         owner: root
         group: root
         mode: '0644'
+      become: yes
       
     - name: Install logrotate configuration
       ansible.builtin.copy:
@@ -102,12 +108,14 @@
             endscript
           }
         mode: '0644'
+      become: yes
       
     - name: Create systemd service file
       ansible.builtin.template:
         src: bytefreezer-proxy.service.j2
         dest: "{{ bytefreezer_service_path }}"
         mode: '0644'
+      become: yes
       notify: Reload systemd
 
     - name: Enable and start service
@@ -116,6 +124,7 @@
         enabled: yes
         state: started
         daemon_reload: true
+      become: yes
 
     - name: Clean up temporary directory
       ansible.builtin.file:
