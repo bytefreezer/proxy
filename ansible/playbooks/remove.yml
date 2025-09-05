@@ -28,11 +28,10 @@
 
   tasks:
     - name: Stop and disable service
-      ansible.builtin.systemd:
-        name: bytefreezer-proxy
-        state: stopped
-        enabled: no
-        daemon_reload: yes
+      ansible.builtin.shell: |
+        sudo systemctl stop bytefreezer-proxy || true
+        sudo systemctl disable bytefreezer-proxy || true
+        timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
       when: service_exists.stat.exists
       ignore_errors: yes
 
@@ -57,36 +56,36 @@
       ignore_errors: yes
 
     - name: Remove systemd service file
-      ansible.builtin.file:
-        path: "{{ bytefreezer_service_path }}"
-        state: absent
-      notify: Reload systemd
+      ansible.builtin.shell: |
+        sudo rm -f "{{ bytefreezer_service_path }}"
+        timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
+      ignore_errors: yes
 
     - name: Remove logrotate configuration
-      ansible.builtin.file:
-        path: "{{ bytefreezer_logrotate_path }}"
-        state: absent
+      ansible.builtin.shell: |
+        sudo rm -f "{{ bytefreezer_logrotate_path }}"
+      ignore_errors: yes
 
     - name: Remove binary
-      ansible.builtin.file:
-        path: "{{ bytefreezer_binary_dest }}"
-        state: absent
+      ansible.builtin.shell: |
+        sudo rm -f "{{ bytefreezer_binary_dest }}"
+      ignore_errors: yes
 
     - name: Remove configuration directory
-      ansible.builtin.file:
-        path: "{{ bytefreezer_config_dir }}"
-        state: absent
+      ansible.builtin.shell: |
+        sudo rm -rf "{{ bytefreezer_config_dir }}"
+      ignore_errors: yes
 
     - name: Remove log directory
-      ansible.builtin.file:
-        path: "{{ bytefreezer_log_dir }}"
-        state: absent
+      ansible.builtin.shell: |
+        sudo rm -rf "{{ bytefreezer_log_dir }}"
+      ignore_errors: yes
 
     - name: Remove spooling directory (only if explicitly requested)
-      ansible.builtin.file:
-        path: "{{ bytefreezer_spooling_dir }}"
-        state: absent
+      ansible.builtin.shell: |
+        sudo rm -rf "{{ bytefreezer_spooling_dir }}"
       when: remove_spooling_dir
+      ignore_errors: yes
 
   post_tasks:
     - name: Verify removal
@@ -104,7 +103,3 @@
           - "Spooling directory preserved: {{ bytefreezer_spooling_dir }} (unless remove_spooling_dir=true)"
           - "Backup created: {{ backup_on_remove }}"
 
-  handlers:
-    - name: Reload systemd
-      ansible.builtin.systemd:
-        daemon_reload: yes
