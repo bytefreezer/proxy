@@ -26,21 +26,9 @@
       when: service_exists.stat.exists
 
   tasks:
-    - name: Get latest release information from GitHub
-      ansible.builtin.uri:
-        url: "{{ release_url }}"
-        method: GET
-        return_content: true
-      register: github_release
-      when: version == "latest"
-      become: no
-      run_once: true
-
-    - name: Set version facts
+    - name: Set download URL
       set_fact:
-        release_version: "{{ github_release.json.tag_name if version == 'latest' else version }}"
-        download_url: "{{ github_release.json.assets | selectattr('name', 'match', '.*' + binary_name + '.tar.gz$') | map(attribute='browser_download_url') | first if version == 'latest' else 'https://github.com/' + github_repo + '/releases/download/' + version + '/' + binary_name + '.tar.gz' }}"
-      become: no
+        download_url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/{{ binary_name }}.tar.gz"
 
     - name: Create temporary directory for download
       ansible.builtin.tempfile:
