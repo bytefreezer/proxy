@@ -39,6 +39,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
 
     - name: Ensure log directory exists
       ansible.builtin.file:
@@ -47,6 +48,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
       
     - name: Ensure spooling directory exists
       ansible.builtin.file:
@@ -55,6 +57,7 @@
         owner: root
         group: root
         mode: '0755'
+      become: yes
       
     - name: Generate configuration file
       ansible.builtin.template:
