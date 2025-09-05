@@ -2,79 +2,11 @@
 - name: Install and configure ByteFreezer Proxy service
   hosts: all
   become: yes
-  vars:
-    bytefreezer_binary_dest: "/usr/local/bin/bytefreezer-proxy"
-    bytefreezer_config_path: "/etc/bytefreezer-proxy/config.yaml"
-    bytefreezer_log_dir: "/var/log/bytefreezer-proxy"
-    bytefreezer_service_path: "/etc/systemd/system/bytefreezer-proxy.service"
-    bytefreezer_logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
-    bytefreezer_spooling_dir: "/var/spool/bytefreezer-proxy"
-    github_repo: "n0needt0/bytefreezer-proxy"
-    version: "{{ bytefreezer_proxy_version | default('latest') }}"
-    release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
-    binary_name: "bytefreezer-proxy-linux-amd64"
-    
-    # Default configuration for template
-    bytefreezer_proxy_default_config:
-      app:
-        name: "bytefreezer-proxy"
-        version: "0.0.1"
-      logging:
-        level: "info"
-        encoding: "console"
-      server:
-        api_port: 8088
-      udp:
-        enabled: true
-        host: "0.0.0.0"
-        read_buffer_size_bytes: 134217728
-        max_batch_lines: 100000
-        max_batch_bytes: 268435456
-        batch_timeout_seconds: 30
-        enable_compression: true
-        compression_level: 6
-        listeners:
-          - port: 2056
-            dataset_id: "syslog-data"
-          - port: 2057
-            dataset_id: "ebpf-data"
-          - port: 2058
-            dataset_id: "application-logs"
-      tenant_id: "customer-1"
-      bearer_token: "bearer-token-customer-1-dev"
-      receiver:
-        base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
-        timeout_seconds: 30
-        retry_count: 3
-        retry_delay_seconds: 1
-      soc:
-        enabled: false
-        endpoint: ""
-        timeout: 30
-      otel:
-        enabled: false
-        endpoint: "localhost:4317"
-        service_name: "bytefreezer-proxy"
-        scrapeIntervalseconds: 100
-      housekeeping:
-        enabled: true
-        intervalseconds: 60
-      spooling:
-        enabled: true
-        directory: "{{ bytefreezer_spooling_dir }}"
-        max_size_bytes: 1073741824
-        retry_attempts: 5
-        retry_interval_seconds: 60
-        cleanup_interval_seconds: 300
-      dev: false
-    
-    # Merge with user config (empty by default)
-    merged_config: "{{ bytefreezer_proxy_default_config | combine(bytefreezer_proxy_config | default({}), recursive=True) }}"
 
   pre_tasks:
     - name: Check if service already exists
       ansible.builtin.stat:
-        path: "{{ bytefreezer_service_path }}"
+        path: "{{ paths.service_path }}"
       register: service_exists
 
     - name: Fail if service already installed
@@ -83,10 +15,6 @@
       when: service_exists.stat.exists
 
   tasks:
-    - name: Set download URL
-      set_fact:
-        download_url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/{{ binary_name }}.tar.gz"
-
     - name: Create temporary directory for download
       ansible.builtin.tempfile:
         state: directory
@@ -95,185 +23,62 @@
 
     - name: Download and extract binary
       ansible.builtin.unarchive:
-        src: "{{ download_url }}"
+        src: "{{ download.url }}"
         dest: "{{ temp_dir.path }}"
         remote_src: yes
       
-    - name: Copy binary to /usr/local/bin
+    - name: Copy binary to destination
       ansible.builtin.shell: |
-        sudo cp "{{ temp_dir.path }}/{{ binary_name }}" "{{ bytefreezer_binary_dest }}"
-      args:
-        creates: "{{ bytefreezer_binary_dest }}"
-
-    - name: Set binary permissions
-      ansible.builtin.shell: |
-        sudo chmod 755 "{{ bytefreezer_binary_dest }}"
-
-    - name: Clean up temporary directory
-      ansible.builtin.file:
-        path: "{{ temp_dir.path }}"
-        state: absent
+        sudo cp "{{ temp_dir.path }}/bytefreezer-proxy-linux-amd64" "{{ paths.binary_path }}"
+        sudo chmod 755 "{{ paths.binary_path }}"
 
     - name: Ensure config directory exists
       ansible.builtin.shell: |
-        sudo mkdir -p "{{ bytefreezer_config_path | dirname }}"
-        sudo chown root:root "{{ bytefreezer_config_path | dirname }}"
-        sudo chmod 755 "{{ bytefreezer_config_path | dirname }}"
-      args:
-        creates: "{{ bytefreezer_config_path | dirname }}"
-      
+        sudo mkdir -p "{{ paths.config_dir }}"
+        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.config_dir }}"
+        sudo chmod 755 "{{ paths.config_dir }}"
+
     - name: Ensure log directory exists
       ansible.builtin.shell: |
-        sudo mkdir -p "{{ bytefreezer_log_dir }}"
-        sudo chown root:root "{{ bytefreezer_log_dir }}"
-        sudo chmod 755 "{{ bytefreezer_log_dir }}"
-      args:
-        creates: "{{ bytefreezer_log_dir }}"
+        sudo mkdir -p "{{ paths.log_dir }}"
+        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.log_dir }}"
+        sudo chmod 755 "{{ paths.log_dir }}"
       
     - name: Ensure spooling directory exists
       ansible.builtin.shell: |
-        sudo mkdir -p "{{ bytefreezer_spooling_dir }}"
-        sudo chown root:root "{{ bytefreezer_spooling_dir }}"
-        sudo chmod 755 "{{ bytefreezer_spooling_dir }}"
-      args:
-        creates: "{{ bytefreezer_spooling_dir }}"
+        sudo mkdir -p "{{ paths.spool_dir }}"
+        sudo chown {{ service.user }}:{{ service.group }} "{{ paths.spool_dir }}"
+        sudo chmod 755 "{{ paths.spool_dir }}"
       
     - name: Generate configuration file
-      ansible.builtin.shell: |
-        sudo tee "{{ bytefreezer_config_path }}" > /dev/null <<'EOF'
-        # ByteFreezer Proxy Configuration
-        # Generated by Ansible
-        
-        app:
-          name: {{ merged_config.app.name }}
-          version: {{ merged_config.app.version }}
-        
-        logging:
-          level: {{ merged_config.logging.level }}
-          encoding: {{ merged_config.logging.encoding }}
-        
-        server:
-          api_port: {{ merged_config.server.api_port }}
-        
-        udp:
-          enabled: {{ merged_config.udp.enabled | lower }}
-          host: "{{ merged_config.udp.host }}"
-          read_buffer_size_bytes: {{ merged_config.udp.read_buffer_size_bytes }}
-          max_batch_lines: {{ merged_config.udp.max_batch_lines }}
-          max_batch_bytes: {{ merged_config.udp.max_batch_bytes }}
-          batch_timeout_seconds: {{ merged_config.udp.batch_timeout_seconds }}
-          enable_compression: {{ merged_config.udp.enable_compression | lower }}
-          compression_level: {{ merged_config.udp.compression_level }}
-          listeners:
-        {% for listener in merged_config.udp.listeners %}
-            - port: {{ listener.port }}
-              dataset_id: "{{ listener.dataset_id }}"
-        {% if listener.tenant_id is defined %}
-              tenant_id: "{{ listener.tenant_id }}"
-        {% endif %}
-        {% endfor %}
-        
-        tenant_id: "{{ merged_config.tenant_id }}"
-        bearer_token: "{{ merged_config.bearer_token }}"
-        
-        receiver:
-          base_url: "{{ merged_config.receiver.base_url }}"
-          timeout_seconds: {{ merged_config.receiver.timeout_seconds }}
-          retry_count: {{ merged_config.receiver.retry_count }}
-          retry_delay_seconds: {{ merged_config.receiver.retry_delay_seconds }}
-        
-        soc:
-          enabled: {{ merged_config.soc.enabled | lower }}
-          endpoint: "{{ merged_config.soc.endpoint }}"
-          timeout: {{ merged_config.soc.timeout }}
-        
-        otel:
-          enabled: {{ merged_config.otel.enabled | lower }}
-          endpoint: "{{ merged_config.otel.endpoint }}"
-          service_name: "{{ merged_config.otel.service_name }}"
-          scrapeIntervalseconds: {{ merged_config.otel.scrapeIntervalseconds }}
-        
-        housekeeping:
-          enabled: {{ merged_config.housekeeping.enabled | lower }}
-          intervalseconds: {{ merged_config.housekeeping.intervalseconds }}
-        
-        spooling:
-          enabled: {{ merged_config.spooling.enabled | lower }}
-          directory: "{{ merged_config.spooling.directory }}"
-          max_size_bytes: {{ merged_config.spooling.max_size_bytes }}
-          retry_attempts: {{ merged_config.spooling.retry_attempts }}
-          retry_interval_seconds: {{ merged_config.spooling.retry_interval_seconds }}
-          cleanup_interval_seconds: {{ merged_config.spooling.cleanup_interval_seconds }}
-        
-        dev: {{ merged_config.dev | lower }}
-        EOF
-        sudo chmod 644 "{{ bytefreezer_config_path }}"
+      ansible.builtin.template:
+        src: config.yaml.j2
+        dest: "{{ paths.config_path }}"
+        owner: "{{ service.user }}"
+        group: "{{ service.group }}"
+        mode: '0644'
       
     - name: Install logrotate configuration
-      ansible.builtin.shell: |
-        sudo tee "{{ bytefreezer_logrotate_path }}" > /dev/null <<EOF
-        {{ bytefreezer_log_dir }}/*.log {
-          daily
-          rotate 7
-          compress
-          missingok
-          notifempty
-          create 0644 root root
-          sharedscripts
-          postrotate
-            systemctl restart bytefreezer-proxy >/dev/null 2>&1 || true
-          endscript
-        }
-        EOF
-        sudo chmod 644 "{{ bytefreezer_logrotate_path }}"
+      ansible.builtin.template:
+        src: logrotate.j2
+        dest: "{{ paths.logrotate_path }}"
+        owner: root
+        group: root
+        mode: '0644'
       
     - name: Create systemd service file
-      ansible.builtin.shell: |
-        sudo tee "{{ bytefreezer_service_path }}" > /dev/null <<'EOF'
-        [Unit]
-        Description=ByteFreezer Proxy - UDP Data Collection and Forwarding Service
-        Documentation=https://github.com/n0needt0/bytefreezer-proxy
-        After=network-online.target
-        Wants=network-online.target
-        
-        [Service]
-        Type=simple
-        User=root
-        Group=root
-        WorkingDirectory=/usr/local/bin
-        ExecStart={{ bytefreezer_binary_dest }} --config="{{ bytefreezer_config_path }}"
-        ExecReload=/bin/kill -HUP $MAINPID
-        KillMode=mixed
-        KillSignal=SIGTERM
-        TimeoutStopSec=30
-        
-        # Restart settings
-        Restart=always
-        RestartSec=10
-        StartLimitInterval=60
-        StartLimitBurst=5
-        
-        # Resource limits
-        LimitNOFILE=65536
-        LimitNPROC=4096
-        
-        # Logging to files
-        StandardOutput=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy.log
-        StandardError=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy-error.log
-        
-        # Environment
-        Environment=CONFIG_FILE={{ bytefreezer_config_path }}
-        Environment=LOG_LEVEL=INFO
-        
-        [Install]
-        WantedBy=multi-user.target
-        EOF
-        sudo chmod 644 "{{ bytefreezer_service_path }}"
+      ansible.builtin.template:
+        src: bytefreezer-proxy.service.j2
+        dest: "{{ paths.service_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+
     - name: Enable and start service
       ansible.builtin.shell: |
         timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
-        sudo systemctl enable bytefreezer-proxy
-        sudo systemctl start bytefreezer-proxy
+        sudo systemctl enable {{ service.name }}
+        sudo systemctl start {{ service.name }}
 
     - name: Clean up temporary directory
       ansible.builtin.file:
@@ -285,9 +90,8 @@
       debug:
         msg:
           - "ByteFreezer Proxy installation completed!"
-          - "Binary: {{ bytefreezer_binary_dest }}"
-          - "Config: {{ bytefreezer_config_path }}"
-          - "Logs: {{ bytefreezer_log_dir }}"
-          - "Spooling: {{ bytefreezer_spooling_dir }}"
-          - "Service: systemctl status bytefreezer-proxy"
-
+          - "Binary: {{ paths.binary_path }}"
+          - "Config: {{ paths.config_path }}"
+          - "Logs: {{ paths.log_dir }}"
+          - "Spooling: {{ paths.spool_dir }}"
+          - "Service: systemctl status {{ service.name }}"

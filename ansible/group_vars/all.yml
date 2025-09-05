@@ -1,0 +1,102 @@
+---
+# ByteFreezer Proxy - Centralized Variables Configuration
+
+# GitHub repository
+github_repo: "n0needt0/bytefreezer-proxy"
+version: "{{ bytefreezer_proxy_version | default('latest') }}"
+
+# Service configuration
+service:
+  name: "bytefreezer-proxy"
+  user: "root"
+  group: "root"
+
+# File paths
+paths:
+  binary_dir: "/usr/local/bin"
+  binary_path: "/usr/local/bin/bytefreezer-proxy" 
+  config_dir: "/etc/bytefreezer-proxy"
+  config_path: "/etc/bytefreezer-proxy/config.yaml"
+  log_dir: "/var/log/bytefreezer-proxy"
+  spool_dir: "/var/spool/bytefreezer-proxy"
+  service_path: "/etc/systemd/system/bytefreezer-proxy.service"
+  logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
+
+# Log rotation settings
+logrotate:
+  rotate_count: 7
+
+# Application configuration
+config:
+  app:
+    name: "bytefreezer-proxy"
+    version: "0.0.1"
+  
+  logging:
+    level: "info"
+    encoding: "console"
+  
+  server:
+    api_port: 8088
+  
+  udp:
+    enabled: true
+    host: "0.0.0.0"
+    read_buffer_size_bytes: 134217728  # 128MB
+    max_batch_lines: 100000
+    max_batch_bytes: 268435456  # 256MB
+    batch_timeout_seconds: 30
+    enable_compression: true
+    compression_level: 6
+    
+    # Multiple port configuration with dataset mapping
+    listeners:
+      - port: 2056
+        dataset_id: "syslog-data"
+      - port: 2057
+        dataset_id: "ebpf-data"
+      - port: 2058
+        dataset_id: "application-logs"
+  
+  # Global tenant configuration
+  tenant_id: "customer-1"
+  bearer_token: "bearer-token-customer-1-dev"
+
+  receiver:
+    base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+    timeout_seconds: 30
+    retry_count: 3
+    retry_delay_seconds: 1
+  
+  soc:
+    enabled: false
+    endpoint: ""
+    timeout: 30
+  
+  otel:
+    enabled: false
+    endpoint: "localhost:4317"
+    service_name: "bytefreezer-proxy"
+    scrapeIntervalseconds: 100
+  
+  housekeeping:
+    enabled: true
+    intervalseconds: 60
+  
+  spooling:
+    enabled: true
+    directory: "{{ paths.spool_dir }}"
+    max_size_bytes: 1073741824  # 1GB
+    retry_attempts: 5
+    retry_interval_seconds: 60
+    cleanup_interval_seconds: 300
+  
+  dev: false
+
+# Download configuration
+download:
+  url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/bytefreezer-proxy-linux-amd64.tar.gz"
+
+# Remove configuration
+remove:
+  spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"

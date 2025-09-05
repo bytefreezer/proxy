@@ -2,19 +2,11 @@
 - name: Remove ByteFreezer Proxy service (Docker extraction method)
   hosts: all
   become: yes
-  vars:
-    bytefreezer_binary_dest: "/usr/local/bin/bytefreezer-proxy"
-    bytefreezer_config_dir: "/etc/bytefreezer-proxy"
-    bytefreezer_log_dir: "/var/log/bytefreezer-proxy"
-    bytefreezer_service_path: "/etc/systemd/system/bytefreezer-proxy.service"
-    bytefreezer_logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
-    bytefreezer_spooling_dir: "/var/spool/bytefreezer-proxy"
-    remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
   pre_tasks:
     - name: Check if service exists
       ansible.builtin.stat:
-        path: "{{ bytefreezer_service_path }}"
+        path: "{{ paths.service_path }}"
       register: service_exists
 
     - name: Display removal information
@@ -26,49 +18,48 @@
   tasks:
     - name: Stop and disable service
       ansible.builtin.shell: |
-        sudo systemctl stop bytefreezer-proxy || true
-        sudo systemctl disable bytefreezer-proxy || true
+        sudo systemctl stop {{ service.name }} || true
+        sudo systemctl disable {{ service.name }} || true
         timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
       when: service_exists.stat.exists
       ignore_errors: yes
 
-
     - name: Remove systemd service file
       ansible.builtin.shell: |
-        sudo rm -f "{{ bytefreezer_service_path }}"
+        sudo rm -f "{{ paths.service_path }}"
         timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
       ignore_errors: yes
 
     - name: Remove logrotate configuration
       ansible.builtin.shell: |
-        sudo rm -f "{{ bytefreezer_logrotate_path }}"
+        sudo rm -f "{{ paths.logrotate_path }}"
       ignore_errors: yes
 
     - name: Remove binary
       ansible.builtin.shell: |
-        sudo rm -f "{{ bytefreezer_binary_dest }}"
+        sudo rm -f "{{ paths.binary_path }}"
       ignore_errors: yes
 
     - name: Remove configuration directory
       ansible.builtin.shell: |
-        sudo rm -rf "{{ bytefreezer_config_dir }}"
+        sudo rm -rf "{{ paths.config_dir }}"
       ignore_errors: yes
 
     - name: Remove log directory
       ansible.builtin.shell: |
-        sudo rm -rf "{{ bytefreezer_log_dir }}"
+        sudo rm -rf "{{ paths.log_dir }}"
       ignore_errors: yes
 
     - name: Remove spooling directory (only if explicitly requested)
       ansible.builtin.shell: |
-        sudo rm -rf "{{ bytefreezer_spooling_dir }}"
-      when: remove_spooling_dir
+        sudo rm -rf "{{ paths.spool_dir }}"
+      when: remove.spooling_dir
       ignore_errors: yes
 
   post_tasks:
     - name: Verify removal
       ansible.builtin.stat:
-        path: "{{ bytefreezer_service_path }}"
+        path: "{{ paths.service_path }}"
       register: service_removed
 
     - name: Display removal status
@@ -76,7 +67,6 @@
         msg:
           - "ByteFreezer Proxy removal completed!"
           - "Service removed: {{ not service_removed.stat.exists }}"
-          - "Binary removed: {{ bytefreezer_binary_dest }}"
-          - "Directories removed: {{ bytefreezer_config_dir }}, {{ bytefreezer_log_dir }}"
-          - "Spooling directory preserved: {{ bytefreezer_spooling_dir }} (unless remove_spooling_dir=true)"
-
+          - "Binary removed: {{ paths.binary_path }}"
+          - "Directories removed: {{ paths.config_dir }}, {{ paths.log_dir }}"
+          - "Spooling directory preserved: {{ paths.spool_dir }} (unless remove_spooling_dir=true)"
