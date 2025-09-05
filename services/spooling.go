@@ -125,7 +125,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 
 	// Generate unique ID and filename
 	id := fmt.Sprintf("%d_%s_%s", time.Now().UnixNano(), tenantID, datasetID)
-	
+
 	// Check if data is gzip compressed by looking at magic bytes
 	var filename string
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
@@ -135,7 +135,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		// Data is uncompressed
 		filename = fmt.Sprintf("%s.ndjson", id)
 	}
-	
+
 	filePath := filepath.Join(s.directory, filename)
 	metaFilepath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", id))
 
