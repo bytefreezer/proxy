@@ -4,7 +4,7 @@
 
 # Installation settings
 bytefreezer_proxy_github_repo: "n0needt0/bytefreezer-proxy"
-bytefreezer_proxy_release_url: "https://api.github.com/repos/{{ bytefreezer_proxy_github_repo }}/releases/latest"
+bytefreezer_proxy_release_url: "https://api.github.com/repos/n0needt0/bytefreezer-proxy/releases/latest"
 bytefreezer_proxy_binary_name: "bytefreezer-proxy"
 
 # System settings
