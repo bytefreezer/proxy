@@ -2,19 +2,6 @@
 - name: Remove ByteFreezer Proxy service
   hosts: all
   become: yes
-  vars:
-    # Fallback paths in case group_vars don't load
-    paths:
-      service_path: "/etc/systemd/system/bytefreezer-proxy.service"
-      binary_path: "/usr/local/bin/bytefreezer-proxy"
-      config_dir: "/etc/bytefreezer-proxy"
-      log_dir: "/var/log/bytefreezer-proxy"
-      spool_dir: "/var/spool/bytefreezer-proxy"
-      logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
-    service:
-      name: "bytefreezer-proxy"
-    remove:
-      spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
   pre_tasks:
     - name: Check if service exists
