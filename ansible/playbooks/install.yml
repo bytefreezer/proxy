@@ -40,6 +40,7 @@
       set_fact:
         release_version: "{{ github_release.json.tag_name if version == 'latest' else version }}"
         download_url: "{{ github_release.json.assets | selectattr('name', 'match', '.*' + binary_name + '.tar.gz$') | map(attribute='browser_download_url') | first if version == 'latest' else 'https://github.com/' + github_repo + '/releases/download/' + version + '/' + binary_name + '.tar.gz' }}"
+      become: no
 
     - name: Create temporary directory for download
       ansible.builtin.tempfile:
