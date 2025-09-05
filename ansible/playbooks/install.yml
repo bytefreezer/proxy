@@ -43,16 +43,14 @@
         remote_src: yes
       
     - name: Copy binary to /usr/local/bin
-      ansible.builtin.command:
-        cmd: cp "{{ temp_dir.path }}/{{ binary_name }}" "{{ bytefreezer_binary_dest }}"
+      ansible.builtin.shell: |
+        sudo cp "{{ temp_dir.path }}/{{ binary_name }}" "{{ bytefreezer_binary_dest }}"
+      args:
         creates: "{{ bytefreezer_binary_dest }}"
-      become: yes
 
     - name: Set binary permissions
-      ansible.builtin.file:
-        path: "{{ bytefreezer_binary_dest }}"
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo chmod 755 "{{ bytefreezer_binary_dest }}"
 
     - name: Clean up temporary directory
       ansible.builtin.file:
