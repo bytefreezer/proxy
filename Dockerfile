@@ -1,12 +1,9 @@
 # Multi-stage build for ByteFreezer Proxy
 # Stage 1: Build the Go binary
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24.1 AS builder
 
 # Set working directory
 WORKDIR /app
-
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files first for better layer caching
 COPY go.mod go.sum ./
@@ -22,8 +19,7 @@ COPY . .
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -a -installsuffix cgo \
-    -ldflags="-s -w -extldflags '-static' -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o bytefreezer-proxy .
 
 # Debug: Check what we built
