@@ -64,7 +64,7 @@ jobs:
     strategy:
       matrix:
         os: [linux]
-        arch: [amd64, arm64, arm]
+        arch: [amd64]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -146,7 +146,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -191,9 +191,7 @@ jobs:
           
           **Binary Download:**
           - **Linux AMD64**: `bytefreezer-proxy-linux-amd64.tar.gz`
-          - **Linux ARM64**: `bytefreezer-proxy-linux-arm64.tar.gz`
-          - **Linux ARM**: `bytefreezer-proxy-linux-arm.tar.gz`
-          
+                 
           **Quick Start:**
           ```bash
           # Extract binary
