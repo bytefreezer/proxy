@@ -59,6 +59,10 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 				Port: udpListener.Port,
 			},
 		}
+
+		// Debug log to verify values are set
+		log.Debugf("Created port listener - Port: %d, TenantID: '%s', DatasetID: '%s'",
+			portListener.port, portListener.tenantID, portListener.datasetID)
 		portListeners = append(portListeners, portListener)
 	}
 
@@ -105,8 +109,9 @@ func (l *Listener) Start() error {
 			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr.String(), err)
 		}
 
-		log.Infof("UDP server listening on %s (tenant: %s, dataset: %s)",
-			portListener.addr.String(), portListener.tenantID, portListener.datasetID)
+		log.Info("UDP server listening on " + portListener.addr.IP.String() + ":" +
+			fmt.Sprintf("%d", portListener.addr.Port) + " (tenant: " + portListener.tenantID +
+			", dataset: " + portListener.datasetID + ")")
 
 		// Start message handler for this port
 		l.wg.Add(1)

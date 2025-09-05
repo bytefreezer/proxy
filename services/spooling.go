@@ -41,6 +41,7 @@ type SpooledFile struct {
 	CreatedAt     time.Time `json:"created_at"`
 	LastRetry     time.Time `json:"last_retry"`
 	RetryCount    int       `json:"retry_count"`
+	Status        string    `json:"status"` // "pending", "retrying", "failed", "success"
 	FailureReason string    `json:"failure_reason,omitempty"`
 }
 
@@ -74,8 +75,8 @@ func (s *SpoolingService) Start() error {
 		log.Warnf("Failed to calculate current spooling size: %v", err)
 	}
 
-	log.Infof("Spooling service started - directory: %s, max size: %d bytes",
-		s.directory, s.maxSize)
+	log.Info("Spooling service started - directory: " + s.directory +
+		", max size: " + fmt.Sprintf("%d", s.maxSize) + " bytes")
 
 	// Start background goroutines
 	s.wg.Add(2)
@@ -143,6 +144,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		CreatedAt:     time.Now(),
 		LastRetry:     time.Time{},
 		RetryCount:    0,
+		Status:        "pending",
 		FailureReason: failureReason,
 	}
 
@@ -204,6 +206,11 @@ func (s *SpoolingService) processRetries() {
 	failureCount := 0
 
 	for _, file := range files {
+		// Skip files that are permanently failed
+		if file.Status == "failed" {
+			continue
+		}
+
 		// Check if it's time to retry
 		if time.Since(file.LastRetry) < s.retryInterval {
 			continue
@@ -216,14 +223,14 @@ func (s *SpoolingService) processRetries() {
 				s.config.SOCAlertClient.SendAlert(
 					"high",
 					"Spooled File Max Retries Reached",
-					"A spooled file has exceeded the maximum retry attempts",
-					fmt.Sprintf("File: %s, Tenant: %s, Dataset: %s, Attempts: %d",
-						file.ID, file.TenantID, file.DatasetID, file.RetryCount),
+					"A spooled file has exceeded the maximum retry attempts - file preserved for manual recovery",
+					fmt.Sprintf("File: %s, Tenant: %s, Dataset: %s, Attempts: %d, Path: %s",
+						file.ID, file.TenantID, file.DatasetID, file.RetryCount, filepath.Join(s.directory, file.Filename)),
 				)
 			}
 
-			// Mark for cleanup
-			s.markForCleanup(file)
+			// Keep file but don't retry anymore - mark as permanently failed
+			s.markAsPermanentlyFailed(file)
 			failureCount++
 			continue
 		}
@@ -252,7 +259,7 @@ func (s *SpoolingService) processRetries() {
 			failureCount++
 			log.Debugf("Retry failed for %s: %v", file.ID, err)
 		} else {
-			// Success - remove files
+			// Success - remove files (only case where files are deleted)
 			s.removeSpooledFile(file)
 			successCount++
 			log.Debugf("Retry succeeded for %s", file.ID)
@@ -353,6 +360,7 @@ func (s *SpoolingService) updateRetryMetadata(file SpooledFile, failureReason st
 	file.RetryCount++
 	file.LastRetry = time.Now()
 	file.FailureReason = failureReason
+	file.Status = "retrying"
 
 	metaPath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", file.ID))
 	metaData, err := json.Marshal(file)
@@ -387,10 +395,24 @@ func (s *SpoolingService) removeSpooledFile(file SpooledFile) error {
 	return nil
 }
 
-// markForCleanup marks a file for cleanup (used for files that exceeded retry limit)
-func (s *SpoolingService) markForCleanup(file SpooledFile) {
-	file.RetryCount = s.retryAttempts + 1 // Exceed limit to trigger cleanup
-	s.updateRetryMetadata(file, "Exceeded maximum retry attempts")
+// markAsPermanentlyFailed marks a file as permanently failed but preserves it
+func (s *SpoolingService) markAsPermanentlyFailed(file SpooledFile) {
+	file.Status = "failed"
+	file.LastRetry = time.Now()
+	file.FailureReason = "Exceeded maximum retry attempts - manual recovery required"
+	
+	metaPath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", file.ID))
+	metaData, err := json.Marshal(file)
+	if err != nil {
+		log.Warnf("Failed to marshal permanently failed metadata for %s: %v", file.ID, err)
+		return
+	}
+
+	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+		log.Warnf("Failed to write permanently failed metadata for %s: %v", file.ID, err)
+	} else {
+		log.Infof("Marked file as permanently failed: %s (preserved for manual recovery)", file.ID)
+	}
 }
 
 // calculateCurrentSize calculates the current total size of spooled files

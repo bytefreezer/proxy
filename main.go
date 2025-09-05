@@ -137,7 +137,8 @@ func main() {
 			}
 		}()
 
-		log.Infof("UDP listener enabled on %s with %d listeners", cfg.UDP.Host, len(cfg.UDP.Listeners))
+		log.Info("UDP listener enabled on " + cfg.UDP.Host + " with " +
+			fmt.Sprintf("%d", len(cfg.UDP.Listeners)) + " listeners")
 	} else {
 		log.Info("UDP listener is disabled")
 	}
