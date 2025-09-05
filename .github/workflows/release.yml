@@ -256,30 +256,6 @@ jobs:
         }
         EOF
 
-    - name: Build Debian package with FPM
-      run: |
-        VERSION=${GITHUB_REF_NAME#v}
-        PACKAGE_NAME="bytefreezer-proxy"
-        
-        fpm -s dir -t deb \
-          -n "$PACKAGE_NAME" \
-          -v "$VERSION" \
-          -a amd64 \
-          -m "ByteFreezer <noreply@bytefreezer.io>" \
-          --description "ByteFreezer Proxy - UDP Data Collection and Forwarding Service" \
-          --url "https://github.com/n0needt0/bytefreezer-proxy" \
-          --license "MIT" \
-          --category "network" \
-          --depends "systemd" \
-          --after-install debian/postinst \
-          --before-remove debian/prerm \
-          --after-remove debian/postrm \
-          --deb-systemd pkg/etc/systemd/system/bytefreezer-proxy.service \
-          --deb-systemd-enable \
-          --deb-systemd-auto-start \
-          -C pkg \
-          .
-
     - name: Create post-install script
       run: |
         mkdir -p debian

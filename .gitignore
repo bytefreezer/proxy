@@ -24,8 +24,12 @@ go.work
 # sqllite db file or local testing.
 gorm.db
 
-#ignore build file
+#ignore build files
 bytefreezer-proxy
+bytefreezer-proxy-*
+
+# Ansible build artifacts
+ansible/dist/
 
 #ignore DS_STORE
 *.DS_Store
