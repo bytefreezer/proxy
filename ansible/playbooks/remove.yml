@@ -5,6 +5,19 @@
   become: true
   gather_facts: true
 
+  vars:
+    # Default values for all variables used in playbook
+    bytefreezer_proxy_service_name: "{{ bytefreezer_proxy_service_name | default('bytefreezer-proxy') }}"
+    bytefreezer_proxy_user: "{{ bytefreezer_proxy_user | default('bytefreezer') }}"
+    bytefreezer_proxy_group: "{{ bytefreezer_proxy_group | default('bytefreezer') }}"
+    bytefreezer_proxy_install_dir: "{{ bytefreezer_proxy_install_dir | default('/opt/bytefreezer-proxy') }}"
+    bytefreezer_proxy_config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
+    bytefreezer_proxy_log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
+    bytefreezer_proxy_spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
+    bytefreezer_proxy_backup_on_remove: "{{ bytefreezer_proxy_backup_on_remove | default(false) }}"
+    bytefreezer_proxy_backup_dir: "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}"
+    bytefreezer_proxy_remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
+
   pre_tasks:
     - name: Check if service exists
       ansible.builtin.stat:
