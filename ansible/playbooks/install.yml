@@ -39,7 +39,7 @@
         level: "info"
         encoding: "console"
       server:
-        api_port: "{{ api_port }}"
+        api_port: "{{ bytefreezer_proxy_api_port | default(8088) }}"
       udp:
         enabled: true
         host: "0.0.0.0"

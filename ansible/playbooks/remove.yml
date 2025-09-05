@@ -14,8 +14,8 @@
     config_dir: "{{ bytefreezer_proxy_config_dir | default('/etc/bytefreezer-proxy') }}"
     log_dir: "{{ bytefreezer_proxy_log_dir | default('/var/log/bytefreezer-proxy') }}"
     spooling_dir: "{{ bytefreezer_proxy_spooling_dir | default('/var/spool/bytefreezer-proxy') }}"
-    backup_on_remove: "{{ backup_on_remove }}"
-    backup_dir: "{{ backup_dir }}"
+    backup_on_remove: "{{ bytefreezer_proxy_backup_on_remove | default(false) }}"
+    backup_dir: "{{ bytefreezer_proxy_backup_dir | default('/opt/backups/bytefreezer-proxy') }}"
     remove_spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
   pre_tasks:
