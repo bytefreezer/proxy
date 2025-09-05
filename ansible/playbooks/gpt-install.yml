@@ -45,35 +45,25 @@
         create_home: yes
       become: yes
 
-    - name: Install Docker (if not present)
-      ansible.builtin.package:
-        name: docker.io
-        state: present
-      become: yes
+    - name: Set download URL
+      set_fact:
+        download_url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/{{ binary_name }}.tar.gz"
 
-    - name: Start and enable Docker service
-      ansible.builtin.systemd:
-        name: docker
-        state: started
-        enabled: yes
-      become: yes
-
-    - name: Create temporary directory
+    - name: Create temporary directory for download
       ansible.builtin.tempfile:
         state: directory
         suffix: bytefreezer
       register: temp_dir
 
-    - name: Pull binary from GitHub Container Registry
-      ansible.builtin.shell: |
-        docker run --rm -v {{ temp_dir.path }}:/output \
-          ghcr.io/{{ github_repo_owner | default('n0needt0') }}/bytefreezer-proxy:{{ version | default('latest') }} \
-          sh -c "cp /bytefreezer-proxy /output/"
-      become: yes
+    - name: Download and extract binary
+      ansible.builtin.unarchive:
+        src: "{{ download_url }}"
+        dest: "{{ temp_dir.path }}"
+        remote_src: yes
 
     - name: Copy binary to /usr/local/bin
       ansible.builtin.copy:
-        src: "{{ temp_dir.path }}/bytefreezer-proxy"
+        src: "{{ temp_dir.path }}/{{ binary_name }}"
         dest: "{{ bytefreezer_binary_dest }}"
         mode: '0755'
         owner: root
