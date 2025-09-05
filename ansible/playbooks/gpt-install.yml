@@ -60,6 +60,7 @@
         src: "{{ download_url }}"
         dest: "{{ temp_dir.path }}"
         remote_src: yes
+      become: yes
 
     - name: Copy binary to /usr/local/bin
       ansible.builtin.copy:

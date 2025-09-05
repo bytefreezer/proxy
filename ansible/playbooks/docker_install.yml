@@ -1,5 +1,5 @@
 ---
-- name: Install and configure ByteFreezer Proxy service
+- name: Install and configure ByteFreezer Proxy service (Docker binary extraction)
   hosts: all
   become: yes
   vars:
@@ -9,10 +9,9 @@
     bytefreezer_service_path: "/etc/systemd/system/bytefreezer-proxy.service"
     bytefreezer_logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
     bytefreezer_spooling_dir: "/var/spool/bytefreezer-proxy"
-    github_repo: "{{ bytefreezer_proxy_github_repo | default('n0needt0/bytefreezer-proxy') }}"
+    github_repo_owner: "{{ bytefreezer_github_repo_owner | default('n0needt0') }}"
     version: "{{ bytefreezer_proxy_version | default('latest') }}"
-    release_url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
-    binary_name: "bytefreezer-proxy-linux-amd64"
+    container_image: "ghcr.io/{{ github_repo_owner }}/bytefreezer-proxy:{{ version }}"
 
   pre_tasks:
     - name: Check if service already exists
@@ -22,30 +21,49 @@
 
     - name: Fail if service already installed
       fail:
-        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
+        msg: "ByteFreezer Proxy service is already installed. Use docker_remove playbook first."
       when: service_exists.stat.exists
 
-  tasks:
-    - name: Set download URL
-      set_fact:
-        download_url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/{{ binary_name }}.tar.gz"
+    - name: Verify Docker is installed and running
+      ansible.builtin.service_facts:
+      register: services
 
-    - name: Create temporary directory for download
+    - name: Check if Docker service exists
+      fail:
+        msg: "Docker is not installed or running. Please install Docker first."
+      when: "'docker.service' not in services.ansible_facts.services or services.ansible_facts.services['docker.service'].state != 'running'"
+
+    - name: Test Docker access
+      ansible.builtin.shell: docker info
+      register: docker_test
+      failed_when: docker_test.rc != 0
+      become: yes
+
+  tasks:
+    - name: Create temporary directory
       ansible.builtin.tempfile:
         state: directory
         suffix: bytefreezer
       register: temp_dir
 
-    - name: Download and extract binary
-      ansible.builtin.unarchive:
-        src: "{{ download_url }}"
-        dest: "{{ temp_dir.path }}"
-        remote_src: yes
+    - name: Pull binary from container image
+      ansible.builtin.shell: |
+        docker run --rm -v {{ temp_dir.path }}:/output \
+          {{ container_image }} \
+          sh -c "cp /bytefreezer-proxy /output/"
       become: yes
+      register: docker_extract
+      failed_when: docker_extract.rc != 0
+
+    - name: Verify binary was extracted
+      ansible.builtin.stat:
+        path: "{{ temp_dir.path }}/bytefreezer-proxy"
+      register: extracted_binary
+      failed_when: not extracted_binary.stat.exists
 
     - name: Copy binary to /usr/local/bin
       ansible.builtin.copy:
-        src: "{{ temp_dir.path }}/{{ binary_name }}"
+        src: "{{ temp_dir.path }}/bytefreezer-proxy"
         dest: "{{ bytefreezer_binary_dest }}"
         mode: '0755'
         remote_src: yes
@@ -127,11 +145,6 @@
         daemon_reload: true
       become: yes
 
-    - name: Clean up temporary directory
-      ansible.builtin.file:
-        path: "{{ temp_dir.path }}"
-        state: absent
-
   post_tasks:
     - name: Display installation status
       debug:
@@ -141,6 +154,7 @@
           - "Config: {{ bytefreezer_config_path }}"
           - "Logs: {{ bytefreezer_log_dir }}"
           - "Spooling: {{ bytefreezer_spooling_dir }}"
+          - "Container image: {{ container_image }}"
           - "Service: systemctl status bytefreezer-proxy"
 
   handlers:
