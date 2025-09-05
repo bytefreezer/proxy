@@ -1,6 +1,6 @@
 # Multi-stage build for ByteFreezer Proxy
 # Stage 1: Build the Go binary
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -88,6 +88,8 @@ WORKDIR /opt/bytefreezer-proxy
 CMD ["./bytefreezer-proxy", "--config", "/etc/bytefreezer-proxy/config.yaml"]
 
 # Metadata labels following OCI standards
+ARG VERSION=unknown
+ARG BUILD_TIME=unknown
 LABEL maintainer="ByteFreezer Team" \
       org.opencontainers.image.title="ByteFreezer Proxy" \
       org.opencontainers.image.description="High-performance UDP log proxy for ByteFreezer platform" \
