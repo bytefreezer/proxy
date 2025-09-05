@@ -123,11 +123,47 @@
         mode: '0644'
   
     - name: Create systemd service file
-      ansible.builtin.template:
-        src: bytefreezer-proxy.service.j2
-        dest: "{{ bytefreezer_service_path }}"
-        mode: '0644'
-      notify: Reload systemd
+      ansible.builtin.shell: |
+        sudo tee "{{ bytefreezer_service_path }}" > /dev/null <<'EOF'
+        [Unit]
+        Description=ByteFreezer Proxy - UDP Data Collection and Forwarding Service
+        Documentation=https://github.com/n0needt0/bytefreezer-proxy
+        After=network-online.target
+        Wants=network-online.target
+        
+        [Service]
+        Type=simple
+        User=root
+        Group=root
+        WorkingDirectory=/usr/local/bin
+        ExecStart={{ bytefreezer_binary_dest }} --config="{{ bytefreezer_config_path }}"
+        ExecReload=/bin/kill -HUP $MAINPID
+        KillMode=mixed
+        KillSignal=SIGTERM
+        TimeoutStopSec=30
+        
+        # Restart settings
+        Restart=always
+        RestartSec=10
+        StartLimitInterval=60
+        StartLimitBurst=5
+        
+        # Resource limits
+        LimitNOFILE=65536
+        LimitNPROC=4096
+        
+        # Logging to files
+        StandardOutput=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy.log
+        StandardError=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy-error.log
+        
+        # Environment
+        Environment=CONFIG_FILE={{ bytefreezer_config_path }}
+        Environment=LOG_LEVEL=INFO
+        
+        [Install]
+        WantedBy=multi-user.target
+        EOF
+        sudo chmod 644 "{{ bytefreezer_service_path }}"
 
     - name: Enable and start service
       ansible.builtin.systemd:

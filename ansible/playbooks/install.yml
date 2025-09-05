@@ -257,6 +257,10 @@
         LimitNOFILE=65536
         LimitNPROC=4096
         
+        # Logging to files
+        StandardOutput=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy.log
+        StandardError=append:{{ bytefreezer_log_dir }}/bytefreezer-proxy-error.log
+        
         # Environment
         Environment=CONFIG_FILE={{ bytefreezer_config_path }}
         Environment=LOG_LEVEL=INFO
