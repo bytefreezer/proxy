@@ -24,7 +24,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 
 # Debug: Check what we built
 RUN ls -l /app
-RUN file /app
 
 # Verify the binary is statically linked
 RUN ldd /app 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static!" && ldd /app && exit 1)
