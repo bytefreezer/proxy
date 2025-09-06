@@ -110,9 +110,15 @@ config:
   
   dev: false
 
-# Download configuration
+# Download configuration for install.yml
 download:
   url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/bytefreezer-proxy-linux-amd64.tar.gz"
+
+# Docker image configuration for docker_install.yml
+docker:
+  image_name: "ghcr.io/n0needt0/bytefreezer-proxy"
+  tag: "{{ bytefreezer_proxy_version | default('latest') }}"
+  force_pull: false  # Set to true to always pull latest image
 
 # Remove configuration
 remove:

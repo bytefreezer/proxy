@@ -58,15 +58,22 @@ chmod +x bytefreezer-proxy
 ### Production Deployment
 
 **Ansible (Recommended):**
+
+*Two installation methods available:*
+
 ```bash
 # Clone repository
 git clone https://github.com/n0needt0/bytefreezer-proxy.git
 cd bytefreezer-proxy/ansible/playbooks
 
-# Configure inventory and run install playbook
+# Method 1: Install from GitHub releases (default)
 ansible-playbook -i inventory.yml install.yml
 
-# Remove service (when needed)
+# Method 2: Install from Docker image (requires Docker on target hosts)
+# More reliable, uses same binary as containers
+ansible-playbook -i inventory.yml docker_install.yml
+
+# Remove service (works with both installation methods)
 ansible-playbook -i inventory.yml remove.yml
 ```
 
@@ -197,6 +204,23 @@ udp:
 - port: 2059
   dataset_id: "security-logs"  # Must be unique and non-empty
 ```
+
+#### Installation Method Comparison
+
+| Method | Playbook | Requirements | Benefits |
+|--------|----------|--------------|----------|
+| **GitHub Releases** | `install.yml` | Internet access | Standard, works everywhere |
+| **Docker Extraction** | `docker_install.yml` | Docker installed | More reliable, consistent with containers |
+
+**Use Docker extraction when**:
+- Hosts already have Docker installed
+- You want identical binaries to your container deployments
+- GitHub releases are blocked or unreliable in your environment
+
+**Use GitHub releases when**:
+- Clean hosts without Docker
+- Minimal dependencies preferred
+- Air-gapped environments (download releases separately)
 
 ### Receiver Configuration  
 ```yaml
