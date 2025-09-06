@@ -42,11 +42,18 @@
       register: docker_pull
       failed_when: docker_pull.rc != 0
 
+    - name: Set temporary directory permissions for Docker
+      ansible.builtin.file:
+        path: "{{ temp_dir.path }}"
+        mode: '0777'
+        state: directory
+
     - name: Extract binary from Docker image
       ansible.builtin.shell: |
         docker run --rm -v {{ temp_dir.path }}:/output \
+          --user root \
           {{ docker.image_name }}:{{ docker.tag }} \
-          sh -c "cp /app /output/bytefreezer-proxy"
+          sh -c "cp /app /output/bytefreezer-proxy && chmod 755 /output/bytefreezer-proxy"
       register: docker_extract
       failed_when: docker_extract.rc != 0
 
