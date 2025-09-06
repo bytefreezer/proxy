@@ -52,9 +52,9 @@ config:
     # Multiple port configuration with dataset mapping
     listeners:
       - port: 2056
-        dataset_id: "syslog-data"
-      - port: 2057
         dataset_id: "ebpf-data"
+      - port: 2057
+        dataset_id: "syslog-data"
       - port: 2058
         dataset_id: "application-logs"
   
