@@ -50,10 +50,13 @@ chmod +x bytefreezer-proxy
 ```bash
 # Clone repository
 git clone https://github.com/n0needt0/bytefreezer-proxy.git
-cd bytefreezer-proxy/ansible
+cd bytefreezer-proxy/ansible/playbooks
 
-# Configure inventory and run
-ansible-playbook -i inventory.yml playbooks/install.yml
+# Configure inventory and run install playbook
+ansible-playbook -i inventory.yml install.yml
+
+# Remove service (when needed)
+ansible-playbook -i inventory.yml remove.yml
 ```
 
 **Docker Compose:**

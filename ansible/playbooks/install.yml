@@ -35,7 +35,6 @@
         group: root
         mode: '0755'
         remote_src: yes
-      become: yes
 
     - name: Ensure config directory exists
       ansible.builtin.file:
@@ -44,7 +43,6 @@
         owner: root
         group: root
         mode: '0755'
-      become: yes
 
     - name: Ensure log directory exists
       ansible.builtin.file:
@@ -53,7 +51,6 @@
         owner: root
         group: root
         mode: '0755'
-      become: yes
       
     - name: Ensure spooling directory exists
       ansible.builtin.file:
@@ -62,11 +59,10 @@
         owner: root
         group: root
         mode: '0755'
-      become: yes
       
     - name: Generate configuration file
       ansible.builtin.template:
-        src: config.yaml.j2
+        src: templates/config.yaml.j2
         dest: "/tmp/config.yaml"
         mode: '0644'
         
@@ -78,11 +74,10 @@
         group: root
         mode: '0644'
         remote_src: yes
-      become: yes
       
     - name: Install logrotate configuration
       ansible.builtin.template:
-        src: logrotate.j2
+        src: templates/logrotate.j2
         dest: "/tmp/logrotate"
         mode: '0644'
         
@@ -94,11 +89,10 @@
         group: root
         mode: '0644'
         remote_src: yes
-      become: yes
       
     - name: Create systemd service file
       ansible.builtin.template:
-        src: bytefreezer-proxy.service.j2
+        src: templates/bytefreezer-proxy.service.j2
         dest: "/tmp/bytefreezer-proxy.service"
         mode: '0644'
         
@@ -110,7 +104,6 @@
         group: root
         mode: '0644'
         remote_src: yes
-      become: yes
 
     - name: Enable and start service
       ansible.builtin.systemd:
@@ -118,7 +111,6 @@
         enabled: yes
         state: started
         daemon_reload: yes
-      become: yes
 
     - name: Clean up temporary directory
       ansible.builtin.file:

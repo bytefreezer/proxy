@@ -1,39 +1,37 @@
 # Claude Code Session Notes
 
-## Pre-commit Checklist 
-**RUN THESE EVERY TIME BEFORE COMPLETING TASKS:**
+## Always Test Before Completing Tasks
 
 ```bash
 # 1. Format Go code
 go fmt ./...
 
-# 2. Check formatting 
-gofmt -s -l .
-
-# 3. Run Go vet
+# 2. Run Go vet
 go vet ./...
 
-# 4. Build to verify no compile errors
+# 3. Build to verify compilation
 go build .
 
-# 5. Test Ansible syntax if playbooks were modified
-ansible-playbook --syntax-check playbooks/*.yml
+# 4. Test Ansible syntax (if modified)
+cd ansible/playbooks && ansible-playbook --syntax-check *.yml
 ```
 
-## Project Structure
-- **Go application**: ByteFreezer Proxy (UDP data collection & forwarding)
-- **Ansible automation**: Production deployment via playbooks
-- **Templates**: Centralized in `ansible/templates/`
-- **Variables**: Single source in `ansible/group_vars/all.yml`
+## Current Project Status
 
-## Recent Fixes
-- ✅ Fixed spooling file extensions (.ndjson vs .ndjson.gz for compressed)
-- ✅ Added file-based logging via systemd StandardOutput/StandardError  
-- ✅ Refactored Ansible to use proper templates instead of inline content
-- ✅ Consolidated duplicate variables files
-- ✅ Fixed Go formatting issues
+### Structure
+- **Go service**: UDP proxy with batching and compression
+- **Ansible deployment**: `install.yml` and `remove.yml` playbooks
+- **Templates**: `templates/` directory with 3 template files
+- **Variables**: Single source in `group_vars/all.yml`
 
-## Commands to Remember
-- **View logs**: `journalctl -u bytefreezer-proxy -f` or check `/var/log/bytefreezer-proxy/`
-- **Service status**: `systemctl status bytefreezer-proxy`
-- **Deploy**: `ansible-playbook -i inventory.yml playbooks/install.yml`
+### Recent Work
+- Simplified Ansible playbooks (removed docker variants)
+- Moved templates to separate directory with proper references
+- Removed duplicate variables and become directives
+- Fixed permissions using playbook-level `become: yes`
+
+### Key Commands
+- **Deploy service**: `ansible-playbook install.yml`
+- **Remove service**: `ansible-playbook remove.yml`
+- **Check health**: `curl http://server:8088/health`
+- **View logs**: `/var/log/bytefreezer-proxy/*.log`

@@ -1,216 +1,82 @@
-# ByteFreezer Proxy Testing Guide
+# Testing Guide
 
-This document explains how to test the ByteFreezer Proxy UDP functionality and spooling behavior.
-
-## Quick Start with Docker
-
-The easiest way to test ByteFreezer Proxy is with Docker:
+## Quick Test
 
 ```bash
-# Pull the latest image
-docker pull ghcr.io/n0needt0/bytefreezer-proxy:latest
+# Start service
+./bytefreezer-proxy --config config.yaml
 
-# Run with default config (adjust config.yaml as needed)
-docker run -p 8088:8088 -p 2056-2058:2056-2058/udp -v $(pwd)/config.yaml:/config.yaml ghcr.io/n0needt0/bytefreezer-proxy:latest
+# Send test data
+echo '{"test": "message"}' | nc -u localhost 2056
 
-# Or use Docker Compose for full setup
-docker-compose up -d
+# Check health
+curl http://localhost:8088/health
 ```
 
 ## Test Scripts
 
-### 1. `test_udp_streams.sh` - Single Test Run
-
-Sends test data to all three configured UDP ports and checks the spooling directory.
-
+### UDP Streams Test
 ```bash
 ./testing_scripts/test_udp_streams.sh
 ```
+Tests all UDP ports (2056, 2057, 2058) and verifies spooling.
 
-**What it does:**
-- Sends JSON data to ports 2056 (syslog-data), 2057 (ebpf-data), and 2058 (application-logs)
-- Waits for processing and checks the spooling directory
-- Shows detailed information about spooled files and metadata
-
-### 2. `test_continuous.sh` - Continuous Testing
-
-Sends data continuously to test batching behavior and load handling.
-
+### Continuous Load Test
 ```bash
 ./testing_scripts/test_continuous.sh
 ```
+Sends continuous data to test batching and performance.
 
-**Configuration (edit the script to modify):**
-- `INTERVAL=5` - seconds between sends
-- `COUNT=10` - number of iterations
-- Automatically rotates through different data patterns
-
-### 3. `check_spooling.sh` - Monitor Spooling Directory
-
-Checks and displays the current state of the spooling directory.
-
+### Check Spooling
 ```bash
 ./testing_scripts/check_spooling.sh
+```
+Shows spooled files and directory status.
 
-# For real-time monitoring:
-watch -n2 ./testing_scripts/check_spooling.sh
+## Manual Testing
+
+### Send Data to Different Ports
+```bash
+# Syslog data (port 2056)
+echo '{"level": "info", "message": "test log"}' | nc -u localhost 2056
+
+# eBPF data (port 2057)  
+echo '{"event": "process_exec", "pid": 1234}' | nc -u localhost 2057
+
+# Application logs (port 2058)
+echo '{"app": "web", "status": "started"}' | nc -u localhost 2058
 ```
 
-## Test Scenarios
+### Check Results
+```bash
+# View spooled files
+ls -la /var/spool/bytefreezer-proxy/
 
-### Scenario 1: Test Spooling (Receiver Unavailable)
+# Check service metrics
+curl http://localhost:8088/metrics
 
-1. **Ensure receiver is NOT running** (or set invalid URL in config)
-2. **Start the proxy:**
-   ```bash
-   ./bytefreezer-proxy --config config.yaml
-   ```
-3. **Send test data:**
-   ```bash
-   ./testing_scripts/test_udp_streams.sh
-   ```
-4. **Check spooling directory:**
-   ```bash
-   ./testing_scripts/check_spooling.sh
-   ```
-
-**Expected Result:** Files should appear in `/tmp/bytefreezer-proxy/`
-
-### Scenario 2: Test Successful Forwarding
-
-1. **Start bytefreezer-receiver** (ensure it's running on localhost:8080)
-2. **Start the proxy:**
-   ```bash
-   ./bytefreezer-proxy --config config.yaml
-   ```
-3. **Send test data:**
-   ```bash
-   ./testing_scripts/test_udp_streams.sh
-   ```
-4. **Check results:**
-   ```bash
-   ./testing_scripts/check_spooling.sh  # Should show no spooled files
-   ```
-
-**Expected Result:** No files in spooling directory (data forwarded successfully)
-
-### Scenario 3: Test Batching and Load
-
-1. **Start the proxy**
-2. **Run continuous test:**
-   ```bash
-   ./testing_scripts/test_continuous.sh
-   ```
-3. **Monitor in real-time:**
-   ```bash
-   # In another terminal:
-   watch -n2 ./testing_scripts/check_spooling.sh
-   ```
-
-## Port Configuration
-
-The test scripts target these ports based on your `config.yaml`:
-
-| Port | Dataset ID | Description |
-|------|------------|-------------|
-| 2056 | syslog-data | System logs in syslog format |
-| 2057 | ebpf-data | eBPF/kernel events |
-| 2058 | application-logs | Application-specific logs |
-
-## Understanding the Output
-
-### Spooled Files Structure
-
-```
-/tmp/bytefreezer-proxy/
-├── 1641234567890_customer-1_syslog-data.ndjson    # Data file
-├── 1641234567890_customer-1_syslog-data.meta      # Metadata file
-└── ...
+# View logs
+tail -f /var/log/bytefreezer-proxy/bytefreezer-proxy.log
 ```
 
-### Metadata Content
-
-```json
-{
-  "id": "1641234567890_customer-1_syslog-data",
-  "tenant_id": "customer-1", 
-  "dataset_id": "syslog-data",
-  "filename": "1641234567890_customer-1_syslog-data.ndjson",
-  "size": 1024,
-  "created_at": "2025-01-03T15:30:45Z",
-  "last_retry": "2025-01-03T15:31:45Z",
-  "retry_count": 1,
-  "failure_reason": "HTTP request failed: dial tcp: connection refused"
-}
-```
-
-## Troubleshooting
-
-### No Data in Spooling Directory
-
-This is **normal** when:
-- Receiver is available and working correctly
-- Data is being forwarded successfully
-- No errors occurred during forwarding
-
-### Data Appears in Spooling Directory
-
-This indicates:
-- Receiver is unavailable (connection refused)
-- Authentication failure (invalid bearer token)
-- Network connectivity issues
-- Receiver returned HTTP error status
-
-### Common Issues
-
-1. **"nc: command not found"**
-   ```bash
-   # Ubuntu/Debian:
-   sudo apt-get install netcat-openbsd
-   
-   # CentOS/RHEL:
-   sudo yum install nc
-   
-   # macOS:
-   brew install netcat
-   ```
-
-2. **Permission denied on spooling directory**
-   ```bash
-   sudo mkdir -p /tmp/bytefreezer-proxy
-   sudo chown $USER:$USER /tmp/bytefreezer-proxy
-   ```
-
-3. **Proxy not receiving data**
-   - Check if proxy is running: `curl http://localhost:8088/health`
-   - Verify UDP ports are open: `netstat -ulnp | grep -E '205[6-8]'`
-   - Check proxy logs for errors
-
-## Advanced Testing
-
-### Custom Data Testing
-
-Send your own JSON data:
+## Docker Testing
 
 ```bash
-echo '{"custom":"data","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' | nc -u localhost 2056
+# Run with Docker
+docker run -p 8088:8088 -p 2056-2058:2056-2058/udp ghcr.io/n0needt0/bytefreezer-proxy:latest
+
+# Test from host
+echo '{"test": "docker"}' | nc -u localhost 2056
 ```
 
-### Load Testing
+## Ansible Testing
 
 ```bash
-# Send 100 messages quickly
-for i in {1..100}; do
-  echo '{"test_id":'$i',"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' | nc -u localhost 2056
-done
-```
+cd ansible/playbooks
 
-### Monitoring Proxy Logs
+# Deploy to test server
+ansible-playbook -i inventory install.yml --limit test-server
 
-```bash
-# If running as systemd service:
-journalctl -f -u bytefreezer-proxy
-
-# If running directly:
-./bytefreezer-proxy --config config.yaml
+# Remove after testing
+ansible-playbook -i inventory remove.yml --limit test-server
 ```
