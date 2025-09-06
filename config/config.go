@@ -83,6 +83,9 @@ type Otel struct {
 	Endpoint              string `mapstructure:"endpoint"`
 	ServiceName           string `mapstructure:"service_name"`
 	ScrapeIntervalSeconds int    `mapstructure:"scrapeIntervalseconds"`
+	PrometheusMode        bool   `mapstructure:"prometheus_mode"`
+	MetricsPort           int    `mapstructure:"metrics_port"`
+	MetricsHost           string `mapstructure:"metrics_host"`
 }
 
 type Housekeeping struct {

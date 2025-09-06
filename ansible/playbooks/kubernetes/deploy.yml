@@ -1,0 +1,382 @@
+---
+- name: Deploy ByteFreezer Proxy to Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  pre_tasks:
+    - name: Check if kubectl is available
+      command: kubectl version --client
+      changed_when: false
+      failed_when: false
+      register: kubectl_check
+
+    - name: Fail if kubectl is not available
+      fail:
+        msg: "kubectl is not available. Please install kubectl and configure cluster access."
+      when: kubectl_check.rc != 0
+
+    - name: Check cluster connectivity
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+      register: cluster_check
+      failed_when: false
+
+    - name: Fail if cluster is not accessible
+      fail:
+        msg: "Cannot connect to Kubernetes cluster. Check your kubeconfig."
+      when: cluster_check.failed | default(false)
+
+  tasks:
+    - name: Create namespace
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+        definition:
+          metadata:
+            labels:
+              name: "{{ namespace }}"
+              app.kubernetes.io/name: bytefreezer
+              app.kubernetes.io/component: proxy
+
+    - name: Create ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ service.name }}-config"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: config
+          data:
+            config.yaml: |
+              server:
+                bind_addr: "{{ config.server.bind_addr }}"
+                health_port: {{ config.server.health_port }}
+                shutdown_timeout: {{ config.server.shutdown_timeout }}
+                max_batch_size: {{ config.server.max_batch_size }}
+                batch_timeout: {{ config.server.batch_timeout }}
+                compression_enabled: {{ config.server.compression_enabled }}
+                compression_level: {{ config.server.compression_level }}
+
+              listeners:
+              {% for listener in config.listeners %}
+                - port: {{ listener.port }}
+                  tenant_id: "{{ listener.tenant_id }}"
+                  dataset_id: "{{ listener.dataset_id }}"
+                  buffer_size: {{ listener.buffer_size }}
+                  workers: {{ listener.workers }}
+              {% endfor %}
+
+              forwarding:
+                endpoint: "{{ config.forwarding.endpoint }}"
+                timeout: {{ config.forwarding.timeout }}
+                retry_attempts: {{ config.forwarding.retry_attempts }}
+                retry_delay: {{ config.forwarding.retry_delay }}
+                max_connections: {{ config.forwarding.max_connections }}
+                max_idle_connections: {{ config.forwarding.max_idle_connections }}
+                idle_connection_timeout: {{ config.forwarding.idle_connection_timeout }}
+
+              spooling:
+                enabled: {{ config.spooling.enabled }}
+                directory: "{{ config.spooling.directory }}"
+                max_size_bytes: {{ config.spooling.max_size_bytes }}
+                retry_attempts: {{ config.spooling.retry_attempts }}
+                retry_interval_sec: {{ config.spooling.retry_interval_sec }}
+                cleanup_interval_sec: {{ config.spooling.cleanup_interval_sec }}
+
+              logging:
+                level: "{{ config.logging.level }}"
+                format: "{{ config.logging.format }}"
+                output: "{{ config.logging.output }}"
+                max_size_mb: {{ config.logging.max_size_mb }}
+                max_backups: {{ config.logging.max_backups }}
+                max_age_days: {{ config.logging.max_age_days }}
+                compress: {{ config.logging.compress }}
+
+              soc_alerts:
+                enabled: {{ config.soc_alerts.enabled }}
+
+    - name: Create PersistentVolumeClaims
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{ service.name }}-{{ item.name }}-pvc"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: "{{ item.component }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: "{{ item.size }}"
+            storageClassName: "{{ item.class }}"
+      loop:
+        - name: spool
+          size: "{{ storage.spool.size }}"
+          class: "{{ storage.spool.class }}"
+          component: storage
+        - name: logs
+          size: "{{ storage.logs.size }}"
+          class: "{{ storage.logs.class }}"
+          component: logging
+
+    - name: Create Deployment
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ deployment.name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: proxy
+              app.kubernetes.io/version: "{{ image.tag }}"
+          spec:
+            replicas: "{{ deployment.replicas }}"
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ service.name }}"
+                app.kubernetes.io/component: proxy
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ service.name }}"
+                  app.kubernetes.io/component: proxy
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: "{{ security.run_as_user }}"
+                  runAsGroup: "{{ security.run_as_group }}"
+                  fsGroup: "{{ security.fs_group }}"
+                containers:
+                - name: "{{ service.name }}"
+                  image: "{{ image.repository }}:{{ image.tag }}"
+                  imagePullPolicy: "{{ image.pullPolicy }}"
+                  args:
+                    - "--config"
+                    - "/etc/bytefreezer-proxy/config.yaml"
+                  ports:
+                  - containerPort: "{{ service.health_port }}"
+                    name: health
+                    protocol: TCP
+                  {% for port in service.udp_ports %}
+                  - containerPort: {{ port }}
+                    name: "udp-{{ port }}"
+                    protocol: UDP
+                  {% endfor %}
+                  env:
+                  - name: CONFIG_FILE
+                    value: "/etc/bytefreezer-proxy/config.yaml"
+                  - name: POD_NAME
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.name
+                  - name: POD_NAMESPACE
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.namespace
+                  resources:
+                    requests:
+                      memory: "{{ resources.requests.memory }}"
+                      cpu: "{{ resources.requests.cpu }}"
+                    limits:
+                      memory: "{{ resources.limits.memory }}"
+                      cpu: "{{ resources.limits.cpu }}"
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: "{{ service.health_port }}"
+                    initialDelaySeconds: "{{ health_checks.liveness.initial_delay_seconds }}"
+                    periodSeconds: "{{ health_checks.liveness.period_seconds }}"
+                    timeoutSeconds: "{{ health_checks.liveness.timeout_seconds }}"
+                    failureThreshold: "{{ health_checks.liveness.failure_threshold }}"
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: "{{ service.health_port }}"
+                    initialDelaySeconds: "{{ health_checks.readiness.initial_delay_seconds }}"
+                    periodSeconds: "{{ health_checks.readiness.period_seconds }}"
+                    timeoutSeconds: "{{ health_checks.readiness.timeout_seconds }}"
+                    failureThreshold: "{{ health_checks.readiness.failure_threshold }}"
+                  volumeMounts:
+                  - name: config
+                    mountPath: /etc/bytefreezer-proxy
+                    readOnly: true
+                  - name: spool-storage
+                    mountPath: /var/spool/bytefreezer-proxy
+                  - name: log-storage
+                    mountPath: /var/log/bytefreezer-proxy
+                  securityContext:
+                    allowPrivilegeEscalation: "{{ security.allow_privilege_escalation }}"
+                    readOnlyRootFilesystem: "{{ security.read_only_root_filesystem }}"
+                    capabilities:
+                      drop:
+                      - ALL
+                volumes:
+                - name: config
+                  configMap:
+                    name: "{{ service.name }}-config"
+                - name: spool-storage
+                  persistentVolumeClaim:
+                    claimName: "{{ service.name }}-spool-pvc"
+                - name: log-storage
+                  persistentVolumeClaim:
+                    claimName: "{{ service.name }}-logs-pvc"
+                restartPolicy: Always
+
+    - name: Create LoadBalancer Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ service.name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: proxy
+            annotations:
+              metallb.universe.tf/loadBalancerIPs: "{{ metallb.load_balancer_ips }}"
+              metallb.universe.tf/allow-shared-ip: "{{ metallb.allow_shared_ip }}"
+          spec:
+            type: "{{ service.type }}"
+            loadBalancerSourceRanges: "{{ metallb.source_ranges }}"
+            ports:
+            - port: "{{ service.health_port }}"
+              targetPort: "{{ service.health_port }}"
+              protocol: TCP
+              name: health
+            {% for port in service.udp_ports %}
+            - port: {{ port }}
+              targetPort: {{ port }}
+              protocol: UDP
+              name: "udp-{{ port }}"
+            {% endfor %}
+            selector:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: proxy
+
+    - name: Create Internal ClusterIP Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ service.name }}-internal"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: proxy-internal
+          spec:
+            type: ClusterIP
+            ports:
+            - port: "{{ service.health_port }}"
+              targetPort: "{{ service.health_port }}"
+              protocol: TCP
+              name: health
+            selector:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: proxy
+
+    - name: Create Network Policy
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: "{{ service.name }}-netpol"
+            namespace: "{{ namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ service.name }}"
+              app.kubernetes.io/component: security
+          spec:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ service.name }}"
+                app.kubernetes.io/component: proxy
+            policyTypes:
+            - Ingress
+            - Egress
+            ingress:
+            - from: []
+              ports:
+              {% for port in service.udp_ports %}
+              - protocol: UDP
+                port: {{ port }}
+              {% endfor %}
+            - from:
+              - namespaceSelector: {}
+              ports:
+              - protocol: TCP
+                port: "{{ service.health_port }}"
+            egress:
+            - to: []
+              ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+            - to:
+              - namespaceSelector:
+                  matchLabels:
+                    name: "{{ namespace }}"
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: bytefreezer-receiver
+              ports:
+              - protocol: TCP
+                port: 8080
+            - to: []
+              ports:
+              - protocol: TCP
+                port: 443
+
+  post_tasks:
+    - name: Wait for deployment to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ deployment.name }}"
+        namespace: "{{ namespace }}"
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 600
+
+    - name: Get LoadBalancer service status
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        name: "{{ service.name }}"
+        namespace: "{{ namespace }}"
+      register: lb_service
+
+    - name: Display deployment information
+      debug:
+        msg:
+          - "ByteFreezer Proxy deployment completed!"
+          - "Namespace: {{ namespace }}"
+          - "Service: {{ service.name }}"
+          - "Health endpoint: {{ service.health_port }}"
+          - "UDP ports: {{ service.udp_ports | join(', ') }}"
+          - "LoadBalancer IP: {{ lb_service.resources[0].status.loadBalancer.ingress[0].ip | default('Pending') }}"
+          - "Check status: kubectl get pods -n {{ namespace }}"

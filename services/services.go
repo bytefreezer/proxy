@@ -10,6 +10,7 @@ type Services struct {
 	Config          *config.Config
 	ProxyStats      *domain.ProxyStats
 	SpoolingService *SpoolingService
+	MetricsService  *MetricsService
 
 	// Service instances will be added here
 	// UDPListener  *udp.Listener
@@ -18,10 +19,23 @@ type Services struct {
 
 // NewServices creates a new services instance
 func NewServices(cfg *config.Config) *Services {
+	var metricsService *MetricsService
+
+	// Initialize metrics service if OTel is enabled
+	if cfg.Otel.Enabled {
+		if ms, err := NewMetricsService(); err != nil {
+			// Log error but don't fail startup
+			// log.Errorf("Failed to initialize metrics service: %v", err)
+		} else {
+			metricsService = ms
+		}
+	}
+
 	return &Services{
 		Config:          cfg,
 		ProxyStats:      &domain.ProxyStats{},
 		SpoolingService: NewSpoolingService(cfg),
+		MetricsService:  metricsService,
 	}
 }
 

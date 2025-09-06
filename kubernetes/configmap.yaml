@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bytefreezer-proxy-config
+  namespace: bytefreezer
+  labels:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: config
+data:
+  config.yaml: |
+    # ByteFreezer Proxy Configuration for Kubernetes
+    server:
+      bind_addr: "0.0.0.0"
+      health_port: 8088
+      shutdown_timeout: 30s
+      max_batch_size: 10000
+      batch_timeout: 5s
+      compression_enabled: true
+      compression_level: 6
+
+    # UDP listeners for data collection
+    listeners:
+      - port: 2056
+        tenant_id: "customer-1"
+        dataset_id: "ebpf-data"
+        buffer_size: 65536
+        workers: 4
+      - port: 2057
+        tenant_id: "customer-2"
+        dataset_id: "network-logs"
+        buffer_size: 65536
+        workers: 4
+      - port: 2058
+        tenant_id: "customer-3"
+        dataset_id: "security-events"
+        buffer_size: 65536
+        workers: 4
+
+    # Forward to receiver service
+    forwarding:
+      endpoint: "http://bytefreezer-receiver.bytefreezer.svc.cluster.local:8080"
+      timeout: 30s
+      retry_attempts: 3
+      retry_delay: 2s
+      max_connections: 100
+      max_idle_connections: 10
+      idle_connection_timeout: 90s
+
+    # Local spooling for failed uploads
+    spooling:
+      enabled: true
+      directory: "/var/spool/bytefreezer-proxy"
+      max_size_bytes: 1073741824  # 1GB
+      retry_attempts: 5
+      retry_interval_sec: 300     # 5 minutes
+      cleanup_interval_sec: 3600  # 1 hour
+
+    # Logging configuration
+    logging:
+      level: "info"
+      format: "json"
+      output: "/var/log/bytefreezer-proxy/proxy.log"
+      max_size_mb: 100
+      max_backups: 10
+      max_age_days: 30
+      compress: true
+
+    # OpenTelemetry configuration
+    otel:
+      enabled: true
+      service_name: "bytefreezer-proxy"
+      scrapeIntervalseconds: 15
+      # Prometheus mode - expose metrics on HTTP endpoint for scraping
+      prometheus_mode: true
+      metrics_port: 9090
+
+    # SOC Alert Integration (optional)
+    soc_alerts:
+      enabled: false
+      # endpoint: "https://your-soc-endpoint.com/alerts"
+      # token: "your-soc-token"

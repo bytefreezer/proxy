@@ -1,0 +1,121 @@
+---
+- name: Remove ByteFreezer Proxy from Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  pre_tasks:
+    - name: Check if kubectl is available
+      command: kubectl version --client
+      changed_when: false
+      failed_when: false
+      register: kubectl_check
+
+    - name: Fail if kubectl is not available
+      fail:
+        msg: "kubectl is not available. Please install kubectl and configure cluster access."
+      when: kubectl_check.rc != 0
+
+    - name: Display removal information
+      debug:
+        msg:
+          - "Removing ByteFreezer Proxy from Kubernetes..."
+          - "Namespace: {{ namespace }}"
+          - "Service: {{ service.name }}"
+
+  tasks:
+    - name: Remove Network Policy
+      kubernetes.core.k8s:
+        state: absent
+        api_version: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: "{{ service.name }}-netpol"
+        namespace: "{{ namespace }}"
+      ignore_errors: yes
+
+    - name: Remove Services
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Service
+        name: "{{ item }}"
+        namespace: "{{ namespace }}"
+      loop:
+        - "{{ service.name }}"
+        - "{{ service.name }}-internal"
+      ignore_errors: yes
+
+    - name: Remove Deployment
+      kubernetes.core.k8s:
+        state: absent
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ deployment.name }}"
+        namespace: "{{ namespace }}"
+      ignore_errors: yes
+
+    - name: Wait for pods to terminate
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name={{ service.name }}"
+        wait: true
+        wait_condition:
+          type: Terminated
+        wait_timeout: 300
+      ignore_errors: yes
+
+    - name: Remove ConfigMap
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: ConfigMap
+        name: "{{ service.name }}-config"
+        namespace: "{{ namespace }}"
+      ignore_errors: yes
+
+    - name: Remove PersistentVolumeClaims (data will be preserved)
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: "{{ service.name }}-{{ item }}-pvc"
+        namespace: "{{ namespace }}"
+      loop:
+        - spool
+        - logs
+      when: remove_storage | default(false)
+      ignore_errors: yes
+
+    - name: Remove namespace (only if empty)
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+      when: remove_namespace | default(false)
+      ignore_errors: yes
+
+  post_tasks:
+    - name: Verify removal
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ deployment.name }}"
+        namespace: "{{ namespace }}"
+      register: deployment_check
+      ignore_errors: yes
+
+    - name: Display removal status
+      debug:
+        msg:
+          - "ByteFreezer Proxy removal completed!"
+          - "Deployment removed: {{ deployment_check.resources | length == 0 }}"
+          - "Storage preserved: {{ 'Yes' if not (remove_storage | default(false)) else 'No' }}"
+          - "Namespace preserved: {{ 'Yes' if not (remove_namespace | default(false)) else 'No' }}"
+          - ""
+          - "To remove storage: ansible-playbook remove.yml -e remove_storage=true"
+          - "To remove namespace: ansible-playbook remove.yml -e remove_namespace=true"

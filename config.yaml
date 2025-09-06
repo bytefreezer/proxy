@@ -22,7 +22,9 @@ udp:
   compression_level: 6
   enable_compression: true
   
-  # Port configuration with dataset mapping
+  # Port configuration with dataset mapping (up to 10 datasets supported)
+  # Only ports with dataset_id configured will be activated
+  # Ports 2056-2065 are pre-allocated for dataset use
   listeners:
     - port: 2056
       dataset_id: "syslog-data"
@@ -31,6 +33,21 @@ udp:
       dataset_id: "ebpf-data"
     - port: 2058
       dataset_id: "application-logs"
+    # Additional dataset slots (uncomment and configure as needed):
+    # - port: 2059
+    #   dataset_id: "security-logs"
+    # - port: 2060
+    #   dataset_id: "network-data"
+    # - port: 2061
+    #   dataset_id: "performance-metrics"
+    # - port: 2062
+    #   dataset_id: "audit-logs"
+    # - port: 2063
+    #   dataset_id: "container-logs"
+    # - port: 2064
+    #   dataset_id: "database-logs"
+    # - port: 2065
+    #   dataset_id: "custom-dataset"
 
 # Global tenant configuration
 tenant_id: "customer-1"
@@ -52,9 +69,13 @@ soc:
 # OpenTelemetry configuration
 otel:
   enabled: false
-  endpoint: "10.0.32.106:4317"
   service_name: "bytefreezer-proxy"
-  scrapeIntervalseconds: 100
+  scrapeIntervalseconds: 15
+  # Prometheus mode - expose metrics on HTTP endpoint for scraping
+  prometheus_mode: true
+  metrics_port: 9090
+  # Bind to all interfaces for external scraping
+  metrics_host: "0.0.0.0"
 
 # Housekeeping configuration
 housekeeping:

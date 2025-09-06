@@ -3,6 +3,7 @@ package udp
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,8 +44,14 @@ type UDPPortListener struct {
 func NewListener(services *services.Services, cfg *config.Config) *Listener {
 	var portListeners []*UDPPortListener
 
-	// Create listeners for each configured port
+	// Create listeners for each configured port (only if dataset_id is specified)
 	for _, udpListener := range cfg.UDP.Listeners {
+		// Skip listeners without dataset_id configured (inactive ports)
+		if udpListener.DatasetID == "" {
+			log.Debugf("Skipping UDP port %d - no dataset_id configured (inactive)", udpListener.Port)
+			continue
+		}
+
 		tenantID := udpListener.TenantID
 		if tenantID == "" {
 			tenantID = cfg.TenantID // Use global tenant if not specified
@@ -226,6 +233,14 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, ten
 		l.services.ProxyStats.UDPMessagesReceived++
 		l.services.ProxyStats.BytesReceived += int64(len(payload))
 		l.services.ProxyStats.LastActivity = time.Now()
+
+		// Record metrics if metrics service is available
+		if l.services.MetricsService != nil {
+			ctx := context.Background()
+			l.services.MetricsService.RecordUDPBytesReceived(ctx, tenantID, datasetID, int64(len(payload)))
+			l.services.MetricsService.RecordUDPPacketsReceived(ctx, tenantID, datasetID, 1)
+			l.services.MetricsService.RecordUDPLinesReceived(ctx, tenantID, datasetID, 1) // Each UDP message is one line
+		}
 	default:
 		// Channel is full, drop message and log
 		log.Warnf("UDP message channel full, dropping message from %s", from)
@@ -367,6 +382,7 @@ func (f *Forwarder) Stop() {
 
 // sendBatch sends a batch to bytefreezer-receiver
 func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
+	startTime := time.Now()
 	// Convert messages to NDJSON
 	var ndjsonData bytes.Buffer
 	for _, msg := range batch.Messages {
@@ -427,11 +443,29 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 
 	batch.Data = finalData
 
+	// Record batch size metrics
+	if f.services.MetricsService != nil {
+		ctx := context.Background()
+		f.services.MetricsService.RecordBatchSize(ctx, batch.TenantID, batch.DatasetID,
+			int64(len(finalData)), int64(len(batch.Messages)))
+	}
+
 	// Send to bytefreezer-receiver
 	err := f.sendToReceiver(batch)
+
+	// Calculate duration for metrics
+	duration := time.Since(startTime).Seconds()
+
 	if err != nil {
 		log.Errorf("Failed to send batch %s to receiver: %v", batch.ID, err)
 		f.services.ProxyStats.ForwardingErrors++
+
+		// Record failure metrics
+		if f.services.MetricsService != nil {
+			ctx := context.Background()
+			f.services.MetricsService.RecordHTTPRequest(ctx, batch.TenantID, batch.DatasetID, "error")
+			f.services.MetricsService.RecordForwardDuration(ctx, batch.TenantID, batch.DatasetID, duration)
+		}
 
 		// Spool the failed batch using the correct tenant/dataset from the batch
 		if f.services.SpoolingService != nil {
@@ -450,6 +484,15 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 		f.services.ProxyStats.BatchesForwarded++
 		f.services.ProxyStats.BytesForwarded += int64(len(finalData))
 		log.Debugf("Successfully sent batch %s (%d messages, %d bytes)", batch.ID, batch.LineCount, len(finalData))
+
+		// Record success metrics
+		if f.services.MetricsService != nil {
+			ctx := context.Background()
+			f.services.MetricsService.RecordHTTPBytesForwarded(ctx, batch.TenantID, batch.DatasetID, int64(len(finalData)))
+			f.services.MetricsService.RecordHTTPLinesForwarded(ctx, batch.TenantID, batch.DatasetID, int64(len(batch.Messages)))
+			f.services.MetricsService.RecordHTTPRequest(ctx, batch.TenantID, batch.DatasetID, "success")
+			f.services.MetricsService.RecordForwardDuration(ctx, batch.TenantID, batch.DatasetID, duration)
+		}
 	}
 
 	f.services.ProxyStats.BatchesCreated++
@@ -457,7 +500,12 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 
 // sendToReceiver sends the batch to bytefreezer-receiver
 func (f *Forwarder) sendToReceiver(batch *domain.DataBatch) error {
-	// Use HTTP forwarder from services
-	forwarder := services.NewHTTPForwarder(f.config)
+	// Use HTTP forwarder from services with metrics if available
+	var forwarder *services.HTTPForwarder
+	if f.services.MetricsService != nil {
+		forwarder = services.NewHTTPForwarderWithMetrics(f.config, f.services.MetricsService)
+	} else {
+		forwarder = services.NewHTTPForwarder(f.config)
+	}
 	return forwarder.ForwardBatch(batch)
 }

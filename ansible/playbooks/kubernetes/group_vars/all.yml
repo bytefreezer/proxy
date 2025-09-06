@@ -1,0 +1,136 @@
+# ByteFreezer Proxy Kubernetes Configuration Variables
+
+# Container image configuration
+image:
+  repository: "ghcr.io/n0needt0/bytefreezer-proxy"
+  tag: "latest"
+  pullPolicy: "Always"
+
+# Kubernetes namespace
+namespace: "bytefreezer"
+
+# Service configuration
+service:
+  name: "bytefreezer-proxy"
+  type: "LoadBalancer"
+  health_port: 8088
+  metrics_port: 9090
+  udp_ports:
+    - 2056
+    - 2057
+    - 2058
+
+# Deployment configuration
+deployment:
+  name: "bytefreezer-proxy"
+  replicas: 1
+  
+# Resource limits and requests
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Storage configuration
+storage:
+  spool:
+    size: "2Gi"
+    class: ""  # Use default storage class
+  logs:
+    size: "1Gi"
+    class: ""  # Use default storage class
+
+# Application configuration
+config:
+  server:
+    bind_addr: "0.0.0.0"
+    health_port: 8088
+    shutdown_timeout: "30s"
+    max_batch_size: 10000
+    batch_timeout: "5s"
+    compression_enabled: true
+    compression_level: 6
+
+  listeners:
+    - port: 2056
+      tenant_id: "customer-1"
+      dataset_id: "ebpf-data"
+      buffer_size: 65536
+      workers: 4
+    - port: 2057
+      tenant_id: "customer-2"
+      dataset_id: "network-logs"
+      buffer_size: 65536
+      workers: 4
+    - port: 2058
+      tenant_id: "customer-3"
+      dataset_id: "security-events"
+      buffer_size: 65536
+      workers: 4
+
+  forwarding:
+    endpoint: "http://bytefreezer-receiver.bytefreezer.svc.cluster.local:8080"
+    timeout: "30s"
+    retry_attempts: 3
+    retry_delay: "2s"
+    max_connections: 100
+    max_idle_connections: 10
+    idle_connection_timeout: "90s"
+
+  spooling:
+    enabled: true
+    directory: "/var/spool/bytefreezer-proxy"
+    max_size_bytes: 1073741824  # 1GB
+    retry_attempts: 5
+    retry_interval_sec: 300     # 5 minutes
+    cleanup_interval_sec: 3600  # 1 hour
+
+  logging:
+    level: "info"
+    format: "json"
+    output: "/var/log/bytefreezer-proxy/proxy.log"
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 30
+    compress: true
+
+  otel:
+    enabled: true
+    service_name: "bytefreezer-proxy"
+    scrapeIntervalseconds: 15
+    prometheus_mode: true
+    metrics_port: 9090
+
+  soc_alerts:
+    enabled: false
+
+# MetalLB configuration
+metallb:
+  load_balancer_ips: ""  # Leave empty for auto-assignment
+  allow_shared_ip: "bytefreezer-proxy"
+  source_ranges:
+    - "0.0.0.0/0"  # Restrict in production
+
+# Security configuration
+security:
+  run_as_user: 1000
+  run_as_group: 1000
+  fs_group: 1000
+  allow_privilege_escalation: false
+  read_only_root_filesystem: false
+
+# Health check configuration
+health_checks:
+  liveness:
+    initial_delay_seconds: 30
+    period_seconds: 10
+    timeout_seconds: 5
+    failure_threshold: 3
+  readiness:
+    initial_delay_seconds: 10
+    period_seconds: 5
+    timeout_seconds: 5
+    failure_threshold: 2

@@ -1,7 +1,6 @@
 # ByteFreezer Proxy
 
-A UDP data collection proxy that batches and forwards data to bytefreezer-receiver.
-This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP.
+High-performance UDP log proxy for the ByteFreezer platform. This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP to the ByteFreezer receiver.
 
 ## Overview
 
@@ -58,6 +57,16 @@ ansible-playbook -i inventory.yml install.yml
 
 # Remove service (when needed)
 ansible-playbook -i inventory.yml remove.yml
+```
+
+**Kubernetes with MetalLB:**
+```bash
+# Deploy to Kubernetes cluster
+cd bytefreezer-proxy/ansible/playbooks/kubernetes
+ansible-playbook -i localhost, deploy.yml
+
+# Or use kubectl directly
+kubectl apply -k ../../kubernetes/
 ```
 
 **Docker Compose:**

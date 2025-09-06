@@ -49,7 +49,9 @@ config:
     enable_compression: true
     compression_level: 6
     
-    # Multiple port configuration with dataset mapping
+    # Multiple port configuration with dataset mapping (up to 10 datasets supported)
+    # Only ports with dataset_id configured will be activated
+    # Ports 2056-2065 are pre-allocated for dataset use
     listeners:
       - port: 2056
         dataset_id: "ebpf-data"
@@ -57,6 +59,21 @@ config:
         dataset_id: "syslog-data"
       - port: 2058
         dataset_id: "application-logs"
+      # Additional dataset slots (uncomment and configure as needed):
+      # - port: 2059
+      #   dataset_id: "security-logs"
+      # - port: 2060
+      #   dataset_id: "network-data"
+      # - port: 2061
+      #   dataset_id: "performance-metrics"
+      # - port: 2062
+      #   dataset_id: "audit-logs"
+      # - port: 2063
+      #   dataset_id: "container-logs"
+      # - port: 2064
+      #   dataset_id: "database-logs"
+      # - port: 2065
+      #   dataset_id: "custom-dataset"
   
   # Global tenant configuration
   tenant_id: "customer-1"

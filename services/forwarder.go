@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +16,9 @@ import (
 
 // HTTPForwarder handles HTTP forwarding to bytefreezer-receiver
 type HTTPForwarder struct {
-	config     *config.Config
-	httpClient *http.Client
+	config         *config.Config
+	httpClient     *http.Client
+	metricsService *MetricsService
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder
@@ -26,6 +28,18 @@ func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 		httpClient: &http.Client{
 			Timeout: cfg.GetReceiverTimeout(),
 		},
+		metricsService: nil, // Will be set if needed
+	}
+}
+
+// NewHTTPForwarderWithMetrics creates a new HTTP forwarder with metrics service
+func NewHTTPForwarderWithMetrics(cfg *config.Config, metricsService *MetricsService) *HTTPForwarder {
+	return &HTTPForwarder{
+		config: cfg,
+		httpClient: &http.Client{
+			Timeout: cfg.GetReceiverTimeout(),
+		},
+		metricsService: metricsService,
 	}
 }
 
@@ -68,6 +82,13 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	for attempt := 0; attempt <= f.config.Receiver.RetryCount; attempt++ {
 		if attempt > 0 {
 			log.Debugf("Retrying batch %s, attempt %d/%d", batch.ID, attempt, f.config.Receiver.RetryCount)
+
+			// Record retry attempt metric
+			if f.metricsService != nil {
+				ctx := context.Background()
+				f.metricsService.RecordHTTPRequest(ctx, batch.TenantID, batch.DatasetID, "retry")
+			}
+
 			time.Sleep(f.config.GetRetryDelay())
 		}
 

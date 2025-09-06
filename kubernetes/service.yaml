@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytefreezer-proxy
+  namespace: bytefreezer
+  labels:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: proxy
+  annotations:
+    # MetalLB specific annotations
+    metallb.universe.tf/loadBalancerIPs: ""  # Leave empty for auto-assignment
+    metallb.universe.tf/allow-shared-ip: "bytefreezer-proxy"
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 0.0.0.0/0  # Restrict this to your network ranges in production
+  ports:
+  - port: 8088
+    targetPort: 8088
+    protocol: TCP
+    name: health
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  - port: 2056
+    targetPort: 2056
+    protocol: UDP
+    name: udp-2056
+  - port: 2057
+    targetPort: 2057
+    protocol: UDP
+    name: udp-2057
+  - port: 2058
+    targetPort: 2058
+    protocol: UDP
+    name: udp-2058
+  selector:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: proxy
+---
+# Internal service for health checks and monitoring
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytefreezer-proxy-internal
+  namespace: bytefreezer
+  labels:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: proxy-internal
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8088
+    targetPort: 8088
+    protocol: TCP
+    name: health
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: proxy

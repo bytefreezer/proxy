@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/go-goodies/log"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -82,41 +85,91 @@ func setupTracing(ctx context.Context, cfg *config.Config, res *resource.Resourc
 }
 
 func setupMetrics(ctx context.Context, cfg *config.Config, res *resource.Resource) (func(), error) {
-	// Create metric exporter
-	metricExporter, err := otlpmetricgrpc.New(ctx,
-		otlpmetricgrpc.WithEndpoint(cfg.Otel.Endpoint),
-		otlpmetricgrpc.WithInsecure(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metric exporter: %w", err)
-	}
+	var metricProvider *sdkmetric.MeterProvider
+	var httpServer *http.Server
 
-	// Create metric provider
-	metricProvider := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(
-			metricExporter,
-			sdkmetric.WithInterval(time.Duration(cfg.Otel.ScrapeIntervalSeconds)*time.Second),
-		)),
-		sdkmetric.WithResource(res),
-		sdkmetric.WithView(
-			// Add custom views if needed
-			sdkmetric.NewView(
-				sdkmetric.Instrument{
-					Name: "bytefreezer_proxy_*",
-					Scope: instrumentation.Scope{
-						Name: cfg.Otel.ServiceName,
+	if cfg.Otel.PrometheusMode {
+		// Prometheus HTTP metrics endpoint
+		prometheusExporter, err := prometheus.New()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create prometheus exporter: %w", err)
+		}
+
+		metricProvider = sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(prometheusExporter),
+			sdkmetric.WithResource(res),
+		)
+
+		// Start HTTP server for metrics endpoint
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		metricsHost := cfg.Otel.MetricsHost
+		if metricsHost == "" {
+			metricsHost = "localhost"
+		}
+
+		httpServer = &http.Server{
+			Addr:    fmt.Sprintf("%s:%d", metricsHost, cfg.Otel.MetricsPort),
+			Handler: mux,
+		}
+
+		go func() {
+			log.Infof("Starting Prometheus metrics server on port %d", cfg.Otel.MetricsPort)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Errorf("Prometheus metrics server failed: %v", err)
+			}
+		}()
+
+		log.Infof("Prometheus metrics endpoint: http://localhost:%d/metrics", cfg.Otel.MetricsPort)
+	} else {
+		// OTLP gRPC exporter (original behavior)
+		metricExporter, err := otlpmetricgrpc.New(ctx,
+			otlpmetricgrpc.WithEndpoint(cfg.Otel.Endpoint),
+			otlpmetricgrpc.WithInsecure(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OTLP metric exporter: %w", err)
+		}
+
+		metricProvider = sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(
+				metricExporter,
+				sdkmetric.WithInterval(time.Duration(cfg.Otel.ScrapeIntervalSeconds)*time.Second),
+			)),
+			sdkmetric.WithResource(res),
+			sdkmetric.WithView(
+				// Add custom views if needed
+				sdkmetric.NewView(
+					sdkmetric.Instrument{
+						Name: "bytefreezer_proxy_*",
+						Scope: instrumentation.Scope{
+							Name: cfg.Otel.ServiceName,
+						},
 					},
-				},
-				sdkmetric.Stream{
-					Aggregation: sdkmetric.AggregationDefault{},
-				},
+					sdkmetric.Stream{
+						Aggregation: sdkmetric.AggregationDefault{},
+					},
+				),
 			),
-		),
-	)
+		)
+
+		log.Infof("OTLP metrics configured for endpoint: %s", cfg.Otel.Endpoint)
+	}
 
 	otel.SetMeterProvider(metricProvider)
 
 	return func() {
+		// Shutdown HTTP server if running
+		if httpServer != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				log.Errorf("Failed to shutdown Prometheus metrics server: %v", err)
+			}
+		}
+
+		// Shutdown metric provider
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := metricProvider.Shutdown(ctx); err != nil {
