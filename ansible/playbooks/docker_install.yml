@@ -37,21 +37,18 @@
       register: temp_dir
 
     - name: Pull ByteFreezer Proxy Docker image
-      community.docker.docker_image:
-        name: "{{ docker.image_name }}:{{ docker.tag }}"
-        source: pull
-        force_source: "{{ docker.force_pull | default(false) }}"
+      ansible.builtin.shell: |
+        docker pull {{ docker.image_name }}:{{ docker.tag }}
+      register: docker_pull
+      failed_when: docker_pull.rc != 0
 
     - name: Extract binary from Docker image
-      community.docker.docker_container:
-        name: bytefreezer-proxy-extract
-        image: "{{ docker.image_name }}:{{ docker.tag }}"
-        command: "sh -c 'cp /app {{ temp_dir.path }}/bytefreezer-proxy'"
-        volumes:
-          - "{{ temp_dir.path }}:{{ temp_dir.path }}"
-        detach: false
-        cleanup: true
-        auto_remove: true
+      ansible.builtin.shell: |
+        docker run --rm -v {{ temp_dir.path }}:/output \
+          {{ docker.image_name }}:{{ docker.tag }} \
+          sh -c "cp /app /output/bytefreezer-proxy"
+      register: docker_extract
+      failed_when: docker_extract.rc != 0
 
     - name: Verify binary was extracted
       ansible.builtin.stat:
