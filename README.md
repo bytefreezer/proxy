@@ -79,12 +79,15 @@ services:
 ## Architecture
 
 ```
+Example Data Sources:
 Syslog Sources---udp:2056--\
                             \
 eBPF Data-------udp:2057-----> bytefreezer-proxy --HTTP--> bytefreezer-receiver
                             /
 App Logs--------udp:2058---/
 ```
+
+**Note:** The port-to-dataset mappings shown above are examples. You can configure any UDP port to collect any type of data by modifying the `listeners` configuration in `config.yaml`.
 
 The proxy follows the same architectural patterns as bytefreezer-receiver:
 - `api/` - HTTP API handlers and routing
