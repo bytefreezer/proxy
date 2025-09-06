@@ -1,8 +1,11 @@
 package services
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -472,22 +475,39 @@ func (s *SpoolingService) countLines(data []byte) int {
 		return 0
 	}
 
-	// For compressed data, we can't easily count lines without decompressing
-	// For now, return 0 for compressed data - this could be enhanced later
+	var dataToCount []byte
+
+	// Check if data is gzip compressed
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-		return 0
+		// Decompress gzip data to count lines
+		reader, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			log.Warnf("Failed to create gzip reader for line counting: %v", err)
+			return 0
+		}
+		defer reader.Close()
+
+		decompressed, err := io.ReadAll(reader)
+		if err != nil {
+			log.Warnf("Failed to decompress data for line counting: %v", err)
+			return 0
+		}
+		dataToCount = decompressed
+	} else {
+		// Use uncompressed data directly
+		dataToCount = data
 	}
 
-	// Count newline characters in uncompressed data
+	// Count newline characters
 	count := 0
-	for _, b := range data {
+	for _, b := range dataToCount {
 		if b == '\n' {
 			count++
 		}
 	}
 
 	// If data doesn't end with newline, the last line still counts
-	if data[len(data)-1] != '\n' {
+	if len(dataToCount) > 0 && dataToCount[len(dataToCount)-1] != '\n' {
 		count++
 	}
 
