@@ -73,9 +73,10 @@ USER bytefreezer
 ENV CONFIG_FILE=/etc/bytefreezer-proxy/config.yaml
 
 # Expose ports
-# 8088: API/Health endpoint
-# 2056-2058: UDP listeners (default configuration)
-EXPOSE 8088/tcp 2056/udp 2057/udp 2058/udp
+# 8088: API/Health endpoint  
+# 2056-2065: UDP listeners (up to 10 datasets supported)
+# Only configured ports will be active, but all are exposed for flexibility
+EXPOSE 8088/tcp 2056/udp 2057/udp 2058/udp 2059/udp 2060/udp 2061/udp 2062/udp 2063/udp 2064/udp 2065/udp
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -35,6 +35,34 @@ spec:
     targetPort: 2058
     protocol: UDP
     name: udp-2058
+  - port: 2059
+    targetPort: 2059
+    protocol: UDP
+    name: udp-2059
+  - port: 2060
+    targetPort: 2060
+    protocol: UDP
+    name: udp-2060
+  - port: 2061
+    targetPort: 2061
+    protocol: UDP
+    name: udp-2061
+  - port: 2062
+    targetPort: 2062
+    protocol: UDP
+    name: udp-2062
+  - port: 2063
+    targetPort: 2063
+    protocol: UDP
+    name: udp-2063
+  - port: 2064
+    targetPort: 2064
+    protocol: UDP
+    name: udp-2064
+  - port: 2065
+    targetPort: 2065
+    protocol: UDP
+    name: udp-2065
   selector:
     app.kubernetes.io/name: bytefreezer-proxy
     app.kubernetes.io/component: proxy

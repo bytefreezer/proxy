@@ -51,6 +51,27 @@ spec:
         - containerPort: 2058
           name: udp-2058
           protocol: UDP
+        - containerPort: 2059
+          name: udp-2059
+          protocol: UDP
+        - containerPort: 2060
+          name: udp-2060
+          protocol: UDP
+        - containerPort: 2061
+          name: udp-2061
+          protocol: UDP
+        - containerPort: 2062
+          name: udp-2062
+          protocol: UDP
+        - containerPort: 2063
+          name: udp-2063
+          protocol: UDP
+        - containerPort: 2064
+          name: udp-2064
+          protocol: UDP
+        - containerPort: 2065
+          name: udp-2065
+          protocol: UDP
         env:
         - name: CONFIG_FILE
           value: "/etc/bytefreezer-proxy/config.yaml"
