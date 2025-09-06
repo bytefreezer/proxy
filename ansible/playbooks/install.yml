@@ -28,28 +28,41 @@
         remote_src: yes
       
     - name: Copy binary to destination
-      ansible.builtin.shell: |
-        sudo cp "{{ temp_dir.path }}/bytefreezer-proxy-linux-amd64" "{{ paths.binary_path }}"
-        sudo chmod 755 "{{ paths.binary_path }}"
+      ansible.builtin.copy:
+        src: "{{ temp_dir.path }}/bytefreezer-proxy-linux-amd64"
+        dest: "{{ paths.binary_path }}"
+        owner: root
+        group: root
+        mode: '0755'
+        remote_src: yes
+      become: yes
 
     - name: Ensure config directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.config_dir }}"
-        sudo chown root:root "{{ paths.config_dir }}"
-        sudo chmod 755 "{{ paths.config_dir }}"
-        ls -ld "{{ paths.config_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      become: yes
 
     - name: Ensure log directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.log_dir }}"
-        sudo chown root:root "{{ paths.log_dir }}"
-        sudo chmod 755 "{{ paths.log_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      become: yes
       
     - name: Ensure spooling directory exists
-      ansible.builtin.shell: |
-        sudo mkdir -p "{{ paths.spool_dir }}"
-        sudo chown root:root "{{ paths.spool_dir }}"
-        sudo chmod 755 "{{ paths.spool_dir }}"
+      ansible.builtin.file:
+        path: "{{ paths.spool_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      become: yes
       
     - name: Generate configuration file
       ansible.builtin.template:
@@ -100,10 +113,12 @@
       become: yes
 
     - name: Enable and start service
-      ansible.builtin.shell: |
-        timeout 30 sudo systemctl daemon-reload || echo "daemon-reload completed or timed out"
-        sudo systemctl enable {{ service.name }}
-        sudo systemctl start {{ service.name }}
+      ansible.builtin.systemd:
+        name: "{{ service.name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      become: yes
 
     - name: Clean up temporary directory
       ansible.builtin.file:
