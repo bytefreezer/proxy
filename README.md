@@ -79,6 +79,8 @@ services:
 ## Architecture
 
 ```
+these are example mappings.
+
 Syslog Sources---udp:2056--\
                             \
 eBPF Data-------udp:2057-----> bytefreezer-proxy --HTTP--> bytefreezer-receiver
