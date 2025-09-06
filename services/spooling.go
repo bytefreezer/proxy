@@ -38,6 +38,7 @@ type SpooledFile struct {
 	DatasetID     string    `json:"dataset_id"`
 	Filename      string    `json:"filename"`
 	Size          int64     `json:"size"`
+	LineCount     int       `json:"line_count"`
 	CreatedAt     time.Time `json:"created_at"`
 	LastRetry     time.Time `json:"last_retry"`
 	RetryCount    int       `json:"retry_count"`
@@ -66,7 +67,7 @@ func (s *SpoolingService) Start() error {
 	}
 
 	// Create spooling directory
-	if err := os.MkdirAll(s.directory, 0755); err != nil {
+	if err := os.MkdirAll(s.directory, 0750); err != nil {
 		return fmt.Errorf("failed to create spooling directory %s: %w", s.directory, err)
 	}
 
@@ -140,9 +141,12 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 	metaFilepath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", id))
 
 	// Write data file
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write spooled data file: %w", err)
 	}
+
+	// Count lines in the data
+	lineCount := s.countLines(data)
 
 	// Write metadata file
 	metadata := SpooledFile{
@@ -151,6 +155,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		DatasetID:     datasetID,
 		Filename:      filename,
 		Size:          dataSize,
+		LineCount:     lineCount,
 		CreatedAt:     time.Now(),
 		LastRetry:     time.Time{},
 		RetryCount:    0,
@@ -165,7 +170,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metaFilepath, metaData, 0644); err != nil {
+	if err := os.WriteFile(metaFilepath, metaData, 0600); err != nil {
 		// Clean up data file on metadata error
 		os.Remove(filePath)
 		return fmt.Errorf("failed to write metadata file: %w", err)
@@ -245,8 +250,13 @@ func (s *SpoolingService) processRetries() {
 			continue
 		}
 
-		// Load file data
-		dataPath := filepath.Join(s.directory, file.Filename)
+		// Load file data - path validated by safeJoinPath to prevent directory traversal
+		dataPath, err := s.safeJoinPath(file.Filename)
+		if err != nil {
+			log.Errorf("Invalid file path %s: %v", file.Filename, err)
+			continue
+		}
+		// #nosec G304 - path is validated by safeJoinPath function above
 		data, err := os.ReadFile(dataPath)
 		if err != nil {
 			log.Errorf("Failed to read spooled file %s: %v", file.Filename, err)
@@ -346,7 +356,13 @@ func (s *SpoolingService) getSpooledFiles() ([]SpooledFile, error) {
 			continue
 		}
 
-		metaPath := filepath.Join(s.directory, entry.Name())
+		// Validate and construct safe path - prevents directory traversal attacks
+		metaPath, err := s.safeJoinPath(entry.Name())
+		if err != nil {
+			log.Warnf("Invalid metadata file path %s: %v", entry.Name(), err)
+			continue
+		}
+		// #nosec G304 - path is validated by safeJoinPath function above
 		metaData, err := os.ReadFile(metaPath)
 		if err != nil {
 			log.Warnf("Failed to read metadata file %s: %v", entry.Name(), err)
@@ -379,7 +395,7 @@ func (s *SpoolingService) updateRetryMetadata(file SpooledFile, failureReason st
 		return
 	}
 
-	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		log.Warnf("Failed to write updated metadata for %s: %v", file.ID, err)
 	}
 }
@@ -418,7 +434,7 @@ func (s *SpoolingService) markAsPermanentlyFailed(file SpooledFile) {
 		return
 	}
 
-	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		log.Warnf("Failed to write permanently failed metadata for %s: %v", file.ID, err)
 	} else {
 		log.Infof("Marked file as permanently failed: %s (preserved for manual recovery)", file.ID)
@@ -448,6 +464,76 @@ func (s *SpoolingService) calculateCurrentSize() error {
 	s.currentSize = totalSize
 	log.Debugf("Current spooling size: %d bytes", s.currentSize)
 	return nil
+}
+
+// countLines counts the number of lines in the data
+func (s *SpoolingService) countLines(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+
+	// For compressed data, we can't easily count lines without decompressing
+	// For now, return 0 for compressed data - this could be enhanced later
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		return 0
+	}
+
+	// Count newline characters in uncompressed data
+	count := 0
+	for _, b := range data {
+		if b == '\n' {
+			count++
+		}
+	}
+
+	// If data doesn't end with newline, the last line still counts
+	if data[len(data)-1] != '\n' {
+		count++
+	}
+
+	return count
+}
+
+// validatePath ensures the path is within the spooling directory to prevent directory traversal
+func (s *SpoolingService) validatePath(filename string) error {
+	// Clean the path to resolve any .. elements
+	cleanPath := filepath.Clean(filename)
+
+	// Check for directory traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("invalid filename: directory traversal detected")
+	}
+
+	// Ensure the filename doesn't start with / (absolute path)
+	if strings.HasPrefix(cleanPath, "/") {
+		return fmt.Errorf("invalid filename: absolute path not allowed")
+	}
+
+	// Construct full path and ensure it's within the spooling directory
+	fullPath := filepath.Join(s.directory, cleanPath)
+	absSpoolDir, err := filepath.Abs(s.directory)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for spooling directory: %w", err)
+	}
+
+	absFullPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for file: %w", err)
+	}
+
+	if !strings.HasPrefix(absFullPath, absSpoolDir) {
+		return fmt.Errorf("invalid filename: path outside spooling directory")
+	}
+
+	return nil
+}
+
+// safeJoinPath validates and safely joins a filename with the spooling directory
+func (s *SpoolingService) safeJoinPath(filename string) (string, error) {
+	if err := s.validatePath(filename); err != nil {
+		return "", err
+	}
+	return filepath.Join(s.directory, filepath.Clean(filename)), nil
 }
 
 // GetStats returns spooling statistics
