@@ -33,31 +33,23 @@
         sudo chmod 755 "{{ paths.binary_path }}"
 
     - name: Ensure config directory exists
-      ansible.builtin.file:
-        path: "{{ paths.config_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ paths.config_dir }}"
+        sudo chown root:root "{{ paths.config_dir }}"
+        sudo chmod 755 "{{ paths.config_dir }}"
+        ls -ld "{{ paths.config_dir }}"
 
     - name: Ensure log directory exists
-      ansible.builtin.file:
-        path: "{{ paths.log_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ paths.log_dir }}"
+        sudo chown root:root "{{ paths.log_dir }}"
+        sudo chmod 755 "{{ paths.log_dir }}"
       
     - name: Ensure spooling directory exists
-      ansible.builtin.file:
-        path: "{{ paths.spool_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      become: yes
+      ansible.builtin.shell: |
+        sudo mkdir -p "{{ paths.spool_dir }}"
+        sudo chown root:root "{{ paths.spool_dir }}"
+        sudo chmod 755 "{{ paths.spool_dir }}"
       
     - name: Generate configuration file
       ansible.builtin.template:
