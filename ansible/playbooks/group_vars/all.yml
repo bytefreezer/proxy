@@ -91,10 +91,14 @@ config:
     timeout: 30
   
   otel:
-    enabled: false
-    endpoint: "localhost:4317"
+    enabled: true
     service_name: "bytefreezer-proxy"
-    scrapeIntervalseconds: 100
+    scrapeIntervalseconds: 15
+    # Prometheus mode - expose metrics on HTTP endpoint for scraping
+    prometheus_mode: true
+    metrics_port: 9090
+    # Bind to all interfaces for external scraping
+    metrics_host: "0.0.0.0"
   
   housekeeping:
     enabled: true

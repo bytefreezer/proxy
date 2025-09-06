@@ -68,7 +68,7 @@ soc:
 
 # OpenTelemetry configuration
 otel:
-  enabled: false
+  enabled: true
   service_name: "bytefreezer-proxy"
   scrapeIntervalseconds: 15
   # Prometheus mode - expose metrics on HTTP endpoint for scraping

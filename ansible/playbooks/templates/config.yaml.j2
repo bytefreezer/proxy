@@ -56,9 +56,13 @@ soc:
 # OpenTelemetry configuration
 otel:
   enabled: {{ config.otel.enabled | lower }}
-  endpoint: "{{ config.otel.endpoint }}"
   service_name: "{{ config.otel.service_name }}"
   scrapeIntervalseconds: {{ config.otel.scrapeIntervalseconds }}
+  # Prometheus mode - expose metrics on HTTP endpoint for scraping
+  prometheus_mode: {{ config.otel.prometheus_mode | lower }}
+  metrics_port: {{ config.otel.metrics_port }}
+  # Bind to all interfaces for external scraping
+  metrics_host: "{{ config.otel.metrics_host }}"
 
 # Housekeeping configuration
 housekeeping:
