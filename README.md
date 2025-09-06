@@ -1,6 +1,7 @@
 # ByteFreezer Proxy
 
 A UDP data collection proxy that batches and forwards data to bytefreezer-receiver.
+This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP.
 
 ## Overview
 
@@ -78,7 +79,7 @@ services:
 
 ## Architecture
 
-This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP.
+
 
 ```
 these are example mappings.
