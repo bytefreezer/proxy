@@ -78,6 +78,8 @@ services:
 
 ## Architecture
 
+This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP.
+
 ```
 these are example mappings.
 
