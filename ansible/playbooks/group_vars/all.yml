@@ -43,7 +43,7 @@ config:
     enabled: true
     host: "0.0.0.0"
     read_buffer_size_bytes: 134217728  # 128MB
-    max_batch_lines: 100000
+    max_batch_lines: 1000000
     max_batch_bytes: 268435456  # 256MB
     batch_timeout_seconds: 30
     enable_compression: true
