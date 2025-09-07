@@ -7,7 +7,7 @@ High-performance UDP log proxy for the ByteFreezer platform. This proxy is requi
 ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. It:
 - Listens for UDP data from external sources (syslog, eBPF, etc.)
 - **Supports up to 10 concurrent datasets** on dedicated UDP ports (2056-2065)
-- Batches data based on configurable line count or byte size limits
+- **Smart batching**: Line count takes precedence, with byte limits as additional constraints
 - Compresses and forwards batches to bytefreezer-receiver via HTTP
 - Provides health and configuration APIs
 
@@ -149,8 +149,8 @@ udp:
   enabled: true
   host: "0.0.0.0"
   read_buffer_size_bytes: 134217728  # 128MB
-  max_batch_lines: 100000
-  max_batch_bytes: 268435456  # 256MB
+  max_batch_lines: 1000000           # Primary limit - batches sent when line count reached
+  max_batch_bytes: 268435456         # 256MB - Additional constraint, whichever limit hit first  
   batch_timeout_seconds: 30
   enable_compression: true
   compression_level: 6
@@ -334,7 +334,8 @@ The service provides metrics and health information:
 
 **For high-throughput environments (>10GB/day per dataset)**:
 - Increase `read_buffer_size_bytes` to 256MB or 512MB
-- Tune `max_batch_lines` and `max_batch_bytes` based on your data patterns
+- **Batching Strategy**: Line count (`max_batch_lines`) takes precedence - set to ~1M for high volume
+- **Size Safety**: Byte limit (`max_batch_bytes`) prevents oversized batches - both limits enforced
 - Monitor system UDP buffer limits with `ss -u -l -n`
 
 ## Error Handling

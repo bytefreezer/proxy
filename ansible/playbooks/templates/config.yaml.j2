@@ -20,8 +20,8 @@ udp:
   enabled: {{ config.udp.enabled | lower }}
   host: "{{ config.udp.host }}"
   read_buffer_size_bytes: {{ config.udp.read_buffer_size_bytes }}
-  max_batch_lines: {{ config.udp.max_batch_lines }}
-  max_batch_bytes: {{ config.udp.max_batch_bytes }}
+  max_batch_lines: {{ config.udp.max_batch_lines }}        # Primary limit - batches sent when line count reached
+  max_batch_bytes: {{ config.udp.max_batch_bytes }}        # Additional constraint, whichever limit hit first
   batch_timeout_seconds: {{ config.udp.batch_timeout_seconds }}
   enable_compression: {{ config.udp.enable_compression | lower }}
   compression_level: {{ config.udp.compression_level }}
