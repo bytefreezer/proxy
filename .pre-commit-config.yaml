@@ -6,7 +6,6 @@ repos:
         entry: gofmt
         language: system
         args: ['-s', '-l', '.']
-        types: [go]
         pass_filenames: false
         
       - id: go-vet
@@ -14,7 +13,6 @@ repos:
         entry: go
         language: system
         args: ['vet', './...']
-        types: [go]
         pass_filenames: false
         
       - id: go-test
@@ -22,7 +20,6 @@ repos:
         entry: go
         language: system
         args: ['test', '-v', './...']
-        types: [go]
         pass_filenames: false
         
       - id: staticcheck
@@ -30,7 +27,6 @@ repos:
         entry: staticcheck
         language: system
         args: ['./...']
-        types: [go]
         pass_filenames: false
         
       - id: gosec
@@ -38,7 +34,6 @@ repos:
         entry: gosec
         language: system
         args: ['-severity', 'medium', '-confidence', 'medium', '-quiet', './...']
-        types: [go]
         pass_filenames: false
         # Make gosec non-blocking by allowing failures
         verbose: true
