@@ -343,12 +343,28 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 			batch.TotalBytes += int64(len(msg.Data))
 
 			// Check if batch is ready to send
+			// Send when either limit is reached (lines take precedence when both configured)
 			shouldSend := false
+			triggerReason := ""
+			
+			// Check line count limit first (takes precedence)
 			if f.config.UDP.MaxBatchLines > 0 && batch.LineCount >= f.config.UDP.MaxBatchLines {
 				shouldSend = true
+				triggerReason = fmt.Sprintf("line limit reached (%d/%d lines)", batch.LineCount, f.config.UDP.MaxBatchLines)
 			}
+			
+			// Also check byte limit (acts as additional constraint)
 			if f.config.UDP.MaxBatchBytes > 0 && batch.TotalBytes >= f.config.UDP.MaxBatchBytes {
 				shouldSend = true
+				if triggerReason == "" {
+					triggerReason = fmt.Sprintf("byte limit reached (%d/%d bytes)", batch.TotalBytes, f.config.UDP.MaxBatchBytes)
+				} else {
+					triggerReason += fmt.Sprintf(" (also byte limit: %d/%d bytes)", batch.TotalBytes, f.config.UDP.MaxBatchBytes)
+				}
+			}
+			
+			if shouldSend {
+				log.Debugf("Batch %s ready: %s", batch.ID, triggerReason)
 			}
 
 			if shouldSend {

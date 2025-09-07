@@ -16,8 +16,8 @@ udp:
   enabled: true
   host: "0.0.0.0"
   read_buffer_size_bytes: 134217728  # 128MB
-  max_batch_lines: 100000
-  max_batch_bytes: 268435456  # 256MB  
+  max_batch_lines: 100000           # Batch sent when line limit reached (takes precedence)  
+  max_batch_bytes: 268435456        # 256MB - Also enforced, whichever limit reached first
   batch_timeout_seconds: 30
   compression_level: 6
   enable_compression: true
