@@ -1,0 +1,57 @@
+# External Prometheus configuration for ByteFreezer Proxy
+# Add this to your existing prometheus.yml configuration
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # ByteFreezer Proxy external hosts
+  - job_name: 'bytefreezer-proxy'
+    static_configs:
+      # REPLACE WITH YOUR ACTUAL PROXY HOST IPs and PORTS
+      - targets:
+          - '192.168.1.100:9099'  # Proxy host 1 - metrics port
+          - '192.168.1.101:9099'  # Proxy host 2 - metrics port
+          # Add more proxy hosts here
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    relabel_configs:
+      - target_label: 'service'
+        replacement: 'bytefreezer-proxy'
+      - target_label: 'component'
+        replacement: 'udp-proxy'
+      - source_labels: ['__address__']
+        regex: '([^:]+):.*'
+        target_label: 'proxy_host'
+        replacement: '${1}'
+
+  # ByteFreezer Proxy health endpoints
+  - job_name: 'bytefreezer-proxy-health'
+    static_configs:
+      - targets:
+          - '192.168.1.100:8088'  # Proxy host 1 - health port
+          - '192.168.1.101:8088'  # Proxy host 2 - health port
+    metrics_path: '/health'
+    scrape_interval: 30s
+    scrape_timeout: 5s
+    relabel_configs:
+      - target_label: 'service'
+        replacement: 'bytefreezer-proxy'
+      - target_label: 'component'
+        replacement: 'health-check'
+      - source_labels: ['__address__']
+        regex: '([^:]+):.*'
+        target_label: 'proxy_host'
+        replacement: '${1}'
+
+# Recording rules for ByteFreezer Proxy
+rule_files:
+  - "bytefreezer_proxy_rules.yml"
+
+# Alerting rules
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093

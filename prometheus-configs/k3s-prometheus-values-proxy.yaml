@@ -1,0 +1,106 @@
+# Helm values for Prometheus in K3s to scrape external ByteFreezer Proxy hosts
+# Use with: helm upgrade prometheus prometheus-community/prometheus -f k3s-prometheus-values-proxy.yaml
+
+server:
+  # Enable external access if needed for testing
+  service:
+    type: NodePort  # or LoadBalancer
+    nodePort: 30090
+  
+  # Prometheus server configuration
+  configMapOverrides:
+    prometheus.yml: |
+      global:
+        scrape_interval: 15s
+        external_labels:
+          cluster: 'k3s-cluster'
+
+      scrape_configs:
+        # Kubernetes internal scraping
+        - job_name: 'kubernetes-apiservers'
+          kubernetes_sd_configs:
+            - role: endpoints
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+              action: keep
+              regex: default;kubernetes;https
+
+        - job_name: 'kubernetes-nodes'
+          kubernetes_sd_configs:
+            - role: node
+          relabel_configs:
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+
+        - job_name: 'kubernetes-pods'
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+              action: replace
+              target_label: __metrics_path__
+              regex: (.+)
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+              action: replace
+              regex: ([^:]+)(?::\\d+)?;(\\d+)
+              replacement: $1:$2
+              target_label: __address__
+
+        # External ByteFreezer Proxy hosts
+        - job_name: 'bytefreezer-proxy-external'
+          static_configs:
+            # REPLACE WITH YOUR ACTUAL PROXY HOST IPs
+            - targets:
+                - '192.168.1.100:9099'  # Proxy host 1
+                - '192.168.1.101:9099'  # Proxy host 2
+                # Add more proxy hosts here
+          metrics_path: '/metrics'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+          relabel_configs:
+            - target_label: 'service'
+              replacement: 'bytefreezer-proxy'
+            - target_label: 'environment'
+              replacement: 'production'
+            - source_labels: ['__address__']
+              regex: '([^:]+):.*'
+              target_label: 'proxy_host'
+              replacement: '${1}'
+
+        # ByteFreezer Proxy in Kubernetes (if deployed via k8s)
+        - job_name: 'bytefreezer-proxy-k8s'
+          kubernetes_sd_configs:
+            - role: service
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name]
+              action: keep
+              regex: bytefreezer-proxy
+            - source_labels: [__meta_kubernetes_service_port_name]
+              action: keep
+              regex: metrics
+            - target_label: 'service'
+              replacement: 'bytefreezer-proxy'
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: 'namespace'
+
+# Optional: AlertManager configuration
+alertmanager:
+  enabled: true
+  
+# Optional: Node exporter for host metrics
+nodeExporter:
+  enabled: true
+
+# Optional: Persistent storage for metrics
+server:
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+    storageClass: "local-path"  # K3s default storage class
