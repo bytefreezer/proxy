@@ -307,9 +307,67 @@ Examples:
 
 ## Monitoring
 
-The service provides metrics and health information:
+### Prometheus Metrics
 
-- Health endpoint shows service status, configuration, and statistics
+ByteFreezer Proxy provides comprehensive Prometheus metrics on port 9099:
+
+- **UDP Metrics**: Bytes/packets/lines received per tenant and dataset
+- **HTTP Metrics**: Bytes/lines forwarded, request success rates, response times  
+- **Batch Metrics**: Batch size distributions, processing durations
+- **Spool Metrics**: Queue sizes, disk usage for failed batches
+- **System Metrics**: Service health, resource usage
+
+**Quick Start with Docker Compose:**
+```bash
+# Start ByteFreezer Proxy with Prometheus monitoring
+docker-compose -f docker-compose.prometheus.yml up -d
+
+# Access services:
+# - ByteFreezer Proxy: http://localhost:8088/health
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3000 (admin/admin123)
+# - AlertManager: http://localhost:9093
+```
+
+**Key Metrics Available:**
+```prometheus
+# Throughput metrics
+bytefreezer_proxy_udp_bytes_received_total{tenant_id="customer-1", dataset_id="syslog-data"}
+bytefreezer_proxy_http_bytes_forwarded_total{tenant_id="customer-1", dataset_id="syslog-data"}
+
+# Performance metrics
+bytefreezer_proxy_forward_duration_seconds{tenant_id="customer-1", dataset_id="syslog-data"}
+bytefreezer_proxy_batch_size_bytes{tenant_id="customer-1", dataset_id="syslog-data"}
+
+# Reliability metrics
+bytefreezer_proxy_http_requests_total{tenant_id="customer-1", dataset_id="syslog-data", status="success"}
+bytefreezer_proxy_spool_queue_size{tenant_id="customer-1", dataset_id="syslog-data"}
+```
+
+### Alerting Rules
+
+Pre-configured alerts for:
+- **Service Down**: ByteFreezer Proxy instance offline
+- **No UDP Traffic**: No data received for 5+ minutes
+- **High Error Rate**: HTTP forwarding failures >10/sec
+- **Slow Forwarding**: 95th percentile >30s processing time
+- **Spool Queue Full**: >1000 queued files or >500MB disk usage
+
+### Kubernetes Monitoring
+
+For Kubernetes deployments with Prometheus Operator:
+```bash
+# Enable ServiceMonitor in kustomization.yaml
+kubectl apply -k kubernetes/
+
+# Or apply monitoring separately
+kubectl apply -f kubernetes/servicemonitor.yaml
+kubectl apply -f kubernetes/podmonitor.yaml
+```
+
+### Legacy OpenTelemetry Integration
+
+Also supports OTLP gRPC export by setting `prometheus_mode: false`:
 - OpenTelemetry integration for metrics and tracing
 - SOC alerting for operational issues
 - Structured logging with configurable levels

@@ -12,6 +12,9 @@ resources:
   - deployment.yaml
   - service.yaml
   - networkpolicy.yaml
+  # Prometheus monitoring (uncomment if using Prometheus Operator)
+  # - servicemonitor.yaml
+  # - podmonitor.yaml
 
 commonLabels:
   app.kubernetes.io/name: bytefreezer-proxy

@@ -1,0 +1,100 @@
+# ByteFreezer Proxy Prometheus Alerting Rules
+groups:
+  - name: bytefreezer-proxy-alerts
+    rules:
+      # Service availability alerts
+      - alert: ByteFreezerProxyDown
+        expr: up{job="bytefreezer-proxy"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy instance is down"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} has been down for more than 1 minute."
+
+      # UDP receiving alerts
+      - alert: ByteFreezerProxyNoUDPTraffic
+        expr: increase(bytefreezer_proxy_udp_bytes_received_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy receiving no UDP traffic"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} has not received any UDP traffic in the last 5 minutes."
+
+      - alert: ByteFreezerProxyHighUDPDropRate
+        expr: rate(bytefreezer_proxy_udp_packets_dropped_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high UDP drop rate"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} is dropping UDP packets at rate of {{ $value }} packets/sec."
+
+      # HTTP forwarding alerts
+      - alert: ByteFreezerProxyHighHTTPErrorRate
+        expr: rate(bytefreezer_proxy_http_requests_total{status="error"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high HTTP error rate"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} has high HTTP error rate: {{ $value }} errors/sec."
+
+      - alert: ByteFreezerProxySlowForwarding
+        expr: histogram_quantile(0.95, rate(bytefreezer_proxy_forward_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy slow batch forwarding"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} 95th percentile forwarding time is {{ $value }}s."
+
+      # Spooling alerts
+      - alert: ByteFreezerProxyHighSpoolQueueSize
+        expr: bytefreezer_proxy_spool_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high spool queue size"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} has {{ $value }} files in spool queue."
+
+      - alert: ByteFreezerProxySpoolDiskFull
+        expr: bytefreezer_proxy_spool_queue_bytes > 500000000  # 500MB
+        for: 2m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy spool disk usage high"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} spool queue using {{ $value | humanizeBytes }}."
+
+  - name: bytefreezer-proxy-performance
+    rules:
+      # Recording rules for dashboards
+      - record: bytefreezer_proxy:udp_throughput_bytes_per_second
+        expr: rate(bytefreezer_proxy_udp_bytes_received_total[1m])
+
+      - record: bytefreezer_proxy:udp_throughput_lines_per_second
+        expr: rate(bytefreezer_proxy_udp_lines_received_total[1m])
+
+      - record: bytefreezer_proxy:http_throughput_bytes_per_second
+        expr: rate(bytefreezer_proxy_http_bytes_forwarded_total[1m])
+
+      - record: bytefreezer_proxy:http_success_rate
+        expr: |
+          rate(bytefreezer_proxy_http_requests_total{status="success"}[5m]) /
+          rate(bytefreezer_proxy_http_requests_total[5m])
+
+      - record: bytefreezer_proxy:avg_batch_size_bytes
+        expr: rate(bytefreezer_proxy_batch_size_bytes_sum[5m]) / rate(bytefreezer_proxy_batch_size_bytes_count[5m])
+
+      - record: bytefreezer_proxy:avg_batch_size_lines
+        expr: rate(bytefreezer_proxy_batch_size_lines_sum[5m]) / rate(bytefreezer_proxy_batch_size_lines_count[5m])

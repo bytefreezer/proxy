@@ -14,11 +14,18 @@ service:
   name: "bytefreezer-proxy"
   type: "LoadBalancer"
   health_port: 8088
-  metrics_port: 9090
+  metrics_port: 9099
   udp_ports:
     - 2056
     - 2057
     - 2058
+    - 2059
+    - 2060
+    - 2061
+    - 2062
+    - 2063
+    - 2064
+    - 2065
 
 # Deployment configuration
 deployment:
@@ -102,7 +109,8 @@ config:
     service_name: "bytefreezer-proxy"
     scrapeIntervalseconds: 15
     prometheus_mode: true
-    metrics_port: 9090
+    metrics_port: 9099
+    metrics_host: "0.0.0.0"
 
   soc_alerts:
     enabled: false
