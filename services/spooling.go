@@ -52,9 +52,8 @@ type SpooledFile struct {
 // NewSpoolingService creates a new spooling service
 func NewSpoolingService(cfg *config.Config) *SpoolingService {
 	// Set default organization if not specified
-	organization := cfg.Spooling.Organization
-	if organization == "" {
-		organization = "tenant_dataset" // Default to organized structure
+	if cfg.Spooling.Organization == "" {
+		cfg.Spooling.Organization = "tenant_dataset" // Default to organized structure
 	}
 
 	return &SpoolingService{
@@ -674,8 +673,13 @@ func (s *SpoolingService) generateSpoolPaths(tenantID, datasetID string, data []
 		spoolDir = filepath.Join(s.directory, protocol, tenantID, datasetID)
 		filename = fmt.Sprintf("%s-%s%s", now.Format("20060102-150405"), batchID, extension)
 
+	case "":
+		// Fallback to default if organization is somehow empty
+		spoolDir = filepath.Join(s.directory, tenantID, datasetID)
+		filename = fmt.Sprintf("%s-%s%s", now.Format("20060102-150405"), batchID, extension)
+		
 	default:
-		return "", "", "", fmt.Errorf("unsupported spooling organization: %s", s.config.Spooling.Organization)
+		return "", "", "", fmt.Errorf("unsupported spooling organization: '%s' (supported: flat, tenant_dataset, date_tenant, protocol_tenant)", s.config.Spooling.Organization)
 	}
 
 	return spoolDir, filename, id, nil
