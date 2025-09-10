@@ -11,19 +11,19 @@ import (
 
 // SyslogMessage represents a parsed syslog message
 type SyslogMessage struct {
-	Priority    int                    `json:"priority"`
-	Facility    int                    `json:"facility"`
-	Severity    int                    `json:"severity"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Hostname    string                 `json:"hostname"`
-	Tag         string                 `json:"tag"`
-	ProcessID   string                 `json:"process_id,omitempty"`
-	MessageID   string                 `json:"message_id,omitempty"`
-	Message     string                 `json:"message"`
-	Version     int                    `json:"version,omitempty"`
-	Raw         string                 `json:"raw"`
-	Format      string                 `json:"format"` // "rfc3164" or "rfc5424"
-	Metadata    map[string]interface{} `json:"metadata"`
+	Priority  int                    `json:"priority"`
+	Facility  int                    `json:"facility"`
+	Severity  int                    `json:"severity"`
+	Timestamp time.Time              `json:"timestamp"`
+	Hostname  string                 `json:"hostname"`
+	Tag       string                 `json:"tag"`
+	ProcessID string                 `json:"process_id,omitempty"`
+	MessageID string                 `json:"message_id,omitempty"`
+	Message   string                 `json:"message"`
+	Version   int                    `json:"version,omitempty"`
+	Raw       string                 `json:"raw"`
+	Format    string                 `json:"format"` // "rfc3164" or "rfc5424"
+	Metadata  map[string]interface{} `json:"metadata"`
 }
 
 // SyslogParser handles parsing of RFC3164 and RFC5424 syslog messages
@@ -37,7 +37,7 @@ func NewSyslogParser() *SyslogParser {
 	return &SyslogParser{
 		// RFC3164 pattern: <priority>Mmm dd hh:mm:ss hostname tag: message
 		rfc3164Pattern: regexp.MustCompile(`^<(\d{1,3})>(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+([^:]+):\s*(.*)$`),
-		
+
 		// RFC5424 pattern: <priority>version timestamp hostname app-name procid msgid [structured-data] message
 		rfc5424Pattern: regexp.MustCompile(`^<(\d{1,3})>(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)$`),
 	}
@@ -47,7 +47,7 @@ func NewSyslogParser() *SyslogParser {
 func (p *SyslogParser) Parse(data []byte) (*SyslogMessage, error) {
 	raw := string(data)
 	trimmed := strings.TrimSpace(raw)
-	
+
 	if len(trimmed) == 0 {
 		return nil, errors.New("empty message")
 	}
@@ -109,7 +109,7 @@ func (p *SyslogParser) parseRFC3164(message string) (*SyslogMessage, error) {
 	// Extract tag and possible process ID
 	tag := matches[4]
 	processID := ""
-	
+
 	// Check for process ID in format: tag[pid]
 	if pidMatch := regexp.MustCompile(`^([^[]+)\[(\d+)\]$`).FindStringSubmatch(tag); len(pidMatch) == 3 {
 		tag = pidMatch[1]
@@ -184,7 +184,7 @@ func (p *SyslogParser) parseRFC5424(message string) (*SyslogMessage, error) {
 
 	// The rest is structured data + message
 	remaining := matches[8]
-	
+
 	// TODO: Parse structured data properly
 	// For now, treat everything as the message
 	messageText := remaining
@@ -219,7 +219,7 @@ func (m *SyslogMessage) GetSeverityName() string {
 		"emergency", "alert", "critical", "error",
 		"warning", "notice", "informational", "debug",
 	}
-	
+
 	if m.Severity >= 0 && m.Severity < len(severityNames) {
 		return severityNames[m.Severity]
 	}
@@ -229,14 +229,14 @@ func (m *SyslogMessage) GetSeverityName() string {
 // GetFacilityName returns the textual representation of facility
 func (m *SyslogMessage) GetFacilityName() string {
 	facilityNames := map[int]string{
-		0:  "kernel", 1: "user", 2: "mail", 3: "daemon",
-		4:  "security", 5: "syslogd", 6: "lpd", 7: "news",
-		8:  "uucp", 9: "cron", 10: "authpriv", 11: "ftp",
+		0: "kernel", 1: "user", 2: "mail", 3: "daemon",
+		4: "security", 5: "syslogd", 6: "lpd", 7: "news",
+		8: "uucp", 9: "cron", 10: "authpriv", 11: "ftp",
 		12: "ntp", 13: "log_audit", 14: "log_alert", 15: "clock",
 		16: "local0", 17: "local1", 18: "local2", 19: "local3",
 		20: "local4", 21: "local5", 22: "local6", 23: "local7",
 	}
-	
+
 	if name, ok := facilityNames[m.Facility]; ok {
 		return name
 	}
