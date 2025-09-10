@@ -1,0 +1,10 @@
+# Requirements for ByteFreezer Proxy Test Scripts
+#
+# Most scripts use only standard Python library
+# Optional dependencies for enhanced features:
+
+# For packet manipulation (optional - not required for basic testing)
+# scapy>=2.4.0
+
+# Note: All test scripts are designed to work with Python 3.6+ standard library only
+# No external dependencies are strictly required

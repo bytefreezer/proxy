@@ -14,7 +14,9 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
+	"github.com/n0needt0/bytefreezer-proxy/netflow"
 	"github.com/n0needt0/bytefreezer-proxy/services"
+	"github.com/n0needt0/bytefreezer-proxy/sflow"
 	"github.com/n0needt0/bytefreezer-proxy/syslog"
 	"github.com/n0needt0/go-goodies/log"
 )
@@ -34,14 +36,16 @@ type Listener struct {
 
 // UDPPortListener represents a single UDP port listener
 type UDPPortListener struct {
-	port         int
-	tenantID     string
-	datasetID    string
-	protocol     string // "udp" or "syslog"
-	syslogMode   string // "rfc3164" or "rfc5424"
-	addr         *net.UDPAddr
-	conn         *net.UDPConn
-	syslogParser *syslog.SyslogParser
+	port          int
+	tenantID      string
+	datasetID     string
+	protocol      string // "udp", "syslog", "netflow", or "sflow"
+	syslogMode    string // "rfc3164" or "rfc5424"
+	addr          *net.UDPAddr
+	conn          *net.UDPConn
+	syslogParser  *syslog.SyslogParser
+	netflowParser *netflow.NetFlowParser
+	sflowParser   *sflow.SFlowParser
 }
 
 // NewListener creates a new UDP listener
@@ -83,9 +87,14 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 			},
 		}
 
-		// Initialize syslog parser if needed
-		if protocol == "syslog" {
+		// Initialize parsers based on protocol
+		switch protocol {
+		case "syslog":
 			portListener.syslogParser = syslog.NewSyslogParser()
+		case "netflow":
+			portListener.netflowParser = netflow.NewNetFlowParser()
+		case "sflow":
+			portListener.sflowParser = sflow.NewSFlowParser()
 		}
 
 		// Debug log to verify values are set
@@ -138,8 +147,13 @@ func (l *Listener) Start() error {
 		}
 
 		protocolDesc := "UDP"
-		if portListener.protocol == "syslog" {
+		switch portListener.protocol {
+		case "syslog":
 			protocolDesc = fmt.Sprintf("Syslog (%s)", portListener.syslogMode)
+		case "netflow":
+			protocolDesc = "NetFlow"
+		case "sflow":
+			protocolDesc = "sFlow"
 		}
 		log.Infof("%s server listening on %s:%d (tenant: %s, dataset: %s)",
 			protocolDesc, portListener.addr.IP.String(), portListener.addr.Port,
@@ -245,23 +259,79 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 	var processedData []byte
 
 	// Process based on protocol type
-	if portListener.protocol == "syslog" && portListener.syslogParser != nil {
-		// Parse syslog message
-		syslogMsg, parseErr := portListener.syslogParser.Parse(payload)
-		if parseErr != nil {
-			log.Debugf("Failed to parse syslog message from %s: %v", from.String(), parseErr)
-			// Fallback to raw data
-			processedData = payload
-		} else {
-			// Convert to JSON
-			if jsonData, jsonErr := syslogMsg.ToJSON(); jsonErr != nil {
-				log.Debugf("Failed to convert syslog message to JSON: %v", jsonErr)
+	switch portListener.protocol {
+	case "syslog":
+		if portListener.syslogParser != nil {
+			// Parse syslog message
+			syslogMsg, parseErr := portListener.syslogParser.Parse(payload)
+			if parseErr != nil {
+				log.Debugf("Failed to parse syslog message from %s: %v", from.String(), parseErr)
+				// Fallback to raw data
 				processedData = payload
+			} else {
+				// Convert to JSON
+				if jsonData, jsonErr := syslogMsg.ToJSON(); jsonErr != nil {
+					log.Debugf("Failed to convert syslog message to JSON: %v", jsonErr)
+					processedData = payload
+				} else {
+					processedData = jsonData
+				}
+			}
+		} else {
+			processedData = payload
+		}
+
+	case "netflow":
+		if portListener.netflowParser != nil {
+			// Parse NetFlow data
+			if jsonData, parseErr := portListener.netflowParser.ParseToJSON(payload); parseErr != nil {
+				log.Debugf("Failed to parse NetFlow data from %s: %v", from.String(), parseErr)
+				// Create error envelope for invalid NetFlow data
+				errorEnvelope := map[string]interface{}{
+					"error":     "netflow_parse_failed",
+					"reason":    parseErr.Error(),
+					"raw_data":  fmt.Sprintf("%x", payload),
+					"source":    from.String(),
+					"timestamp": time.Now().Format(time.RFC3339Nano),
+				}
+				if errorBytes, err := json.Marshal(errorEnvelope); err == nil {
+					processedData = errorBytes
+				} else {
+					processedData = payload
+				}
 			} else {
 				processedData = jsonData
 			}
+		} else {
+			processedData = payload
 		}
-	} else {
+
+	case "sflow":
+		if portListener.sflowParser != nil {
+			// Parse sFlow data
+			if jsonData, parseErr := portListener.sflowParser.ParseToJSON(payload); parseErr != nil {
+				log.Debugf("Failed to parse sFlow data from %s: %v", from.String(), parseErr)
+				// Create error envelope for invalid sFlow data
+				errorEnvelope := map[string]interface{}{
+					"error":     "sflow_parse_failed",
+					"reason":    parseErr.Error(),
+					"raw_data":  fmt.Sprintf("%x", payload),
+					"source":    from.String(),
+					"timestamp": time.Now().Format(time.RFC3339Nano),
+				}
+				if errorBytes, err := json.Marshal(errorEnvelope); err == nil {
+					processedData = errorBytes
+				} else {
+					processedData = payload
+				}
+			} else {
+				processedData = jsonData
+			}
+		} else {
+			processedData = payload
+		}
+
+	default:
 		// Plain UDP data
 		processedData = payload
 	}

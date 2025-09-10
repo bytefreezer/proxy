@@ -5,7 +5,7 @@ High-performance UDP log proxy for the ByteFreezer platform. This proxy is requi
 ## Overview
 
 ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. It:
-- **Multi-protocol support**: Raw UDP data and RFC3164/RFC5424 syslog parsing
+- **Multi-protocol support**: Raw UDP, RFC3164/RFC5424 syslog, NetFlow v5/v9/IPFIX, and sFlow v5 parsing
 - **Supports up to 10 concurrent datasets** on dedicated UDP ports (2056-2065)
 - **Intelligent syslog parsing**: Automatic RFC3164/RFC5424 detection and JSON conversion
 - **Smart batching**: Line count takes precedence, with byte limits as additional constraints
@@ -18,11 +18,11 @@ ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. I
 ByteFreezer Proxy uses a **pre-allocated port range** system with **multi-protocol support**:
 
 - **Port Range**: 2056-2065 (10 ports reserved for datasets)
-- **Protocol Support**: Each port can be configured as `udp` (raw) or `syslog` (parsed)
+- **Protocol Support**: Each port can be configured as `udp` (raw), `syslog` (parsed), `netflow`, or `sflow`
 - **Smart Activation**: Only ports with configured `dataset_id` values are bound and consume resources
 - **Zero-Resource Inactive Ports**: Unconfigured ports remain completely inactive
 - **Per-Dataset Isolation**: Each dataset gets its own dedicated port and processing pipeline
-- **Syslog Standards**: Full RFC3164 and RFC5424 support with automatic JSON conversion
+- **Multi-Format Parsing**: Syslog (RFC3164/RFC5424), NetFlow (v5/v9/IPFIX), sFlow (v5), all with automatic JSON conversion
 - **Scalable Design**: Easily expand from 3 to 10 datasets by uncommenting configuration lines
 
 #### Protocol Configuration Examples:
@@ -36,6 +36,14 @@ listeners:
   - port: 2057
     dataset_id: "raw-udp-data"
     protocol: "udp"  # Default
+    
+  - port: 2058
+    dataset_id: "netflow-data"
+    protocol: "netflow"  # NetFlow v5/v9/IPFIX
+    
+  - port: 2059
+    dataset_id: "sflow-data" 
+    protocol: "sflow"   # sFlow v5
 ```
 
 ## Installation
@@ -153,6 +161,8 @@ The proxy follows the same architectural patterns as bytefreezer-receiver:
 - `udp/` - UDP listener and data batching
 - `alerts/` - SOC alerting integration
 - `syslog/` - RFC3164/RFC5424 syslog parsing
+- `netflow/` - NetFlow v5/v9/IPFIX parsing
+- `sflow/` - sFlow v5 parsing
 
 ## Syslog Integration
 
@@ -218,6 +228,199 @@ Parsed syslog messages are converted to JSON:
   }
 }
 ```
+
+## NetFlow Integration
+
+ByteFreezer Proxy provides comprehensive NetFlow collection and parsing capabilities for network monitoring:
+
+### Supported NetFlow Versions
+- **NetFlow v5**: Fixed format with basic flow information
+- **NetFlow v9**: Template-based format with flexible field definitions
+- **IPFIX (v10)**: Standards-based IP Flow Information Export
+
+### NetFlow Configuration Example
+```yaml
+udp:
+  listeners:
+    - port: 2055  # Standard NetFlow port
+      dataset_id: "netflow-data"
+      protocol: "netflow"
+```
+
+### Exporter Configuration Examples
+
+**Cisco Router/Switch:**
+```
+! Enable NetFlow v9 on interface
+interface GigabitEthernet0/1
+ ip flow ingress
+ ip flow egress
+
+! Configure NetFlow export
+ip flow-export version 9
+ip flow-export destination 192.168.1.100 2055
+ip flow-export source GigabitEthernet0/0
+```
+
+**pfSense NetFlow Export:**
+```
+Status > System Logs > Settings
+- Enable "Firewall Log Entries"
+- Remote Log Servers: 192.168.1.100:2055
+- IP Protocol: UDP
+```
+
+**SoftFlow Export (Linux):**
+```bash
+# Install softflowd
+apt-get install softflowd
+
+# Configure and start
+softflowd -i eth0 -n 192.168.1.100:2055 -v 9 -t maxlife=60
+```
+
+### NetFlow JSON Output Format
+```json
+{
+  "version": 5,
+  "src_ip": "192.168.1.10",
+  "dst_ip": "10.0.1.5",
+  "src_port": 80,
+  "dst_port": 52341,
+  "protocol": 6,
+  "packets": 15,
+  "bytes": 1024,
+  "flow_start": "2024-01-15T10:30:45Z",
+  "flow_end": "2024-01-15T10:31:12Z",
+  "input_interface": 1,
+  "output_interface": 2,
+  "next_hop": "192.168.1.1",
+  "src_as": 65001,
+  "dst_as": 65002,
+  "tcp_flags": 24,
+  "tos": 0,
+  "received_at": "2024-01-15T10:31:15.123Z",
+  "exporter_addr": "192.168.1.254"
+}
+```
+
+## sFlow Integration
+
+ByteFreezer Proxy supports sFlow v5 for network and system monitoring via packet sampling:
+
+### sFlow v5 Features
+- **Flow Samples**: Packet header sampling with network metadata
+- **Counter Samples**: Interface and system statistics
+- **Multi-layer Analysis**: Ethernet, IP, TCP/UDP protocol parsing
+
+### sFlow Configuration Example
+```yaml
+udp:
+  listeners:
+    - port: 6343  # Standard sFlow port
+      dataset_id: "sflow-data"
+      protocol: "sflow"
+```
+
+### sFlow Agent Configuration Examples
+
+**Open vSwitch (OVS):**
+```bash
+# Enable sFlow on bridge
+ovs-vsctl -- set Bridge br0 sflow=@sf \
+  -- --id=@sf create sFlow agent=eth0 \
+     target="192.168.1.100:6343" \
+     header=128 sampling=64 polling=10
+```
+
+**sFlowTrend Agent:**
+```bash
+# Install sFlow agent
+wget https://host-sflow.sourceforge.io/sflow-agent.tar.gz
+tar -xzf sflow-agent.tar.gz && cd sflow-agent
+make && sudo make install
+
+# Configure /etc/sflow/sflowagent.conf
+sflow {
+  collector {
+    ip = 192.168.1.100
+    udpport = 6343
+  }
+  sampling = 400
+  polling = 30
+}
+```
+
+**Cumulus Linux:**
+```bash
+# Enable sFlow
+net add sflow agent interface eth0
+net add sflow collector ip 192.168.1.100
+net add sflow collector port 6343
+net add sflow sampling-rate 1000
+net commit
+```
+
+### sFlow JSON Output Format
+
+**Flow Sample:**
+```json
+{
+  "type": "flow",
+  "version": 5,
+  "agent_addr": "192.168.1.254",
+  "sample_type": "flow_sample",
+  "sampling_rate": 1000,
+  "input_interface": 1,
+  "output_interface": 2,
+  "src_ip": "192.168.1.10",
+  "dst_ip": "10.0.1.5",
+  "src_port": 80,
+  "dst_port": 52341,
+  "protocol": 6,
+  "packet_size": 1500,
+  "src_mac": "aa:bb:cc:dd:ee:ff",
+  "dst_mac": "11:22:33:44:55:66",
+  "vlan": 100,
+  "received_at": "2024-01-15T10:31:15.123Z"
+}
+```
+
+**Counter Sample:**
+```json
+{
+  "type": "counter", 
+  "version": 5,
+  "agent_addr": "192.168.1.254",
+  "sample_type": "counter_sample",
+  "counter_records": {
+    "counter_1": {
+      "format": 1,
+      "length": 88,
+      "data_hex": "..."
+    }
+  },
+  "received_at": "2024-01-15T10:31:15.123Z"
+}
+```
+
+### Network Flow Processing Pipeline
+
+1. **Receive** NetFlow/sFlow packets on configured ports
+2. **Parse** according to version-specific format (v5/v9/IPFIX for NetFlow, v5 for sFlow)
+3. **Extract** flow information, packet samples, and interface counters
+4. **Convert** to structured JSON format with network metadata
+5. **Batch** flow records for efficient processing
+6. **Forward** to bytefreezer-receiver via HTTP webhook
+7. **Store** in S3 as `raw/format=netflow/` or `raw/format=sflow/`
+
+### Common Network Flow Use Cases
+
+- **Bandwidth Analysis**: Top talkers, traffic patterns, utilization monitoring
+- **Security Monitoring**: DDoS detection, anomalous traffic patterns, threat hunting
+- **Capacity Planning**: Interface utilization trends, growth projections
+- **Application Performance**: Response times, connection patterns, QoS analysis
+- **Compliance**: Traffic auditing, data retention, regulatory reporting
 
 ## Configuration
 

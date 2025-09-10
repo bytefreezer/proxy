@@ -6,9 +6,9 @@
 set -e
 
 # Configuration
-PROXY_HOST="localhost"
-SYSLOG_PORT=2056
-EBPF_PORT=2057
+PROXY_HOST="192.168.86.101"
+SYSLOG_PORT=2057
+EBPF_PORT=2056
 APP_LOGS_PORT=2058
 SPOOLING_DIR="/tmp/bytefreezer-proxy"
 

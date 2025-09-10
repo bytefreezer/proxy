@@ -102,6 +102,12 @@ type Spooling struct {
 	RetryAttempts      int    `mapstructure:"retry_attempts"`
 	RetryIntervalSec   int    `mapstructure:"retry_interval_seconds"`
 	CleanupIntervalSec int    `mapstructure:"cleanup_interval_seconds"`
+
+	// Organization settings
+	Organization       string `mapstructure:"organization"`          // "flat", "tenant_dataset", "date_tenant", "protocol_tenant"
+	PerTenantLimits    bool   `mapstructure:"per_tenant_limits"`     // Apply size limits per tenant instead of globally
+	MaxFilesPerDataset int    `mapstructure:"max_files_per_dataset"` // Max files per dataset (0 = unlimited)
+	MaxAgeDays         int    `mapstructure:"max_age_days"`          // Max age in days before cleanup (0 = unlimited)
 }
 
 func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
