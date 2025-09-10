@@ -60,9 +60,11 @@ type UDP struct {
 }
 
 type UDPListener struct {
-	Port      int    `mapstructure:"port"`
-	DatasetID string `mapstructure:"dataset_id"`
-	TenantID  string `mapstructure:"tenant_id,omitempty"` // Optional: override global tenant
+	Port        int    `mapstructure:"port"`
+	DatasetID   string `mapstructure:"dataset_id"`
+	TenantID    string `mapstructure:"tenant_id,omitempty"`    // Optional: override global tenant
+	Protocol    string `mapstructure:"protocol,omitempty"`     // "udp" (default) or "syslog"
+	SyslogMode  string `mapstructure:"syslog_mode,omitempty"`  // "rfc3164" (default) or "rfc5424"
 }
 
 type Receiver struct {

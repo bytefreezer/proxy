@@ -5,21 +5,38 @@ High-performance UDP log proxy for the ByteFreezer platform. This proxy is requi
 ## Overview
 
 ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. It:
-- Listens for UDP data from external sources (syslog, eBPF, etc.)
+- **Multi-protocol support**: Raw UDP data and RFC3164/RFC5424 syslog parsing
 - **Supports up to 10 concurrent datasets** on dedicated UDP ports (2056-2065)
+- **Intelligent syslog parsing**: Automatic RFC3164/RFC5424 detection and JSON conversion
 - **Smart batching**: Line count takes precedence, with byte limits as additional constraints
 - Compresses and forwards batches to bytefreezer-receiver via HTTP
+- **Single-tenant by design**: Perfect for on-premises deployments
 - Provides health and configuration APIs
 
-### Port Allocation Architecture
+### Port Allocation & Protocol Architecture
 
-ByteFreezer Proxy uses a **pre-allocated port range** system for optimal performance and resource management:
+ByteFreezer Proxy uses a **pre-allocated port range** system with **multi-protocol support**:
 
-- **Port Range**: 2056-2065 (10 ports reserved for UDP datasets)
+- **Port Range**: 2056-2065 (10 ports reserved for datasets)
+- **Protocol Support**: Each port can be configured as `udp` (raw) or `syslog` (parsed)
 - **Smart Activation**: Only ports with configured `dataset_id` values are bound and consume resources
 - **Zero-Resource Inactive Ports**: Unconfigured ports remain completely inactive
-- **Per-Dataset Isolation**: Each dataset gets its own dedicated UDP port and processing pipeline
+- **Per-Dataset Isolation**: Each dataset gets its own dedicated port and processing pipeline
+- **Syslog Standards**: Full RFC3164 and RFC5424 support with automatic JSON conversion
 - **Scalable Design**: Easily expand from 3 to 10 datasets by uncommenting configuration lines
+
+#### Protocol Configuration Examples:
+```yaml
+listeners:
+  - port: 2056
+    dataset_id: "syslog-messages" 
+    protocol: "syslog"
+    syslog_mode: "rfc3164"
+  
+  - port: 2057
+    dataset_id: "raw-udp-data"
+    protocol: "udp"  # Default
+```
 
 ## Installation
 
@@ -135,6 +152,72 @@ The proxy follows the same architectural patterns as bytefreezer-receiver:
 - `services/` - Business logic and HTTP forwarding
 - `udp/` - UDP listener and data batching
 - `alerts/` - SOC alerting integration
+- `syslog/` - RFC3164/RFC5424 syslog parsing
+
+## Syslog Integration
+
+ByteFreezer Proxy provides native syslog server capabilities for enterprise log collection:
+
+### Supported Standards
+- **RFC3164** (Traditional): `<priority>timestamp hostname tag: message`
+- **RFC5424** (Modern): `<priority>version timestamp hostname app-name procid msgid structured-data message`
+
+### Usage Examples
+
+**Configure rsyslog to forward to proxy:**
+```bash
+# Add to /etc/rsyslog.conf
+*.info @proxy-host:2056    # RFC3164 to port 2056
+*.* @@proxy-host:2058     # RFC5424 to port 2058 (TCP-style over UDP)
+```
+
+**Configure syslog-ng to forward to proxy:**
+```bash
+destination bytefreezer_proxy {
+    syslog("proxy-host" port(2056) transport("udp"));
+};
+log { source(s_src); destination(bytefreezer_proxy); };
+```
+
+**Test with logger command:**
+```bash
+# Send RFC3164 message
+logger -n proxy-host -P 2056 -p local0.info "Test syslog message"
+
+# Send with specific facility/severity
+logger -n proxy-host -P 2056 -p daemon.warn "System daemon warning"
+```
+
+### Syslog Processing Flow
+
+1. **Receive** syslog packet on configured port
+2. **Parse** according to RFC3164 or RFC5424 standards
+3. **Convert** to structured JSON format
+4. **Batch** with other messages for efficiency
+5. **Forward** to bytefreezer-receiver via HTTP webhook
+6. **Store** in S3 as `raw/format=syslog/tenant=.../dataset=...`
+
+### JSON Output Format
+
+Parsed syslog messages are converted to JSON:
+```json
+{
+  "priority": 13,
+  "facility": 1,
+  "severity": 5,
+  "timestamp": "2024-01-15T10:05:30Z",
+  "hostname": "web01",
+  "tag": "nginx",
+  "process_id": "1234",
+  "message": "192.168.1.1 GET /api/status HTTP/1.1 200",
+  "format": "rfc3164",
+  "raw": "<13>Jan 15 10:05:30 web01 nginx[1234]: 192.168.1.1 GET /api/status HTTP/1.1 200",
+  "metadata": {
+    "parsed_at": "2024-01-15T10:05:30.123Z",
+    "parser": "rfc3164"
+  }
+}
+```
 
 ## Configuration
 

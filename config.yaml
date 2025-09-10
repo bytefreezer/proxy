@@ -25,29 +25,51 @@ udp:
   # Port configuration with dataset mapping (up to 10 datasets supported)
   # Only ports with dataset_id configured will be activated
   # Ports 2056-2065 are pre-allocated for dataset use
+  # Each port can be configured for different protocols: "udp" (default) or "syslog"
   listeners:
+    # Syslog RFC3164 (traditional syslog format)
     - port: 2056
       dataset_id: "syslog-data"
+      protocol: "syslog"
+      syslog_mode: "rfc3164"
       # tenant_id: "custom-tenant"  # Optional: overrides global tenant
+    
+    # Plain UDP data (JSON, NDJSON, etc.)
     - port: 2057  
       dataset_id: "ebpf-data"
+      protocol: "udp"
+    
+    # Syslog RFC5424 (modern syslog format)
     - port: 2058
       dataset_id: "application-logs"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+    
     # Additional dataset slots (uncomment and configure as needed):
     # - port: 2059
-    #   dataset_id: "security-logs"
+    #   dataset_id: "security-logs" 
+    #   protocol: "syslog"
+    #   syslog_mode: "rfc3164"
     # - port: 2060
     #   dataset_id: "network-data"
+    #   protocol: "udp"
     # - port: 2061
     #   dataset_id: "performance-metrics"
+    #   protocol: "udp"
     # - port: 2062
     #   dataset_id: "audit-logs"
+    #   protocol: "syslog"
+    #   syslog_mode: "rfc5424"
     # - port: 2063
     #   dataset_id: "container-logs"
+    #   protocol: "udp"
     # - port: 2064
     #   dataset_id: "database-logs"
+    #   protocol: "syslog"
+    #   syslog_mode: "rfc3164"
     # - port: 2065
     #   dataset_id: "custom-dataset"
+    #   protocol: "udp"
 
 # Global tenant configuration
 tenant_id: "customer-1"

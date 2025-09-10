@@ -52,13 +52,13 @@ send_udp() {
     fi
 }
 
-# Function to generate JSON log data
+# Function to generate actual syslog messages (RFC3164 format)
 generate_syslog_data() {
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+    local date_str=$(date "+%b %d %H:%M:%S")
     cat << EOF
-{"timestamp":"$timestamp","level":"info","facility":"kern","severity":"info","hostname":"test-server-01","program":"kernel","message":"Test syslog message from UDP test script","pid":12345}
-{"timestamp":"$timestamp","level":"warn","facility":"mail","severity":"warning","hostname":"mail-server","program":"postfix","message":"Warning: queue file size limit exceeded","pid":23456}
-{"timestamp":"$timestamp","level":"error","facility":"auth","severity":"error","hostname":"auth-server","program":"sshd","message":"Failed password for user admin from 192.168.1.100","pid":34567}
+<13>$date_str test-server-01 kernel: Test syslog message from UDP test script
+<20>$date_str mail-server postfix[23456]: Warning: queue file size limit exceeded
+<38>$date_str auth-server sshd[34567]: Failed password for user admin from 192.168.1.100
 EOF
 }
 

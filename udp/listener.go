@@ -15,6 +15,7 @@ import (
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
 	"github.com/n0needt0/bytefreezer-proxy/services"
+	"github.com/n0needt0/bytefreezer-proxy/syslog"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -33,11 +34,14 @@ type Listener struct {
 
 // UDPPortListener represents a single UDP port listener
 type UDPPortListener struct {
-	port      int
-	tenantID  string
-	datasetID string
-	addr      *net.UDPAddr
-	conn      *net.UDPConn
+	port         int
+	tenantID     string
+	datasetID    string
+	protocol     string // "udp" or "syslog"
+	syslogMode   string // "rfc3164" or "rfc5424"
+	addr         *net.UDPAddr
+	conn         *net.UDPConn
+	syslogParser *syslog.SyslogParser
 }
 
 // NewListener creates a new UDP listener
@@ -57,19 +61,36 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 			tenantID = cfg.TenantID // Use global tenant if not specified
 		}
 
+		protocol := udpListener.Protocol
+		if protocol == "" {
+			protocol = "udp" // Default to plain UDP
+		}
+
+		syslogMode := udpListener.SyslogMode
+		if syslogMode == "" {
+			syslogMode = "rfc3164" // Default to RFC3164
+		}
+
 		portListener := &UDPPortListener{
-			port:      udpListener.Port,
-			tenantID:  tenantID,
-			datasetID: udpListener.DatasetID,
+			port:       udpListener.Port,
+			tenantID:   tenantID,
+			datasetID:  udpListener.DatasetID,
+			protocol:   protocol,
+			syslogMode: syslogMode,
 			addr: &net.UDPAddr{
 				IP:   net.ParseIP(cfg.UDP.Host),
 				Port: udpListener.Port,
 			},
 		}
 
+		// Initialize syslog parser if needed
+		if protocol == "syslog" {
+			portListener.syslogParser = syslog.NewSyslogParser()
+		}
+
 		// Debug log to verify values are set
-		log.Debugf("Created port listener - Port: %d, TenantID: '%s', DatasetID: '%s'",
-			portListener.port, portListener.tenantID, portListener.datasetID)
+		log.Debugf("Created port listener - Port: %d, TenantID: '%s', DatasetID: '%s', Protocol: '%s', SyslogMode: '%s'",
+			portListener.port, portListener.tenantID, portListener.datasetID, portListener.protocol, portListener.syslogMode)
 		portListeners = append(portListeners, portListener)
 	}
 
@@ -116,9 +137,13 @@ func (l *Listener) Start() error {
 			return fmt.Errorf("failed to set read buffer for %s: %w", portListener.addr.String(), err)
 		}
 
-		log.Info("UDP server listening on " + portListener.addr.IP.String() + ":" +
-			fmt.Sprintf("%d", portListener.addr.Port) + " (tenant: " + portListener.tenantID +
-			", dataset: " + portListener.datasetID + ")")
+		protocolDesc := "UDP"
+		if portListener.protocol == "syslog" {
+			protocolDesc = fmt.Sprintf("Syslog (%s)", portListener.syslogMode)
+		}
+		log.Infof("%s server listening on %s:%d (tenant: %s, dataset: %s)",
+			protocolDesc, portListener.addr.IP.String(), portListener.addr.Port,
+			portListener.tenantID, portListener.datasetID)
 
 		// Start message handler for this port
 		l.wg.Add(1)
@@ -202,13 +227,13 @@ func (l *Listener) handleMessagesForPort(portListener *UDPPortListener) {
 		}
 
 		// Process the message with port-specific tenant/dataset info
-		l.processMessageWithContext(buf[:readLen], remoteAddr, portListener.tenantID, portListener.datasetID)
+		l.processMessageWithContext(buf[:readLen], remoteAddr, portListener)
 		l.deallocateBuffer(buf)
 	}
 }
 
 // processMessageWithContext processes a single UDP message with tenant/dataset context
-func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, tenantID, datasetID string) {
+func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, portListener *UDPPortListener) {
 	// Clean up the payload
 	payload := bytes.TrimSpace(data)
 	payload = bytes.Trim(payload, "\x08\x00")
@@ -217,29 +242,53 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, ten
 		return
 	}
 
+	var processedData []byte
+
+	// Process based on protocol type
+	if portListener.protocol == "syslog" && portListener.syslogParser != nil {
+		// Parse syslog message
+		syslogMsg, parseErr := portListener.syslogParser.Parse(payload)
+		if parseErr != nil {
+			log.Debugf("Failed to parse syslog message from %s: %v", from.String(), parseErr)
+			// Fallback to raw data
+			processedData = payload
+		} else {
+			// Convert to JSON
+			if jsonData, jsonErr := syslogMsg.ToJSON(); jsonErr != nil {
+				log.Debugf("Failed to convert syslog message to JSON: %v", jsonErr)
+				processedData = payload
+			} else {
+				processedData = jsonData
+			}
+		}
+	} else {
+		// Plain UDP data
+		processedData = payload
+	}
+
 	// Create UDP message with context
 	msg := &domain.UDPMessage{
-		Data:      make([]byte, len(payload)),
+		Data:      make([]byte, len(processedData)),
 		From:      from.String(),
 		Timestamp: time.Now(),
-		TenantID:  tenantID,
-		DatasetID: datasetID,
+		TenantID:  portListener.tenantID,
+		DatasetID: portListener.datasetID,
 	}
-	copy(msg.Data, payload)
+	copy(msg.Data, processedData)
 
 	// Try to send to batch channel (non-blocking)
 	select {
 	case l.batchChannel <- msg:
 		l.services.ProxyStats.UDPMessagesReceived++
-		l.services.ProxyStats.BytesReceived += int64(len(payload))
+		l.services.ProxyStats.BytesReceived += int64(len(processedData))
 		l.services.ProxyStats.LastActivity = time.Now()
 
 		// Record metrics if metrics service is available
 		if l.services.MetricsService != nil {
 			ctx := context.Background()
-			l.services.MetricsService.RecordUDPBytesReceived(ctx, tenantID, datasetID, int64(len(payload)))
-			l.services.MetricsService.RecordUDPPacketsReceived(ctx, tenantID, datasetID, 1)
-			l.services.MetricsService.RecordUDPLinesReceived(ctx, tenantID, datasetID, 1) // Each UDP message is one line
+			l.services.MetricsService.RecordUDPBytesReceived(ctx, portListener.tenantID, portListener.datasetID, int64(len(processedData)))
+			l.services.MetricsService.RecordUDPPacketsReceived(ctx, portListener.tenantID, portListener.datasetID, 1)
+			l.services.MetricsService.RecordUDPLinesReceived(ctx, portListener.tenantID, portListener.datasetID, 1) // Each UDP message is one line
 		}
 	default:
 		// Channel is full, drop message and log
