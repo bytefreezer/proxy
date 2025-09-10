@@ -677,7 +677,7 @@ func (s *SpoolingService) generateSpoolPaths(tenantID, datasetID string, data []
 		// Fallback to default if organization is somehow empty
 		spoolDir = filepath.Join(s.directory, tenantID, datasetID)
 		filename = fmt.Sprintf("%s-%s%s", now.Format("20060102-150405"), batchID, extension)
-		
+
 	default:
 		return "", "", "", fmt.Errorf("unsupported spooling organization: '%s' (supported: flat, tenant_dataset, date_tenant, protocol_tenant)", s.config.Spooling.Organization)
 	}
