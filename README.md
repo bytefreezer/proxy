@@ -1,50 +1,136 @@
 # ByteFreezer Proxy
 
-High-performance UDP log proxy for the ByteFreezer platform. This proxy is required to collect data internal to your network efficiently via UDP, and forward it effectively via TCP to the ByteFreezer receiver.
+High-performance UDP data streaming proxy for the ByteFreezer platform. Designed for enterprise environments that need to collect, batch, and forward any line-based data efficiently via UDP to the ByteFreezer platform for storage and downstream processing.
 
 ## Overview
 
-ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. It:
-- **Multi-protocol support**: Raw UDP, RFC3164/RFC5424 syslog, NetFlow v5/v9/IPFIX, and sFlow v5 parsing
-- **Supports up to 10 concurrent datasets** on dedicated UDP ports (2056-2065)
-- **Intelligent syslog parsing**: Automatic RFC3164/RFC5424 detection and JSON conversion
-- **Smart batching**: Line count takes precedence, with byte limits as additional constraints
-- Compresses and forwards batches to bytefreezer-receiver via HTTP
-- **Multi-tenant support**: Port-based tenant isolation with per-tenant authentication
-- Provides health and configuration APIs
+ByteFreezer Proxy is a **universal data streaming gateway** designed for enterprise environments with diverse data sources. The proxy implements a **stream-first, process-later** architecture that maximizes throughput while enabling sophisticated downstream processing.
 
-### Port Allocation & Protocol Architecture
+### **Core Capabilities**
+- **🌐 Universal Data Ingestion**: Accepts any line-based data format via UDP
+- **⚡ High-Performance Streaming**: Optimized for high-throughput data collection
+- **📦 Smart Batching**: Efficient line-based batching with gzip compression
+- **🔄 Reliable Delivery**: HTTP forwarding with retry logic and local spooling
+- **🏢 Multi-Tenant Architecture**: Port-based isolation with per-tenant authentication
+- **📊 Protocol Intelligence**: Optional lightweight parsing for structured protocols
+- **🛡️ Enterprise-Ready**: Health monitoring, metrics, and operational APIs
 
-ByteFreezer Proxy uses a **pre-allocated port range** system with **multi-protocol support**:
+### **Supported Data Types**
+| Format | Processing | Use Cases |
+|--------|------------|-----------|
+| **JSON Logs** | Pass-through | Application logs, structured events |
+| **Plain Text** | Metadata wrapping | Legacy logs, free-form messages |
+| **CSV/TSV** | Pass-through | Metrics, tabular data exports |
+| **Syslog** | Structure extraction | System logs, network device logs |
+| **NetFlow/IPFIX** | Binary parsing | Network monitoring, traffic analysis |
+| **sFlow** | Binary parsing | Network sampling, performance monitoring |
 
-- **Port Range**: 2056-2065 (10 ports reserved for datasets)
-- **Protocol Support**: Each port can be configured as `udp` (raw), `syslog` (parsed), `netflow`, or `sflow`
-- **Smart Activation**: Only ports with configured `dataset_id` values are bound and consume resources
-- **Zero-Resource Inactive Ports**: Unconfigured ports remain completely inactive
-- **Per-Dataset Isolation**: Each dataset gets its own dedicated port and processing pipeline
-- **Multi-Format Parsing**: Syslog (RFC3164/RFC5424), NetFlow (v5/v9/IPFIX), sFlow (v5), all with automatic JSON conversion
-- **Scalable Design**: Easily expand from 3 to 10 datasets by uncommenting configuration lines
+## Architecture & Data Flow
 
-#### Protocol Configuration Examples:
-```yaml
-listeners:
-  - port: 2056
-    dataset_id: "syslog-messages" 
-    protocol: "syslog"
-    syslog_mode: "rfc3164"
-  
-  - port: 2057
-    dataset_id: "raw-udp-data"
-    protocol: "udp"  # Default
-    
-  - port: 2058
-    dataset_id: "netflow-data"
-    protocol: "netflow"  # NetFlow v5/v9/IPFIX
-    
-  - port: 2059
-    dataset_id: "sflow-data" 
-    protocol: "sflow"   # sFlow v5
+### **Stream-First Design Philosophy**
+
+ByteFreezer Proxy implements a **separation of concerns** architecture:
+
 ```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Data Sources  │───▶│  ByteFreezer    │───▶│   ByteFreezer   │
+│                 │    │     Proxy       │    │    Platform     │
+│ • Applications  │    │                 │    │                 │
+│ • System Logs   │    │ • Collect       │    │ • Store (S3)    │
+│ • Network Flows │    │ • Batch         │    │ • Process       │
+│ • Metrics       │    │ • Forward       │    │ • Analyze       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### **Core Principles**
+1. **🚀 Speed**: Minimal processing, maximum throughput
+2. **🔄 Reliability**: Robust delivery with spooling and retry
+3. **📊 Flexibility**: Support any line-based data format
+4. **⚡ Scalability**: Horizontal scaling through multiple instances
+5. **🛡️ Resilience**: Graceful handling of network issues and failures
+
+### **Port-Based Data Collection**
+
+Each UDP port represents an isolated data stream:
+
+- **🌐 Format Agnostic**: Any port accepts any line-based data format
+- **🔧 Protocol Modes**: Optional processing for `udp`, `syslog`, `netflow`, `sflow`
+- **⚡ Smart Activation**: Only configured ports consume resources
+- **🏗️ Per-Dataset Isolation**: Dedicated processing pipeline per dataset
+- **📈 Independent Scaling**: Scale data sources independently
+
+### **Real-World Configuration Examples**
+
+```yaml
+udp:
+  listeners:
+    # Application JSON logs
+    - port: 2056
+      dataset_id: "app-logs-json"
+      protocol: "udp"
+      # Receives: {"timestamp":"2024-01-15T10:30:00Z","level":"info","message":"User logged in","user_id":123}
+    
+    # System syslog messages
+    - port: 2057
+      dataset_id: "system-logs"
+      protocol: "syslog"
+      syslog_mode: "rfc3164"
+      # Receives: <134>Jan 15 10:30:00 web01 nginx[1234]: 192.168.1.1 GET /api/status 200
+    
+    # Metrics in CSV format
+    - port: 2058
+      dataset_id: "server-metrics"
+      protocol: "udp"
+      # Receives: timestamp,hostname,cpu_usage,memory_usage\n2024-01-15T10:30:00,web01,45.2,78.1
+    
+    # Network flow monitoring
+    - port: 2059
+      dataset_id: "network-flows"
+      protocol: "netflow"
+      # Receives: Binary NetFlow v5/v9 packets
+    
+    # Plain text log files
+    - port: 2060
+      dataset_id: "legacy-logs"
+      protocol: "udp"
+      # Receives: [2024-01-15 10:30:00] ERROR: Database connection failed
+```
+
+### **Data Processing Pipeline**
+
+The proxy implements a **multi-stage processing pipeline** optimized for performance:
+
+```
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│   UDP       │──▶│   Protocol  │──▶│   Batching  │──▶│  Forwarding │
+│  Reception  │   │  Processing │   │ & Compress  │   │  & Spooling │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+      │                  │                  │                  │
+      ▼                  ▼                  ▼                  ▼
+• High-perf      • Minimal parsing   • Line-based      • HTTP delivery
+• Buffer mgmt    • Format detection  • Gzip compress   • Retry logic
+• Multi-port     • Metadata inject   • Size limits     • Local spooling
+```
+
+#### **Stage 1: UDP Reception**
+- **High-Performance Buffers**: Configurable buffer sizes for optimal throughput
+- **Multi-Port Listening**: Concurrent processing across all configured ports
+- **Zero-Copy Operations**: Minimal memory allocation for maximum speed
+
+#### **Stage 2: Protocol Processing**
+- **Format Detection**: Automatic detection of data format per port configuration
+- **Minimal Parsing**: Only extract essential metadata, preserve original content
+- **Metadata Injection**: Add timestamp, source IP, and processing context
+
+#### **Stage 3: Batching & Compression**
+- **Line-Based Batching**: Efficient aggregation based on line count and size limits
+- **Gzip Compression**: Reduce bandwidth and storage requirements
+- **Smart Buffering**: Balance between latency and throughput
+
+#### **Stage 4: Forwarding & Spooling**
+- **HTTP Delivery**: Reliable forwarding to ByteFreezer receiver
+- **Automatic Retry**: Exponential backoff for failed deliveries
+- **Local Spooling**: Disk-based backup for network interruptions
 
 ## Installation
 
@@ -201,15 +287,22 @@ logger -n proxy-host -P 2056 -p daemon.warn "System daemon warning"
 ### Syslog Processing Flow
 
 1. **Receive** syslog packet on configured port
-2. **Parse** according to RFC3164 or RFC5424 standards
-3. **Convert** to structured JSON format
+2. **Parse** basic RFC3164 or RFC5424 structure for metadata
+3. **Preserve** original message content for downstream processing
 4. **Batch** with other messages for efficiency
 5. **Forward** to bytefreezer-receiver via HTTP webhook
 6. **Store** in S3 as `raw/format=syslog/tenant=.../dataset=...`
 
+**Design Philosophy**: The proxy treats syslog as one of many data formats, performing minimal structure extraction while preserving the original message content. This approach enables:
+- **High Performance**: No parsing bottlenecks in the data collection layer
+- **Universal Format Support**: Same pipeline works for JSON, CSV, plain text, syslog, etc.
+- **Parallelization**: Downstream Piper workers can process any format in parallel
+- **Flexibility**: Complex parsing rules are handled in Piper, not the proxy
+- **Separation of Concerns**: Proxy = Collection & Forwarding, Piper = Parsing & Transformation
+
 ### JSON Output Format
 
-Parsed syslog messages are converted to JSON:
+Syslog messages are converted to JSON with basic structure:
 ```json
 {
   "priority": 13,
@@ -470,9 +563,7 @@ udp:
     #   dataset_id: "custom-dataset"
 ```
 
-#### Expanding Beyond 3 Datasets
-
-**Default Configuration**: 3 active datasets on ports 2056-2058
+#### Expanding Datasets
 
 **To add more datasets (up to 10 total)**:
 1. Uncomment additional port configurations in `config.yaml`
@@ -481,9 +572,7 @@ udp:
 4. Ensure firewall/container ports are exposed for the new UDP ports
 
 **Important Limits**:
-- **Maximum**: 10 concurrent datasets (ports 2056-2065)
 - **Minimum**: 1 dataset (any single port from the range)
-- **Port Range**: Fixed at 2056-2065 (cannot use other ports)
 - **Resource Usage**: Only configured ports consume memory/CPU
 
 **Example: Adding a 4th dataset**:
@@ -786,19 +875,40 @@ sudo sysctl -w net.core.wmem_max=134217728
 sudo sysctl -w net.core.wmem_default=134217728
 ```
 
-## Data Format
+## Data Processing Pipeline
 
-The proxy accepts UDP data and converts it to NDJSON format before forwarding:
+ByteFreezer Proxy implements a **stream-first, process-later** architecture:
 
-- Valid JSON messages are passed through as-is
-- Non-JSON messages are wrapped in JSON envelopes with metadata:
-  ```json
-  {
-    "message": "original udp data", 
-    "source": "sender_ip:port",
-    "timestamp": "2025-09-03T23:30:00.123Z"
-  }
-  ```
+### **1. Collection Phase (Proxy)**
+- **Format Agnostic**: Accepts any line-based data via UDP
+- **Minimal Processing**: Basic protocol handling where needed (syslog structure, flow parsing)
+- **Fast Batching**: Groups lines efficiently for transmission
+- **Reliable Storage**: Forwards to receiver and S3 for persistence
+
+### **2. Processing Phase (Piper)**
+- **Parallel Processing**: Multiple workers process data from S3
+- **Complex Parsing**: Field extraction, transformations, enrichment
+- **Format Detection**: Automatic detection of JSON, CSV, syslog, etc.
+- **Rule Engine**: Configurable parsing and routing rules
+
+### **Data Flow Example:**
+```
+UDP Line Data → Proxy (batch) → Receiver → S3 → Piper (parse/transform) → Analytics
+```
+
+### **Format Handling:**
+- **JSON**: Passed through as-is for fast processing
+- **Plain Text**: Wrapped with metadata (timestamp, source IP)
+- **Syslog**: Basic structure extracted, message preserved
+- **CSV/Delimited**: Treated as plain text, parsing happens in Piper
+- **Binary Protocols**: Parsed to structured JSON (NetFlow, sFlow)
+
+### **Line-Based Streaming Benefits:**
+🚀 **High Throughput**: No format-specific parsing bottlenecks  
+📊 **Universal Pipeline**: Same code path for all text-based formats  
+⚡ **Parallel Processing**: Piper workers can parse different formats simultaneously  
+🔧 **Easy Configuration**: Add new data sources without proxy changes  
+📈 **Scalability**: Parsing scales independently from data collection
 
 ## URI Format
 
@@ -807,10 +917,12 @@ Data is forwarded to bytefreezer-receiver using the URI format:
 POST {base_url}/data/{tenant_id}/{dataset_id}
 ```
 
-Examples:
-- Syslog data: `POST http://localhost:8080/data/customer-1/syslog-data`
-- eBPF data: `POST http://localhost:8080/data/customer-1/ebpf-data`
-- App logs: `POST http://localhost:8080/data/customer-1/application-logs`
+**Data Forwarding Examples:**
+- JSON logs: `POST http://localhost:8080/data/customer-1/app-logs-json`
+- Syslog data: `POST http://localhost:8080/data/customer-1/system-logs`  
+- CSV metrics: `POST http://localhost:8080/data/customer-1/server-metrics`
+- Plain text: `POST http://localhost:8080/data/customer-1/legacy-logs`
+- Network flows: `POST http://localhost:8080/data/customer-1/network-flows`
 
 ## Monitoring
 
@@ -897,11 +1009,59 @@ Also supports OTLP gRPC export by setting `prometheus_mode: false`:
 
 ### Performance Optimization
 
-**For high-throughput environments (>10GB/day per dataset)**:
-- Increase `read_buffer_size_bytes` to 256MB or 512MB
-- **Batching Strategy**: Line count (`max_batch_lines`) takes precedence - set to ~1M for high volume
-- **Size Safety**: Byte limit (`max_batch_bytes`) prevents oversized batches - both limits enforced
-- Monitor system UDP buffer limits with `ss -u -l -n`
+ByteFreezer Proxy is optimized for high-throughput data streaming. For maximum performance:
+
+#### **Network Configuration**
+```bash
+# Increase UDP buffer limits for high-volume data
+sudo sysctl -w net.core.rmem_max=268435456    # 256MB receive buffer
+sudo sysctl -w net.core.rmem_default=268435456
+sudo sysctl -w net.core.wmem_max=268435456     # 256MB send buffer  
+sudo sysctl -w net.core.wmem_default=268435456
+
+# Increase connection tracking
+sudo sysctl -w net.netfilter.nf_conntrack_max=1048576
+```
+
+#### **Proxy Configuration**
+```yaml
+udp:
+  # Buffer configuration for high throughput
+  read_buffer_size_bytes: 268435456    # 256MB (up from 64MB default)
+  channel_buffer_size: 50000           # Increase channel buffer
+  worker_count: 8                      # Match CPU cores
+  
+  # Batching strategy for different data volumes
+  max_batch_lines: 1000000             # 1M lines for high volume
+  max_batch_bytes: 536870912           # 512MB size safety limit
+  batch_timeout_seconds: 10            # Reduce timeout for faster processing
+  
+  # Compression settings
+  enable_compression: true
+  compression_level: 1                 # Lower compression for speed
+```
+
+#### **Performance Monitoring**
+```bash
+# Monitor UDP buffer usage
+ss -u -l -n | grep :205[6-9]
+
+# Check proxy metrics
+curl http://localhost:8088/api/v2/health
+
+# Monitor system resources
+iostat -x 1    # Disk I/O
+netstat -su    # UDP statistics
+```
+
+#### **Scaling Guidelines**
+
+| Data Volume | Configuration | Hardware Recommendations |
+|-------------|---------------|---------------------------|
+| **< 1GB/day** | Default settings | 2 CPU cores, 4GB RAM |
+| **1-10GB/day** | 128MB buffers, 4 workers | 4 CPU cores, 8GB RAM |
+| **10-50GB/day** | 256MB buffers, 8 workers | 8 CPU cores, 16GB RAM |
+| **> 50GB/day** | Multiple proxy instances | Load balancer + horizontal scaling |
 
 ## Error Handling & Data Recovery
 

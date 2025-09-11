@@ -124,8 +124,14 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return fmt.Errorf("failed to ensure spool directory exists: %w", err)
 	}
 
-	// Create tenant/dataset/raw directory structure
-	rawDir := filepath.Join(s.directory, tenantID, datasetID, "raw")
+	// Generate directory path based on organization strategy
+	baseDir, _, _, err := s.generateSpoolPaths(tenantID, datasetID, data)
+	if err != nil {
+		return fmt.Errorf("failed to generate spool paths: %w", err)
+	}
+
+	// Create raw subdirectory within the organized structure
+	rawDir := filepath.Join(baseDir, "raw")
 	if err := os.MkdirAll(rawDir, 0750); err != nil {
 		return fmt.Errorf("failed to create raw directory %s: %w", rawDir, err)
 	}

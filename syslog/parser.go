@@ -103,7 +103,9 @@ func (p *SyslogParser) parseRFC3164(message string) (*SyslogMessage, error) {
 		timestamp = time.Now()
 	} else {
 		// Add current year since RFC3164 doesn't include it
-		timestamp = timestamp.AddDate(currentYear-1900, 0, 0)
+		timestamp = time.Date(currentYear, timestamp.Month(), timestamp.Day(), 
+			timestamp.Hour(), timestamp.Minute(), timestamp.Second(), 
+			timestamp.Nanosecond(), timestamp.Location())
 	}
 
 	// Extract tag and possible process ID
