@@ -117,6 +117,11 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// Ensure spool directory exists before spooling data
+	if err := s.ensureSpoolDirectoryExists(); err != nil {
+		return fmt.Errorf("failed to ensure spool directory exists: %w", err)
+	}
+
 	// Check size limit (per-tenant or global)
 	dataSize := int64(len(data))
 	if s.config.Spooling.PerTenantLimits {
@@ -224,6 +229,12 @@ func (s *SpoolingService) retryWorker() {
 
 // processRetries attempts to retry failed uploads
 func (s *SpoolingService) processRetries() {
+	// Ensure spool directory exists before processing retries
+	if err := s.ensureSpoolDirectoryExists(); err != nil {
+		log.Errorf("Failed to ensure spool directory exists: %v", err)
+		return
+	}
+
 	files, err := s.getSpooledFiles()
 	if err != nil {
 		log.Errorf("Failed to get spooled files for retry: %v", err)
@@ -343,6 +354,11 @@ func (s *SpoolingService) cleanupWorker() {
 func (s *SpoolingService) cleanupOldFiles() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	// Ensure spool directory exists before cleanup
+	if err := s.ensureSpoolDirectoryExists(); err != nil {
+		return fmt.Errorf("failed to ensure spool directory exists: %w", err)
+	}
 
 	files, err := s.getSpooledFiles()
 	if err != nil {
@@ -1117,4 +1133,18 @@ func (s *SpoolingService) GetDatasetStats(tenantID, datasetID string) (*DatasetS
 	}
 
 	return datasetStats, nil
+}
+
+// ensureSpoolDirectoryExists checks if the root spool directory exists and recreates it if necessary
+func (s *SpoolingService) ensureSpoolDirectoryExists() error {
+	if _, err := os.Stat(s.directory); os.IsNotExist(err) {
+		log.Warnf("Spool directory %s missing, recreating it", s.directory)
+		if err := os.MkdirAll(s.directory, 0750); err != nil {
+			return fmt.Errorf("failed to recreate spool directory %s: %w", s.directory, err)
+		}
+		log.Infof("Successfully recreated spool directory %s", s.directory)
+	} else if err != nil {
+		return fmt.Errorf("failed to check spool directory %s: %w", s.directory, err)
+	}
+	return nil
 }
