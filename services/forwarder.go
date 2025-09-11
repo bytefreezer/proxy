@@ -60,8 +60,12 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", f.config.App.Name, f.config.App.Version))
 
 	// Add Bearer authentication header if token is configured
-	if f.config.BearerToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", f.config.BearerToken))
+	bearerToken := batch.BearerToken
+	if bearerToken == "" {
+		bearerToken = f.config.BearerToken // Fallback to global token
+	}
+	if bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	}
 
 	if f.config.UDP.EnableCompression {

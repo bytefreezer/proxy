@@ -36,13 +36,15 @@ udp:
   enable_compression: true
 
   # Multi-tenant listener configuration
-  # Each listener can have its own tenant_id, creating port-based tenant isolation
+  # Each listener can have its own tenant_id and bearer_token, creating port-based tenant isolation
+  # with separate authentication credentials for each tenant
   listeners:
     # === TENANT A: Financial Services Company ===
     
     # NetFlow data from financial networks
     - port: 2055
       tenant_id: "financial-corp"
+      bearer_token: "financial-corp-bearer-token"
       dataset_id: "network-flows"
       protocol: "netflow"
     
@@ -65,6 +67,7 @@ udp:
     # Network monitoring data
     - port: 2058
       tenant_id: "healthcare-org"
+      bearer_token: "healthcare-org-bearer-token"
       dataset_id: "network-monitoring"
       protocol: "sflow"
     
@@ -86,6 +89,7 @@ udp:
     # POS system logs
     - port: 2061
       tenant_id: "retail-chain"
+      bearer_token: "retail-chain-bearer-token"
       dataset_id: "pos-logs"
       protocol: "syslog"
       syslog_mode: "rfc3164"

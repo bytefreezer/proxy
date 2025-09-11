@@ -10,7 +10,7 @@ ByteFreezer Proxy is designed to be installed on-premises for heavy UDP users. I
 - **Intelligent syslog parsing**: Automatic RFC3164/RFC5424 detection and JSON conversion
 - **Smart batching**: Line count takes precedence, with byte limits as additional constraints
 - Compresses and forwards batches to bytefreezer-receiver via HTTP
-- **Single-tenant by design**: Perfect for on-premises deployments
+- **Multi-tenant support**: Port-based tenant isolation with per-tenant authentication
 - Provides health and configuration APIs
 
 ### Port Allocation & Protocol Architecture
@@ -447,6 +447,8 @@ udp:
   listeners:
     - port: 2056
       dataset_id: "syslog-data"
+      # tenant_id: "custom-tenant"        # Optional: override global tenant
+      # bearer_token: "custom-token"      # Optional: override global bearer token
     - port: 2057  
       dataset_id: "ebpf-data"
     - port: 2058
@@ -508,6 +510,59 @@ udp:
 - Minimal dependencies preferred
 - Air-gapped environments (download releases separately)
 
+### Multi-Tenant Configuration
+
+ByteFreezer Proxy supports multi-tenant deployments where different tenants can have separate authentication credentials and port isolation:
+
+#### Per-Listener Tenant & Authentication Override
+
+Each UDP listener can override both `tenant_id` and `bearer_token` for tenant-specific authentication:
+
+```yaml
+udp:
+  listeners:
+    # Tenant A: Financial Services
+    - port: 2056
+      dataset_id: "financial-logs"
+      tenant_id: "financial-corp"
+      bearer_token: "financial-corp-bearer-token"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+    
+    # Tenant B: Healthcare Organization  
+    - port: 2057
+      dataset_id: "healthcare-data"
+      tenant_id: "healthcare-org"
+      bearer_token: "healthcare-org-bearer-token"
+      protocol: "udp"
+    
+    # Tenant C: Uses global tenant & token (fallback)
+    - port: 2058
+      dataset_id: "default-tenant-logs"
+      protocol: "syslog"
+
+# Global configuration (used as fallback for listeners without tenant_id/bearer_token)
+tenant_id: "default-tenant"
+bearer_token: "default-bearer-token"
+```
+
+#### Multi-Tenant Benefits
+
+- **Port-based Isolation**: Each tenant gets dedicated UDP ports for network segregation
+- **Separate Authentication**: Different bearer tokens per tenant for security isolation
+- **Independent Data Flows**: Each tenant's data is processed and forwarded independently
+- **Tenant-specific Spooling**: Failed uploads are spooled with tenant context for proper recovery
+- **Monitoring & Metrics**: All metrics are tagged with tenant information for observability
+
+#### Authentication Flow
+
+1. **Global Fallback**: If listener has no `bearer_token`, uses global `bearer_token`
+2. **Per-Tenant Override**: Listener-specific `bearer_token` takes precedence
+3. **HTTP Forwarding**: Each batch uses the appropriate bearer token for its tenant
+4. **Spooling Persistence**: Bearer tokens are stored with spooled files for retry operations
+
+See `examples/multi-tenant-config.yaml` for a complete multi-tenant setup example.
+
 ### Receiver Configuration  
 ```yaml
 receiver:
@@ -516,8 +571,9 @@ receiver:
   retry_count: 3
   retry_delay_seconds: 1
 
-# Global tenant configuration
+# Global tenant configuration (used as fallback)
 tenant_id: "customer-1"
+bearer_token: "your-bearer-token-here"
 ```
 
 ### API Server
@@ -533,6 +589,56 @@ otel:
   endpoint: "localhost:4317"
   service_name: "bytefreezer-proxy"
   scrapeIntervalseconds: 100
+```
+
+### Spooling & DLQ Configuration
+
+**Critical for Data Safety**: Configure local spooling to handle network interruptions and receiver outages:
+
+```yaml
+spooling:
+  enabled: true                          # Enable local disk spooling for failed uploads
+  directory: "/var/spool/bytefreezer-proxy"  # Local storage directory
+  max_size_bytes: 1073741824            # 1GB total spool directory limit
+  retry_attempts: 5                     # Maximum retry attempts before DLQ
+  retry_interval_seconds: 60            # Wait time between retries (1 minute)
+  cleanup_interval_seconds: 300         # Background cleanup interval (5 minutes)
+  
+  # Organization settings
+  organization: "tenant_dataset"         # Options: flat, tenant_dataset, date_tenant, protocol_tenant
+  per_tenant_limits: false              # Apply size limits per tenant vs globally
+  max_files_per_dataset: 1000          # Max files per dataset (0 = unlimited)
+  max_age_days: 7                      # Max age before cleanup (0 = unlimited)
+```
+
+#### Spooling Configuration Options
+
+**Organization Strategies:**
+- `flat`: All files in root spool directory (simple, but can get cluttered)
+- `tenant_dataset`: Organized by tenant/dataset subdirectories (recommended)
+- `date_tenant`: Date-based organization with tenant subdirectories
+- `protocol_tenant`: Protocol-based organization (udp/syslog/netflow/sflow)
+
+**Sizing Guidelines:**
+- **Small deployments** (<1GB/day): 1GB spool limit, 3 retry attempts
+- **Medium deployments** (1-10GB/day): 5GB spool limit, 5 retry attempts  
+- **Large deployments** (>10GB/day): 20GB+ spool limit, consider per-tenant limits
+
+**Directory Structure Examples:**
+
+*tenant_dataset organization:*
+```
+/var/spool/bytefreezer-proxy/
+├── customer-1/
+│   ├── syslog-data/
+│   │   ├── 20240115-103045-batch-abc.ndjson
+│   │   └── 20240115-103045-batch-abc.meta
+│   └── ebpf-data/
+│       ├── 20240115-103047-batch-def.ndjson
+│       └── 20240115-103047-batch-def.meta
+└── DLQ/
+    ├── 20240115-103045-batch-failed.ndjson
+    └── 20240115-103045-batch-failed.meta
 ```
 
 ## API Endpoints
@@ -682,9 +788,146 @@ Also supports OTLP gRPC export by setting `prometheus_mode: false`:
 - **Size Safety**: Byte limit (`max_batch_bytes`) prevents oversized batches - both limits enforced
 - Monitor system UDP buffer limits with `ss -u -l -n`
 
-## Error Handling
+## Error Handling & Data Recovery
 
-- Automatic retry with exponential backoff for failed forwards
-- SOC alerting for persistent failures
-- Graceful handling of oversized payloads
-- Connection pooling and timeout management
+### Automatic Retry System
+
+ByteFreezer Proxy implements a robust retry mechanism for failed data forwards:
+
+- **Spooling**: Failed batches are automatically saved to local disk storage
+- **Exponential backoff**: Retries with increasing intervals to prevent overwhelming the receiver
+- **Configurable limits**: Maximum retry attempts and intervals can be tuned per deployment
+- **SOC alerting**: Persistent failures trigger alerts for operational visibility
+
+### Dead Letter Queue (DLQ) 
+
+**Critical for Data Recovery**: When batches exceed the maximum retry attempts, they are moved to a Dead Letter Queue for manual recovery.
+
+#### DLQ Directory Structure
+```
+/var/spool/bytefreezer-proxy/
+├── [active retry files...]
+└── DLQ/
+    ├── 20240115-103045-batch-abc123.ndjson      # Failed data
+    ├── 20240115-103045-batch-abc123.meta        # Failure metadata
+    ├── 20240115-103047-batch-def456.ndjson      # Failed data  
+    └── 20240115-103047-batch-def456.meta        # Failure metadata
+```
+
+#### DLQ Behavior
+- **Automatic Movement**: Files are moved to DLQ when retry limit is exceeded
+- **No Further Processing**: DLQ files are excluded from retry attempts (performance optimization)
+- **Preserved Indefinitely**: Files remain in DLQ until manually processed or removed
+- **Complete Context**: Both data and metadata files are preserved with failure reasons
+
+#### DLQ Metadata Format
+Each `.meta` file contains detailed failure information:
+```json
+{
+  "id": "20240115-103045-batch-abc123",
+  "tenant_id": "customer-1", 
+  "dataset_id": "syslog-data",
+  "filename": "20240115-103045-batch-abc123.ndjson",
+  "size": 1048576,
+  "line_count": 1000,
+  "created_at": "2024-01-15T10:30:45Z",
+  "last_retry": "2024-01-15T10:35:45Z", 
+  "retry_count": 5,
+  "status": "dlq",
+  "failure_reason": "Moved to DLQ after exceeding maximum retry attempts"
+}
+```
+
+#### Manual DLQ Recovery
+
+**1. Inspect Failed Batches:**
+```bash
+# List DLQ files
+ls -la /var/spool/bytefreezer-proxy/DLQ/
+
+# View failure details
+cat /var/spool/bytefreezer-proxy/DLQ/batch-abc123.meta | jq '.'
+
+# Check data content
+head -5 /var/spool/bytefreezer-proxy/DLQ/batch-abc123.ndjson
+```
+
+**2. Manual Reprocessing Options:**
+
+**Option A: Direct HTTP POST to Receiver**
+```bash
+# Extract metadata for context
+TENANT=$(jq -r '.tenant_id' /var/spool/bytefreezer-proxy/DLQ/batch-abc123.meta)
+DATASET=$(jq -r '.dataset_id' /var/spool/bytefreezer-proxy/DLQ/batch-abc123.meta)
+
+# Manual forward to receiver
+curl -X POST \
+  -H "Content-Type: application/x-ndjson" \
+  -H "Content-Encoding: gzip" \
+  --data-binary @/var/spool/bytefreezer-proxy/DLQ/batch-abc123.ndjson \
+  "http://your-receiver:8080/data/${TENANT}/${DATASET}"
+```
+
+**Option B: Move Back to Active Spool (for retry)**
+```bash
+# Move files back to main spool directory
+mv /var/spool/bytefreezer-proxy/DLQ/batch-abc123.* /var/spool/bytefreezer-proxy/
+
+# Update metadata status for retry (optional)
+jq '.status = "pending" | .retry_count = 0' \
+  /var/spool/bytefreezer-proxy/batch-abc123.meta > temp.meta && \
+  mv temp.meta /var/spool/bytefreezer-proxy/batch-abc123.meta
+```
+
+#### DLQ Monitoring
+
+**Check DLQ Status:**
+```bash
+# Count DLQ files
+echo "DLQ Files: $(find /var/spool/bytefreezer-proxy/DLQ -name "*.ndjson" | wc -l)"
+
+# Calculate DLQ size
+du -sh /var/spool/bytefreezer-proxy/DLQ/
+
+# Recent DLQ entries
+find /var/spool/bytefreezer-proxy/DLQ -name "*.meta" -mtime -1 | \
+  xargs -I {} sh -c 'echo "=== {} ==="; jq ".tenant_id,.dataset_id,.failure_reason" {}'
+```
+
+**Prometheus Metrics for DLQ:**
+```prometheus
+# DLQ file count (from filesystem monitoring)
+node_filesystem_files{mountpoint="/var/spool/bytefreezer-proxy"}
+
+# DLQ disk usage  
+node_filesystem_avail_bytes{mountpoint="/var/spool/bytefreezer-proxy"}
+```
+
+#### DLQ Best Practices
+
+**1. Regular Monitoring**
+- Set up alerts for DLQ directory size growth
+- Monitor DLQ file creation rate as a service health indicator
+- Include DLQ status in operational dashboards
+
+**2. Operational Procedures**  
+- Establish SLAs for DLQ file investigation (e.g., <24 hours)
+- Document data recovery procedures for your team
+- Test recovery procedures regularly during maintenance windows
+
+**3. Preventive Measures**
+- Monitor receiver health and connectivity
+- Set appropriate retry limits based on your recovery SLA
+- Consider receiver scaling if DLQ files accumulate frequently
+
+**4. Data Retention**
+- Implement DLQ file rotation based on your compliance requirements  
+- Archive old DLQ files to cold storage if needed for audit purposes
+- Consider automated cleanup of successfully reprocessed DLQ files
+
+### Additional Error Handling Features
+
+- **Graceful handling** of oversized payloads
+- **Connection pooling** and timeout management  
+- **Circuit breaker pattern** for receiver failures
+- **Structured logging** with failure context and correlation IDs

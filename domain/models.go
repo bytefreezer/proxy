@@ -6,11 +6,12 @@ import (
 
 // UDPMessage represents a single UDP message received
 type UDPMessage struct {
-	Data      []byte
-	From      string
-	Timestamp time.Time
-	TenantID  string
-	DatasetID string
+	Data        []byte
+	From        string
+	Timestamp   time.Time
+	TenantID    string
+	DatasetID   string
+	BearerToken string // Authentication token for this message's tenant
 }
 
 // DataBatch represents a batch of UDP messages ready for forwarding
@@ -18,6 +19,7 @@ type DataBatch struct {
 	ID           string
 	TenantID     string
 	DatasetID    string
+	BearerToken  string    // Authentication token for this tenant
 	Messages     []UDPMessage
 	LineCount    int
 	TotalBytes   int64

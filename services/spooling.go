@@ -39,6 +39,7 @@ type SpooledFile struct {
 	ID            string    `json:"id"`
 	TenantID      string    `json:"tenant_id"`
 	DatasetID     string    `json:"dataset_id"`
+	BearerToken   string    `json:"bearer_token,omitempty"` // Authentication token for this tenant
 	Filename      string    `json:"filename"`
 	Size          int64     `json:"size"`
 	LineCount     int       `json:"line_count"`
@@ -109,7 +110,7 @@ func (s *SpoolingService) Stop() error {
 }
 
 // SpoolData stores data locally when upload fails
-func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, failureReason string) error {
+func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, data []byte, failureReason string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
 	}
@@ -178,6 +179,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID string, data []byte, fai
 		ID:            id,
 		TenantID:      tenantID,
 		DatasetID:     datasetID,
+		BearerToken:   bearerToken,
 		Filename:      filename,
 		Size:          dataSize,
 		LineCount:     lineCount,
@@ -307,11 +309,12 @@ func (s *SpoolingService) processRetries() {
 
 		// Create batch for retry
 		batch := &domain.DataBatch{
-			ID:        file.ID,
-			TenantID:  file.TenantID,
-			DatasetID: file.DatasetID,
-			Data:      data,
-			CreatedAt: file.CreatedAt,
+			ID:          file.ID,
+			TenantID:    file.TenantID,
+			DatasetID:   file.DatasetID,
+			BearerToken: file.BearerToken,
+			Data:        data,
+			CreatedAt:   file.CreatedAt,
 		}
 
 		// Attempt upload

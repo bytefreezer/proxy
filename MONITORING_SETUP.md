@@ -4,7 +4,7 @@ This guide provides comprehensive instructions for setting up monitoring, metric
 
 ## Overview
 
-ByteFreezer Proxy provides detailed metrics through Prometheus endpoints and integrates with standard Kubernetes monitoring stacks.
+ByteFreezer Proxy provides detailed metrics through Prometheus endpoints and integrates with standard Kubernetes monitoring stacks. All metrics are automatically tagged with tenant and dataset information for multi-tenant visibility.
 
 ## Monitoring Architecture
 
@@ -67,7 +67,10 @@ ByteFreezer Proxy exposes the following endpoints:
 | `bytefreezer_proxy_udp_bytes_total` | Counter | Total UDP bytes received |
 | `bytefreezer_proxy_forwarded_requests_total` | Counter | Requests forwarded to receiver |
 | `bytefreezer_proxy_failed_requests_total` | Counter | Failed forwarding requests |
-| `bytefreezer_proxy_spooled_files_total` | Gauge | Files currently spooled |
+| `bytefreezer_proxy_spooled_files_total` | Gauge | Files currently spooled (active retries) |
+| `bytefreezer_proxy_dlq_files_total` | Gauge | Files in Dead Letter Queue (failed permanently) |
+| `bytefreezer_proxy_spool_queue_size` | Gauge | Current spool queue size by tenant and dataset |
+| `bytefreezer_proxy_spool_queue_bytes` | Gauge | Current bytes in spool queue by tenant and dataset |
 | `bytefreezer_proxy_active_listeners` | Gauge | Active UDP listeners |
 
 #### System Metrics
@@ -229,6 +232,26 @@ groups:
     annotations:
       summary: "ByteFreezer Proxy spool backlog"
       description: "{{ $value }} files are spooled on {{ $labels.instance }}"
+
+  # Dead Letter Queue accumulation (critical for data recovery)
+  - alert: ByteFreezerProxyDLQAccumulation
+    expr: increase(bytefreezer_proxy_dlq_files_total[1h]) > 0
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: "ByteFreezer Proxy DLQ accumulating files"
+      description: "{{ $value }} files moved to DLQ in last hour on {{ $labels.instance }}. Data recovery required!"
+
+  # Large DLQ requiring immediate attention
+  - alert: ByteFreezerProxyDLQLarge
+    expr: bytefreezer_proxy_dlq_files_total > 50
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "ByteFreezer Proxy large DLQ"
+      description: "{{ $value }} files in DLQ on {{ $labels.instance }}. Review and recover failed batches."
 ```
 
 ### AlertManager Configuration
@@ -440,6 +463,11 @@ kubectl exec deployment/bytefreezer-proxy -n bytefreezer -- curl localhost:9099/
 2. **Authentication**: Enable authentication for Grafana access
 3. **TLS**: Use TLS for metric scraping in production
 4. **RBAC**: Limit Prometheus service account permissions
+5. **Multi-Tenant Token Security**: 
+   - Store bearer tokens securely (use Kubernetes secrets, Vault, etc.)
+   - Rotate bearer tokens regularly for each tenant
+   - Monitor for authentication failures by tenant
+   - Ensure tenant isolation in alerting and dashboard access
 
 ## Maintenance
 
@@ -466,6 +494,193 @@ For large deployments:
 2. **Remote Storage**: Use remote storage backends
 3. **Horizontal Scaling**: Deploy multiple Prometheus instances
 4. **Metric Sampling**: Implement sampling for high-cardinality metrics
+
+## DLQ Operations and Monitoring
+
+### DLQ Metrics Collection
+
+Since DLQ files are stored on the filesystem, use node exporter metrics for monitoring:
+
+```yaml
+# Add to Prometheus scrape configs
+- job_name: 'node-exporter-dlq'
+  static_configs:
+    - targets: ['bytefreezer-proxy-host:9100']
+  metric_relabel_configs:
+    # Only collect filesystem metrics for spool directory
+    - source_labels: [__name__, mountpoint]
+      regex: 'node_filesystem_.+;/var/spool/bytefreezer-proxy'
+      target_label: __tmp_dlq_metric
+      replacement: 'true'
+    - source_labels: [__tmp_dlq_metric]
+      regex: 'true'
+      target_label: service
+      replacement: 'bytefreezer-proxy-dlq'
+```
+
+### DLQ Dashboard Panels
+
+**Grafana DLQ Panels:**
+
+1. **DLQ File Count:**
+```prometheus
+# Query
+node_filesystem_files_free{service="bytefreezer-proxy-dlq"} - node_filesystem_files{service="bytefreezer-proxy-dlq"}
+
+# Panel Settings
+- Title: "DLQ Files Count"
+- Type: Stat/Single Value
+- Unit: "Files"
+- Alert: > 10 files (warning), > 50 files (critical)
+```
+
+2. **DLQ Directory Size:**
+```prometheus  
+# Query
+(node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} - node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"}) / 1024 / 1024
+
+# Panel Settings  
+- Title: "DLQ Directory Size"
+- Type: Graph/Time Series
+- Unit: "MB"
+- Alert: > 500MB (warning), > 2GB (critical)
+```
+
+3. **DLQ Growth Rate:**
+```prometheus
+# Query
+increase(node_filesystem_files{service="bytefreezer-proxy-dlq"}[1h])
+
+# Panel Settings
+- Title: "DLQ Files Added (Hourly)"  
+- Type: Bar Graph
+- Unit: "Files/hour"
+- Alert: > 0 files/hour (immediate attention)
+```
+
+### DLQ Alerting Rules
+
+```yaml
+# dlq_alerts.yml
+groups:
+- name: bytefreezer_dlq_alerts
+  rules:
+  - alert: DLQFilesDetected
+    expr: (node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} - node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"}) > 0
+    for: 0m
+    labels:
+      severity: critical
+      component: dlq
+    annotations:
+      summary: "DLQ files detected - data recovery required"
+      description: "Dead Letter Queue contains failed batches on {{ $labels.instance }}. Immediate data recovery action required."
+      runbook_url: "https://docs.bytefreezer.com/proxy/dlq-recovery"
+
+  - alert: DLQDirectoryFull
+    expr: node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"} / node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} < 0.1
+    for: 5m
+    labels:
+      severity: warning
+      component: dlq
+    annotations:
+      summary: "DLQ directory filling up"
+      description: "DLQ directory is {{ $value | humanizePercentage }} full on {{ $labels.instance }}"
+```
+
+### DLQ Recovery Automation
+
+**Automated DLQ Check Script:**
+
+```bash
+#!/bin/bash
+# dlq_check.sh - Add to cron for regular DLQ monitoring
+
+DLQ_DIR="/var/spool/bytefreezer-proxy/DLQ"
+ALERT_WEBHOOK="https://your-webhook-url"
+
+# Count DLQ files
+DLQ_COUNT=$(find "$DLQ_DIR" -name "*.ndjson" 2>/dev/null | wc -l)
+
+if [ "$DLQ_COUNT" -gt 0 ]; then
+    # Send alert
+    curl -X POST "$ALERT_WEBHOOK" -H "Content-Type: application/json" -d "{
+        \"text\": \"🚨 DLQ Alert: $DLQ_COUNT failed batches detected in ByteFreezer Proxy\",
+        \"severity\": \"high\",
+        \"component\": \"dlq\",
+        \"action_required\": \"Data recovery needed\",
+        \"dlq_files\": $DLQ_COUNT
+    }"
+    
+    # Log recent DLQ files for analysis
+    echo "Recent DLQ files:" | logger -t dlq_check
+    find "$DLQ_DIR" -name "*.meta" -mtime -1 -exec basename {} .meta \; | logger -t dlq_check
+fi
+```
+
+**Cron Configuration:**
+```bash
+# Check DLQ every 15 minutes
+*/15 * * * * /opt/scripts/dlq_check.sh
+
+# Daily DLQ summary report  
+0 8 * * * /opt/scripts/dlq_daily_report.sh
+```
+
+### DLQ Recovery Procedures
+
+**Standard Operating Procedure for DLQ Files:**
+
+1. **Immediate Response (< 1 hour):**
+   ```bash
+   # Assess DLQ situation
+   cd /var/spool/bytefreezer-proxy/DLQ
+   echo "DLQ Files: $(ls *.ndjson | wc -l)"
+   echo "Total Size: $(du -sh .)"
+   
+   # Check failure reasons
+   jq -r '.failure_reason' *.meta | sort | uniq -c
+   ```
+
+2. **Analysis Phase (< 4 hours):**
+   ```bash
+   # Group by failure type and tenant
+   for meta in *.meta; do
+     echo "=== $meta ==="
+     jq '{tenant: .tenant_id, dataset: .dataset_id, reason: .failure_reason, retry_count: .retry_count}' "$meta"
+   done | tee dlq_analysis.log
+   ```
+
+3. **Recovery Phase (< 24 hours):**
+   ```bash
+   # Attempt reprocessing (adjust URL as needed)
+   for file in *.ndjson; do
+     meta="${file%.ndjson}.meta"
+     tenant=$(jq -r '.tenant_id' "$meta")
+     dataset=$(jq -r '.dataset_id' "$meta")
+     
+     echo "Reprocessing $file..."
+     curl -f -X POST \
+       -H "Content-Type: application/x-ndjson" \
+       --data-binary "@$file" \
+       "http://bytefreezer-receiver:8080/data/$tenant/$dataset" && \
+       rm "$file" "$meta" && \
+       echo "✅ Successfully recovered $file"
+   done
+   ```
+
+### DLQ Maintenance Tasks
+
+**Weekly DLQ Maintenance:**
+- Review DLQ trends and patterns
+- Archive old DLQ files (>30 days) 
+- Update recovery procedures based on patterns
+- Test DLQ monitoring alerts
+
+**Monthly DLQ Analysis:**
+- Analyze root cause patterns
+- Optimize retry configurations
+- Review DLQ storage requirements
+- Update operational runbooks
 
 ## Support and Resources
 

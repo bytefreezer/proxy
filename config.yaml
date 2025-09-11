@@ -33,6 +33,7 @@ udp:
       protocol: "syslog"
       syslog_mode: "rfc3164"
       # tenant_id: "custom-tenant"  # Optional: overrides global tenant
+      # bearer_token: "custom-token"  # Optional: overrides global bearer token
     
     # Plain UDP data (JSON, NDJSON, etc.)
     - port: 2057  

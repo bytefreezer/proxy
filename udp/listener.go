@@ -39,6 +39,7 @@ type UDPPortListener struct {
 	port          int
 	tenantID      string
 	datasetID     string
+	bearerToken   string // Authentication token for this listener
 	protocol      string // "udp", "syslog", "netflow", or "sflow"
 	syslogMode    string // "rfc3164" or "rfc5424"
 	addr          *net.UDPAddr
@@ -73,6 +74,11 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 			tenantID = cfg.TenantID // Use global tenant if not specified
 		}
 
+		bearerToken := udpListener.BearerToken
+		if bearerToken == "" {
+			bearerToken = cfg.BearerToken // Use global bearer token if not specified
+		}
+
 		protocol := udpListener.Protocol
 		if protocol == "" {
 			protocol = "udp" // Default to plain UDP
@@ -84,11 +90,12 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 		}
 
 		portListener := &UDPPortListener{
-			port:       udpListener.Port,
-			tenantID:   tenantID,
-			datasetID:  udpListener.DatasetID,
-			protocol:   protocol,
-			syslogMode: syslogMode,
+			port:        udpListener.Port,
+			tenantID:    tenantID,
+			datasetID:   udpListener.DatasetID,
+			bearerToken: bearerToken,
+			protocol:    protocol,
+			syslogMode:  syslogMode,
 			addr: &net.UDPAddr{
 				IP:   net.ParseIP(cfg.UDP.Host),
 				Port: udpListener.Port,
@@ -349,11 +356,12 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 
 	// Create UDP message with context
 	msg := &domain.UDPMessage{
-		Data:      make([]byte, len(processedData)),
-		From:      from.String(),
-		Timestamp: time.Now(),
-		TenantID:  portListener.tenantID,
-		DatasetID: portListener.datasetID,
+		Data:        make([]byte, len(processedData)),
+		From:        from.String(),
+		Timestamp:   time.Now(),
+		TenantID:    portListener.tenantID,
+		DatasetID:   portListener.datasetID,
+		BearerToken: portListener.bearerToken,
 	}
 	copy(msg.Data, processedData)
 
@@ -402,7 +410,7 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 				}
 			}
 
-			if spoolErr := l.services.SpoolingService.SpoolData(portListener.tenantID, portListener.datasetID, messageData, "UDP channel overflow"); spoolErr != nil {
+			if spoolErr := l.services.SpoolingService.SpoolData(portListener.tenantID, portListener.datasetID, portListener.bearerToken, messageData, "UDP channel overflow"); spoolErr != nil {
 				log.Errorf("Failed to spool message from %s: %v", from, spoolErr)
 				l.services.ProxyStats.UDPMessageErrors++
 			} else {
@@ -499,11 +507,12 @@ func (f *Forwarder) Start(messageChannel <-chan *domain.UDPMessage) {
 			batch, exists := batches[batchKey]
 			if !exists {
 				batch = &domain.DataBatch{
-					ID:        fmt.Sprintf("%d_%s", time.Now().UnixNano(), batchKey),
-					TenantID:  msg.TenantID,
-					DatasetID: msg.DatasetID,
-					Messages:  make([]domain.UDPMessage, 0),
-					CreatedAt: time.Now(),
+					ID:          fmt.Sprintf("%d_%s", time.Now().UnixNano(), batchKey),
+					TenantID:    msg.TenantID,
+					DatasetID:   msg.DatasetID,
+					BearerToken: msg.BearerToken,
+					Messages:    make([]domain.UDPMessage, 0),
+					CreatedAt:   time.Now(),
 				}
 				batches[batchKey] = batch
 			}
@@ -656,7 +665,7 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 
 		// Spool the failed batch using the correct tenant/dataset from the batch
 		if f.services.SpoolingService != nil {
-			if spoolErr := f.services.SpoolingService.SpoolData(batch.TenantID, batch.DatasetID, finalData, err.Error()); spoolErr != nil {
+			if spoolErr := f.services.SpoolingService.SpoolData(batch.TenantID, batch.DatasetID, batch.BearerToken, finalData, err.Error()); spoolErr != nil {
 				log.Errorf("Failed to spool batch %s: %v", batch.ID, spoolErr)
 			} else {
 				log.Debugf("Spooled failed batch %s for tenant=%s, dataset=%s", batch.ID, batch.TenantID, batch.DatasetID)

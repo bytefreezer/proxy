@@ -64,11 +64,12 @@ type UDP struct {
 }
 
 type UDPListener struct {
-	Port       int    `mapstructure:"port"`
-	DatasetID  string `mapstructure:"dataset_id"`
-	TenantID   string `mapstructure:"tenant_id,omitempty"`   // Optional: override global tenant
-	Protocol   string `mapstructure:"protocol,omitempty"`    // "udp" (default) or "syslog"
-	SyslogMode string `mapstructure:"syslog_mode,omitempty"` // "rfc3164" (default) or "rfc5424"
+	Port        int    `mapstructure:"port"`
+	DatasetID   string `mapstructure:"dataset_id"`
+	TenantID    string `mapstructure:"tenant_id,omitempty"`    // Optional: override global tenant
+	BearerToken string `mapstructure:"bearer_token,omitempty"` // Optional: override global bearer token
+	Protocol    string `mapstructure:"protocol,omitempty"`     // "udp" (default) or "syslog"
+	SyslogMode  string `mapstructure:"syslog_mode,omitempty"`  // "rfc3164" (default) or "rfc5424"
 }
 
 type Receiver struct {
@@ -250,12 +251,15 @@ func validateMultiTenantConfig(cfg *Config) error {
 		portMap[listener.Port] = true
 
 		// Determine effective tenant ID
-		tenantID := listener.TenantID
-		if tenantID == "" {
-			tenantID = cfg.TenantID
-		}
+		tenantID := cfg.GetEffectiveTenantID(listener)
 		if tenantID == "" {
 			return fmt.Errorf("listener %d (port %d): tenant_id must be specified either per-listener or globally", i, listener.Port)
+		}
+
+		// Validate bearer token is available
+		bearerToken := cfg.GetEffectiveBearerToken(listener)
+		if bearerToken == "" {
+			return fmt.Errorf("listener %d (port %d): bearer_token must be specified either per-listener or globally", i, listener.Port)
 		}
 
 		// Validate protocol
@@ -318,10 +322,7 @@ func (cfg *Config) GetTenantInfo() map[string]*TenantInfo {
 			continue // Skip inactive listeners
 		}
 
-		tenantID := listener.TenantID
-		if tenantID == "" {
-			tenantID = cfg.TenantID
-		}
+		tenantID := cfg.GetEffectiveTenantID(listener)
 
 		protocol := listener.Protocol
 		if protocol == "" {
@@ -348,4 +349,20 @@ func (cfg *Config) GetTenantInfo() map[string]*TenantInfo {
 // IsMultiTenant returns true if multiple tenants are configured
 func (cfg *Config) IsMultiTenant() bool {
 	return len(cfg.GetTenantInfo()) > 1
+}
+
+// GetEffectiveBearerToken returns the bearer token for a listener (listener-specific or global fallback)
+func (cfg *Config) GetEffectiveBearerToken(listener UDPListener) string {
+	if listener.BearerToken != "" {
+		return listener.BearerToken
+	}
+	return cfg.BearerToken
+}
+
+// GetEffectiveTenantID returns the tenant ID for a listener (listener-specific or global fallback)
+func (cfg *Config) GetEffectiveTenantID(listener UDPListener) string {
+	if listener.TenantID != "" {
+		return listener.TenantID
+	}
+	return cfg.TenantID
 }
