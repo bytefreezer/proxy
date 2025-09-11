@@ -62,39 +62,86 @@ Each UDP port represents an isolated data stream:
 ### **Real-World Configuration Examples**
 
 ```yaml
+# Global tenant configuration
+tenant_id: "customer-1"           # Valid: alphanumeric with hyphens
+bearer_token: "your-token-here"
+
 udp:
   listeners:
     # Application JSON logs
     - port: 2056
-      dataset_id: "app-logs-json"
+      dataset_id: "app-logs-json"  # Valid: alphanumeric with hyphens
       protocol: "udp"
       # Receives: {"timestamp":"2024-01-15T10:30:00Z","level":"info","message":"User logged in","user_id":123}
     
     # System syslog messages
     - port: 2057
-      dataset_id: "system-logs"
+      dataset_id: "system-logs"    # Valid: alphanumeric with hyphens
       protocol: "syslog"
       syslog_mode: "rfc3164"
       # Receives: <134>Jan 15 10:30:00 web01 nginx[1234]: 192.168.1.1 GET /api/status 200
     
     # Metrics in CSV format
     - port: 2058
-      dataset_id: "server-metrics"
+      dataset_id: "server_metrics" # Valid: alphanumeric with underscores
       protocol: "udp"
       # Receives: timestamp,hostname,cpu_usage,memory_usage\n2024-01-15T10:30:00,web01,45.2,78.1
     
-    # Network flow monitoring
+    # Network flow monitoring with per-tenant override
     - port: 2059
       dataset_id: "network-flows"
+      tenant_id: "security-team"   # Valid: alphanumeric with hyphens
       protocol: "netflow"
       # Receives: Binary NetFlow v5/v9 packets
     
     # Plain text log files
     - port: 2060
-      dataset_id: "legacy-logs"
+      dataset_id: "legacy_logs"    # Valid: alphanumeric with underscores
       protocol: "udp"
       # Receives: [2024-01-15 10:30:00] ERROR: Database connection failed
 ```
+
+### **Identifier Validation Rules**
+
+Both `tenant_id` and `dataset_id` must follow strict naming conventions:
+
+#### **✅ Valid Identifiers**
+- **Alphanumeric characters**: `a-z`, `A-Z`, `0-9`
+- **Hyphens and underscores**: `-`, `_` (not at start/end)
+- **Length**: 1-64 characters
+- **Examples**: `customer1`, `app-logs`, `data_set`, `team-1_prod`
+
+#### **❌ Invalid Identifiers**
+- **Spaces**: `customer 1` ❌
+- **Special characters**: `app@logs`, `data.set`, `team/1` ❌
+- **Start/end with hyphen/underscore**: `-customer`, `logs_` ❌
+- **Reserved names**: `admin`, `system`, `proxy`, `api` ❌
+- **Too long**: More than 64 characters ❌
+- **Empty**: Empty strings ❌
+
+#### **🚫 Reserved Names**
+The following names are reserved and cannot be used:
+```
+System: admin, root, system, proxy, api, tmp, log, var, etc
+Protocols: udp, tcp, http, syslog, netflow, sflow
+File System: con, prn, aux, nul, com1-9, lpt1-9
+```
+
+#### **📊 Dataset Uniqueness**
+Each `dataset_id` must be unique across all UDP ports to prevent data mixing:
+- ✅ **Valid**: Port 2056 → `app-logs`, Port 2057 → `system-logs`
+- ❌ **Invalid**: Port 2056 → `logs`, Port 2057 → `logs` (same dataset)
+
+**Why this matters:**
+- **Data Integrity**: Prevents mixing data from different sources in same dataset
+- **Clear Organization**: Each dataset represents a distinct data stream
+- **Downstream Processing**: Enables reliable data classification and processing
+
+#### **🔧 Validation Benefits**
+- **File System Safety**: Works across all operating systems
+- **URL Compatibility**: Safe for use in REST API endpoints
+- **Path Safety**: No issues with file/directory paths
+- **Database Safety**: Compatible with all database naming conventions
 
 ### **Data Processing Pipeline**
 
@@ -1006,6 +1053,24 @@ Also supports OTLP gRPC export by setting `prometheus_mode: false`:
 **Problem**: Cannot use custom port numbers
 - **Limitation**: Port range is fixed at 2056-2065 for architectural consistency
 - **Solution**: Use port forwarding or load balancer to map external ports to the reserved range
+
+### Validation Issues
+
+**Problem**: "Invalid tenant_id/dataset_id" configuration errors
+- **Cause**: Identifiers contain spaces, special characters, or use reserved names
+- **Solution**: Use only alphanumeric characters, hyphens, and underscores (not at start/end)
+- **Valid examples**: `customer-1`, `app_logs`, `team1`
+- **Invalid examples**: `customer 1`, `app@logs`, `admin`
+
+**Problem**: "Dataset already configured on port" error  
+- **Cause**: Same `dataset_id` used on multiple ports
+- **Solution**: Ensure each dataset has a unique identifier across all ports
+- **Why**: Prevents data mixing and ensures clear data organization
+
+**Problem**: Configuration fails to load with validation errors
+- **Cause**: Validation runs on startup and blocks invalid configurations
+- **Solution**: Check all `tenant_id` and `dataset_id` values meet naming requirements
+- **Note**: Validation only applies when UDP is enabled
 
 ### Performance Optimization
 

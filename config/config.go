@@ -141,6 +141,11 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 		return errors.Wrapf(err, "multi-tenant configuration validation failed")
 	}
 
+	// Validate tenant and dataset identifiers
+	if err := validateIdentifiers(cfg); err != nil {
+		return errors.Wrapf(err, "identifier validation failed")
+	}
+
 	// Set defaults
 	if cfg.UDP.BatchTimeoutSeconds == 0 {
 		cfg.UDP.BatchTimeoutSeconds = 30
@@ -233,6 +238,7 @@ func validateMultiTenantConfig(cfg *Config) error {
 
 	portMap := make(map[int]bool)
 	tenantMap := make(map[string]*TenantInfo)
+	datasetMap := make(map[string]int) // Track which port each dataset is assigned to
 
 	for i, listener := range cfg.UDP.Listeners {
 		// Validate required fields
@@ -249,6 +255,13 @@ func validateMultiTenantConfig(cfg *Config) error {
 			return fmt.Errorf("listener %d (port %d): port already in use", i, listener.Port)
 		}
 		portMap[listener.Port] = true
+
+		// Check for dataset conflicts - same dataset on multiple ports not allowed
+		if existingPort, exists := datasetMap[listener.DatasetID]; exists {
+			return fmt.Errorf("listener %d (port %d): dataset_id '%s' is already configured on port %d. Each dataset must use a unique port to prevent data mixing", 
+				i, listener.Port, listener.DatasetID, existingPort)
+		}
+		datasetMap[listener.DatasetID] = listener.Port
 
 		// Determine effective tenant ID
 		tenantID := cfg.GetEffectiveTenantID(listener)
@@ -349,6 +362,49 @@ func (cfg *Config) GetTenantInfo() map[string]*TenantInfo {
 // IsMultiTenant returns true if multiple tenants are configured
 func (cfg *Config) IsMultiTenant() bool {
 	return len(cfg.GetTenantInfo()) > 1
+}
+
+// validateIdentifiers validates all tenant and dataset identifiers in the configuration
+func validateIdentifiers(cfg *Config) error {
+	if !cfg.UDP.Enabled {
+		return nil // Skip validation if UDP is disabled
+	}
+
+	// Validate global tenant ID if present
+	if cfg.TenantID != "" {
+		if err := ValidateTenantID(cfg.TenantID); err != nil {
+			return fmt.Errorf("global tenant_id: %w", err)
+		}
+	}
+
+	// Validate UDP listener identifiers
+	for i, listener := range cfg.UDP.Listeners {
+		if listener.DatasetID == "" {
+			continue // Skip validation for inactive listeners
+		}
+
+		// Validate dataset ID
+		if err := ValidateDatasetID(listener.DatasetID); err != nil {
+			return fmt.Errorf("UDP listener %d dataset_id: %w", i, err)
+		}
+
+		// Validate listener-specific tenant ID if present
+		if listener.TenantID != "" {
+			if err := ValidateTenantID(listener.TenantID); err != nil {
+				return fmt.Errorf("UDP listener %d tenant_id: %w", i, err)
+			}
+		}
+
+		// Get effective tenant ID and validate the pair
+		effectiveTenantID := cfg.GetEffectiveTenantID(listener)
+		if effectiveTenantID != "" {
+			if err := ValidateIdentifierPair(effectiveTenantID, listener.DatasetID); err != nil {
+				return fmt.Errorf("UDP listener %d: %w", i, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // GetEffectiveBearerToken returns the bearer token for a listener (listener-specific or global fallback)
