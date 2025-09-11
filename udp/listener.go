@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -576,9 +577,9 @@ func (f *Forwarder) Stop() {
 	close(f.quit)
 }
 
-// sendBatch sends a batch to bytefreezer-receiver
-func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
-	startTime := time.Now()
+// compressAndPersistBatch compresses batch data and saves it to a temporary file
+// Returns the file path, final data, and message count, clears batch.Messages to free memory
+func (f *Forwarder) compressAndPersistBatch(batch *domain.DataBatch) (string, []byte, int, error) {
 	// Convert messages to NDJSON
 	var ndjsonData bytes.Buffer
 	for _, msg := range batch.Messages {
@@ -608,46 +609,95 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 		}
 	}
 
+	// Store message count before clearing
+	messageCount := len(batch.Messages)
+	
+	// Clear messages from memory to save space
+	batch.Messages = nil
+
 	// Compress if enabled
 	var finalData []byte
+	var tempFile *os.File
+	var err error
+	
 	if f.config.UDP.EnableCompression {
 		var compressed bytes.Buffer
 		gzipWriter, err := gzip.NewWriterLevel(&compressed, f.config.UDP.CompressionLevel)
 		if err != nil {
-			log.Errorf("Failed to create gzip writer: %v", err)
-			f.services.ProxyStats.ForwardingErrors++
-			return
+			return "", nil, 0, fmt.Errorf("failed to create gzip writer: %w", err)
 		}
 
 		if _, err := gzipWriter.Write(ndjsonData.Bytes()); err != nil {
-			log.Errorf("Failed to compress data: %v", err)
-			f.services.ProxyStats.ForwardingErrors++
-			return
+			return "", nil, 0, fmt.Errorf("failed to compress data: %w", err)
 		}
 
 		if err := gzipWriter.Close(); err != nil {
-			log.Errorf("Failed to close gzip writer: %v", err)
-			f.services.ProxyStats.ForwardingErrors++
-			return
+			return "", nil, 0, fmt.Errorf("failed to close gzip writer: %w", err)
 		}
 
 		finalData = compressed.Bytes()
 		batch.CompressedAt = time.Now()
+		
+		// Create temporary compressed file
+		tempFile, err = os.CreateTemp("", fmt.Sprintf("bytefreezer-batch-%s-*.ndjson.gz", batch.ID))
+		if err != nil {
+			return "", nil, 0, fmt.Errorf("failed to create temp file: %w", err)
+		}
 	} else {
 		finalData = ndjsonData.Bytes()
+		// Create temporary uncompressed file
+		tempFile, err = os.CreateTemp("", fmt.Sprintf("bytefreezer-batch-%s-*.ndjson", batch.ID))
+		if err != nil {
+			return "", nil, 0, fmt.Errorf("failed to create temp file: %w", err)
+		}
+	}
+	
+	tempFilePath := tempFile.Name()
+	
+	// Write data to temporary file
+	if _, err := tempFile.Write(finalData); err != nil {
+		tempFile.Close()
+		os.Remove(tempFilePath)
+		return "", nil, 0, fmt.Errorf("failed to write batch to temp file: %w", err)
+	}
+	
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempFilePath)
+		return "", nil, 0, fmt.Errorf("failed to close temp file: %w", err)
 	}
 
 	batch.Data = finalData
+	return tempFilePath, finalData, messageCount, nil
+}
+
+// sendBatch sends a batch to bytefreezer-receiver
+func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
+	startTime := time.Now()
+	
+	// Step 1: Compress and persist batch, clear source data from memory
+	tempFilePath, finalData, messageCount, err := f.compressAndPersistBatch(batch)
+	if err != nil {
+		log.Errorf("Failed to compress and persist batch %s: %v", batch.ID, err)
+		f.services.ProxyStats.ForwardingErrors++
+		return
+	}
+	
+	// Ensure cleanup of temporary file
+	defer func() {
+		if err := os.Remove(tempFilePath); err != nil && !os.IsNotExist(err) {
+			log.Warnf("Failed to clean up temporary batch file %s: %v", tempFilePath, err)
+		}
+	}()
 
 	// Record batch size metrics
 	if f.services.MetricsService != nil {
 		ctx := context.Background()
 		f.services.MetricsService.RecordBatchSize(ctx, batch.TenantID, batch.DatasetID,
-			int64(len(finalData)), int64(len(batch.Messages)))
+			int64(len(finalData)), int64(messageCount))
 	}
 
 	// Send to bytefreezer-receiver
-	err := f.sendToReceiver(batch)
+	err = f.sendToReceiver(batch)
 
 	// Calculate duration for metrics
 	duration := time.Since(startTime).Seconds()
