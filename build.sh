@@ -6,11 +6,11 @@ set -e
 
 PROJECT_NAME="bytefreezer-proxy"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANSIBLE_DIST_DIR="$SCRIPT_DIR/ansible/dist"
+ANSIBLE_DIST_DIR="$SCRIPT_DIR/ansible/playbooks/dist"
 
 echo "🔨 Building $PROJECT_NAME..."
 
-# Create ansible/dist directory
+# Create ansible/playbooks/dist directory
 mkdir -p "$ANSIBLE_DIST_DIR"
 
 # Get version info
