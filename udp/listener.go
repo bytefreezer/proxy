@@ -164,7 +164,7 @@ func (l *Listener) Start() error {
 			protocolDesc = "sFlow"
 		}
 		log.Infof("%s server listening on %s:%d (tenant: %s, dataset: %s)",
-			protocolDesc, portListener.addr.IP.String(), portListener.addr.Port,
+			protocolDesc, portListener.addr.IP.String(), portListener.port,
 			portListener.tenantID, portListener.datasetID)
 
 		// Start message handler for this port
