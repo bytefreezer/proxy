@@ -23,15 +23,16 @@ import (
 
 // Listener represents a UDP listener that collects data and forwards to bytefreezer-receiver
 type Listener struct {
-	services     *services.Services
-	config       *config.Config
-	listeners    []*UDPPortListener
-	quit         chan struct{}
-	batchChannel chan *domain.UDPMessage
-	bufferPool   sync.Pool
-	stopOnce     sync.Once
-	wg           sync.WaitGroup
-	forwarder    *Forwarder
+	services         *services.Services
+	config           *config.Config
+	listeners        []*UDPPortListener
+	quit             chan struct{}
+	batchChannel     chan *domain.UDPMessage
+	forwarderChannel chan *domain.UDPMessage
+	bufferPool       sync.Pool
+	stopOnce         sync.Once
+	wg               sync.WaitGroup
+	forwarder        *Forwarder
 }
 
 // UDPPortListener represents a single UDP port listener
@@ -112,11 +113,12 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 	}
 
 	return &Listener{
-		services:     services,
-		config:       cfg,
-		listeners:    portListeners,
-		quit:         make(chan struct{}),
-		batchChannel: make(chan *domain.UDPMessage, 1000), // Buffer for incoming messages
+		services:         services,
+		config:           cfg,
+		listeners:        portListeners,
+		quit:             make(chan struct{}),
+		batchChannel:     make(chan *domain.UDPMessage, cfg.UDP.ChannelBufferSize), // Incoming UDP messages
+		forwarderChannel: make(chan *domain.UDPMessage, cfg.UDP.ChannelBufferSize), // Processed messages to forwarder
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return make([]byte, cfg.UDP.ReadBufferSizeBytes)
@@ -175,11 +177,20 @@ func (l *Listener) Start() error {
 		}(portListener)
 	}
 
-	// Start the forwarder
+	// Start multiple worker goroutines to process messages from batchChannel
+	for i := 0; i < l.config.UDP.WorkerCount; i++ {
+		l.wg.Add(1)
+		go func(workerID int) {
+			defer l.wg.Done()
+			l.processMessageWorker(workerID)
+		}(i)
+	}
+
+	// Start the forwarder with processed messages
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
-		l.forwarder.Start(l.batchChannel)
+		l.forwarder.Start(l.forwarderChannel)
 	}()
 
 	return nil
@@ -198,6 +209,13 @@ func (l *Listener) Stop() error {
 				portListener.conn.Close()
 			}
 		}
+
+		// Close channels in proper order - first batch channel, then forwarder channel
+		close(l.batchChannel)
+
+		// Wait a moment for workers to drain
+		time.Sleep(100 * time.Millisecond)
+		close(l.forwarderChannel)
 
 		// Stop the forwarder
 		if l.forwarder != nil {
@@ -372,6 +390,41 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 		// Channel is full, drop message and log
 		log.Warnf("UDP message channel full, dropping message from %s", from)
 		l.services.ProxyStats.UDPMessageErrors++
+	}
+}
+
+// processMessageWorker is a worker goroutine that processes messages from the batch channel
+func (l *Listener) processMessageWorker(workerID int) {
+	log.Debugf("UDP message worker %d started", workerID)
+	defer log.Debugf("UDP message worker %d stopped", workerID)
+
+	for {
+		select {
+		case <-l.quit:
+			return
+		case msg, ok := <-l.batchChannel:
+			if !ok {
+				// Channel closed
+				return
+			}
+
+			// Process the message - perform any additional validation or enrichment
+			// For now, we mainly pass through but this provides a place for future enhancements
+			log.Debugf("Worker %d processing message from %s (tenant: %s, dataset: %s)",
+				workerID, msg.From, msg.TenantID, msg.DatasetID)
+
+			// Forward the processed message to the forwarder channel
+			select {
+			case l.forwarderChannel <- msg:
+				// Successfully forwarded to batching/forwarding
+			case <-l.quit:
+				return
+			default:
+				// Forwarder channel is full - this should be very rare with proper sizing
+				log.Warnf("Worker %d: forwarder channel full, dropping message from %s", workerID, msg.From)
+				l.services.ProxyStats.UDPMessageErrors++
+			}
+		}
 	}
 }
 

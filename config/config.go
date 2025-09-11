@@ -58,6 +58,8 @@ type UDP struct {
 	BatchTimeoutSeconds int           `mapstructure:"batch_timeout_seconds"`
 	CompressionLevel    int           `mapstructure:"compression_level"`
 	EnableCompression   bool          `mapstructure:"enable_compression"`
+	ChannelBufferSize   int           `mapstructure:"channel_buffer_size"` // Buffer size for UDP message channel
+	WorkerCount         int           `mapstructure:"worker_count"`        // Number of worker goroutines for processing
 	Listeners           []UDPListener `mapstructure:"listeners"`
 }
 
@@ -156,6 +158,12 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	if cfg.UDP.CompressionLevel == 0 {
 		cfg.UDP.CompressionLevel = 6 // Default gzip compression level
+	}
+	if cfg.UDP.ChannelBufferSize == 0 {
+		cfg.UDP.ChannelBufferSize = 10000 // Default channel buffer size (10x larger)
+	}
+	if cfg.UDP.WorkerCount == 0 {
+		cfg.UDP.WorkerCount = 4 // Default number of worker goroutines
 	}
 
 	// Spooling defaults
