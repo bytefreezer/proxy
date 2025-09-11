@@ -273,7 +273,10 @@ func (s *SpoolingService) processRetries() {
 		// Load file data using findFilePaths to handle hierarchical organization
 		dataPath, _, err := s.findFilePaths(file)
 		if err != nil {
-			log.Errorf("Failed to find file paths for %s: %v", file.Filename, err)
+			log.Warnf("Failed to find file paths for %s, removing orphaned metadata %s: %v", file.Filename, file.ID, err)
+			if removeErr := s.removeSpooledFile(file); removeErr != nil {
+				log.Errorf("Failed to remove orphaned metadata for %s: %v", file.ID, removeErr)
+			}
 			continue
 		}
 		// #nosec G304 - path is validated by findFilePaths function above
