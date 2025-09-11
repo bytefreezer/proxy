@@ -270,13 +270,13 @@ func (s *SpoolingService) processRetries() {
 			continue
 		}
 
-		// Load file data - path validated by safeJoinPath to prevent directory traversal
-		dataPath, err := s.safeJoinPath(file.Filename)
+		// Load file data using findFilePaths to handle hierarchical organization
+		dataPath, _, err := s.findFilePaths(file)
 		if err != nil {
-			log.Errorf("Invalid file path %s: %v", file.Filename, err)
+			log.Errorf("Failed to find file paths for %s: %v", file.Filename, err)
 			continue
 		}
-		// #nosec G304 - path is validated by safeJoinPath function above
+		// #nosec G304 - path is validated by findFilePaths function above
 		data, err := os.ReadFile(dataPath)
 		if err != nil {
 			log.Errorf("Failed to read spooled file %s: %v", file.Filename, err)
@@ -853,48 +853,6 @@ func (s *SpoolingService) countLines(data []byte) int {
 	}
 
 	return count
-}
-
-// validatePath ensures the path is within the spooling directory to prevent directory traversal
-func (s *SpoolingService) validatePath(filename string) error {
-	// Clean the path to resolve any .. elements
-	cleanPath := filepath.Clean(filename)
-
-	// Check for directory traversal attempts
-	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("invalid filename: directory traversal detected")
-	}
-
-	// Ensure the filename doesn't start with / (absolute path)
-	if strings.HasPrefix(cleanPath, "/") {
-		return fmt.Errorf("invalid filename: absolute path not allowed")
-	}
-
-	// Construct full path and ensure it's within the spooling directory
-	fullPath := filepath.Join(s.directory, cleanPath)
-	absSpoolDir, err := filepath.Abs(s.directory)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path for spooling directory: %w", err)
-	}
-
-	absFullPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path for file: %w", err)
-	}
-
-	if !strings.HasPrefix(absFullPath, absSpoolDir) {
-		return fmt.Errorf("invalid filename: path outside spooling directory")
-	}
-
-	return nil
-}
-
-// safeJoinPath validates and safely joins a filename with the spooling directory
-func (s *SpoolingService) safeJoinPath(filename string) (string, error) {
-	if err := s.validatePath(filename); err != nil {
-		return "", err
-	}
-	return filepath.Join(s.directory, filepath.Clean(filename)), nil
 }
 
 // findFilePaths locates the actual file paths for a spooled file based on organization structure

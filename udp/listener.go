@@ -107,7 +107,7 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 
 		// Enhanced logging for multi-tenant setup
 		log.Infof("Created listener: Port=%d, Tenant='%s', Dataset='%s', Protocol='%s'",
-			portListener.port, portListener.tenantID, portListener.datasetID, portListener.protocol)
+			int(portListener.port), string(portListener.tenantID), string(portListener.datasetID), string(portListener.protocol))
 		portListeners = append(portListeners, portListener)
 	}
 

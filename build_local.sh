@@ -22,6 +22,12 @@ echo "Version: $VERSION"
 echo "Build Time: $BUILD_TIME"
 echo "Git Commit: $GIT_COMMIT"
 
+# Remove old binary if it exists
+if [[ -f "$ANSIBLE_DIST_DIR/$PROJECT_NAME" ]]; then
+    echo "Removing old binary..."
+    rm -f "$ANSIBLE_DIST_DIR/$PROJECT_NAME"
+fi
+
 # Build the binary
 echo "Building binary..."
 CGO_ENABLED=0 go build \
