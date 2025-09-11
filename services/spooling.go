@@ -298,7 +298,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 
 	// Generate batch ID and paths
 	now := time.Now()
-	batchID := fmt.Sprintf("failed_%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
+	batchID := fmt.Sprintf("%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
 	
 	// Determine file extension based on compression
 	var extension string
