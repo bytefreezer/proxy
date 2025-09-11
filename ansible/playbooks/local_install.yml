@@ -23,8 +23,7 @@
         owner: root
         group: root
         mode: '0755'
-        remote_src: yes
-
+ 
     - name: Ensure config directory exists
       ansible.builtin.file:
         path: "{{ paths.config_dir }}"
