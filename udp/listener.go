@@ -411,7 +411,7 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 				}
 			}
 
-			if spoolErr := l.services.SpoolingService.SpoolData(portListener.tenantID, portListener.datasetID, portListener.bearerToken, messageData, "UDP channel overflow"); spoolErr != nil {
+			if spoolErr := l.services.SpoolingService.StoreRawMessage(portListener.tenantID, portListener.datasetID, portListener.bearerToken, messageData); spoolErr != nil {
 				log.Errorf("Failed to spool message from %s: %v", from, spoolErr)
 				l.services.ProxyStats.UDPMessageErrors++
 			} else {
@@ -715,7 +715,7 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 
 		// Spool the failed batch using the correct tenant/dataset from the batch
 		if f.services.SpoolingService != nil {
-			if spoolErr := f.services.SpoolingService.SpoolData(batch.TenantID, batch.DatasetID, batch.BearerToken, finalData, err.Error()); spoolErr != nil {
+			if spoolErr := f.services.SpoolingService.StoreBatchToQueue(batch.TenantID, batch.DatasetID, batch.BearerToken, finalData, err.Error()); spoolErr != nil {
 				log.Errorf("Failed to spool batch %s: %v", batch.ID, spoolErr)
 			} else {
 				log.Debugf("Spooled failed batch %s for tenant=%s, dataset=%s", batch.ID, batch.TenantID, batch.DatasetID)

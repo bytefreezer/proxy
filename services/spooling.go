@@ -89,9 +89,10 @@ func (s *SpoolingService) Start() error {
 		", max size: " + fmt.Sprintf("%d", s.maxSize) + " bytes")
 
 	// Start background goroutines
-	s.wg.Add(2)
+	s.wg.Add(3)
 	go s.retryWorker()
 	go s.cleanupWorker()
+	go s.batchProcessor()
 
 	return nil
 }
@@ -271,6 +272,83 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 
 	log.Infof("Created batch %s from %d raw files for tenant=%s dataset=%s", 
 		batchID, len(processedFiles), tenantID, datasetID)
+	
+	return nil
+}
+
+// StoreBatchToQueue stores already-compressed batch data directly to the queue directory
+func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken string, data []byte, failureReason string) error {
+	if !s.config.Spooling.Enabled {
+		return nil
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Create directories
+	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
+	metaDir := filepath.Join(s.directory, tenantID, "meta")
+
+	if err := os.MkdirAll(queueDir, 0750); err != nil {
+		return fmt.Errorf("failed to create queue directory: %w", err)
+	}
+	if err := os.MkdirAll(metaDir, 0750); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+
+	// Generate batch ID and paths
+	now := time.Now()
+	batchID := fmt.Sprintf("failed_%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
+	
+	// Determine file extension based on compression
+	var extension string
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		extension = ".ndjson.gz"
+	} else {
+		extension = ".ndjson"
+	}
+
+	// Write batch file to queue
+	batchFileName := fmt.Sprintf("%s%s", batchID, extension)
+	batchFilePath := filepath.Join(queueDir, batchFileName)
+	
+	if err := os.WriteFile(batchFilePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write batch to queue: %w", err)
+	}
+
+	// Create metadata
+	metadata := SpooledFile{
+		ID:            batchID,
+		TenantID:      tenantID,
+		DatasetID:     datasetID,
+		BearerToken:   bearerToken,
+		Filename:      batchFilePath, // Full path to the batch file
+		Size:          int64(len(data)),
+		LineCount:     s.countLines(data),
+		CreatedAt:     now,
+		LastRetry:     time.Time{},
+		RetryCount:    0,
+		Status:        "pending",
+		FailureReason: failureReason,
+	}
+
+	// Write metadata file
+	metaData, err := json.Marshal(metadata)
+	if err != nil {
+		// Clean up batch file on metadata error
+		os.Remove(batchFilePath)
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	metaFilePath := filepath.Join(metaDir, fmt.Sprintf("%s.meta", batchID))
+	if err := os.WriteFile(metaFilePath, metaData, 0600); err != nil {
+		// Clean up batch file on metadata error
+		os.Remove(batchFilePath)
+		return fmt.Errorf("failed to write metadata file: %w", err)
+	}
+
+	log.Infof("Stored failed batch %s to queue for tenant=%s dataset=%s", 
+		batchID, tenantID, datasetID)
 	
 	return nil
 }
@@ -656,6 +734,115 @@ func (s *SpoolingService) cleanupWorker() {
 			s.cleanupOldFiles()
 		}
 	}
+}
+
+// batchProcessor periodically processes raw files into compressed batches
+func (s *SpoolingService) batchProcessor() {
+	defer s.wg.Done()
+
+	// Process batches every 30 seconds (configurable)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.shutdown:
+			return
+		case <-ticker.C:
+			s.processBatches()
+		}
+	}
+}
+
+// processBatches finds all tenants/datasets with raw files and processes them
+func (s *SpoolingService) processBatches() {
+	// Walk through tenant directories to find raw files
+	tenants, err := s.getTenants()
+	if err != nil {
+		log.Warnf("Failed to get tenants for batch processing: %v", err)
+		return
+	}
+
+	for _, tenantID := range tenants {
+		datasets, err := s.getTenantDatasets(tenantID)
+		if err != nil {
+			log.Warnf("Failed to get datasets for tenant %s: %v", tenantID, err)
+			continue
+		}
+
+		for _, datasetID := range datasets {
+			// Check if raw directory has files
+			rawDir := filepath.Join(s.directory, tenantID, datasetID, "raw")
+			if _, err := os.Stat(rawDir); os.IsNotExist(err) {
+				continue
+			}
+
+			rawFiles, err := os.ReadDir(rawDir)
+			if err != nil {
+				log.Warnf("Failed to read raw directory %s: %v", rawDir, err)
+				continue
+			}
+
+			// Count .ndjson files
+			var ndjsonCount int
+			for _, file := range rawFiles {
+				if strings.HasSuffix(file.Name(), ".ndjson") {
+					ndjsonCount++
+				}
+			}
+
+			// Process if we have raw files (could be configurable threshold)
+			if ndjsonCount > 0 {
+				log.Debugf("Processing %d raw files for tenant=%s dataset=%s", ndjsonCount, tenantID, datasetID)
+				
+				// Get bearer token from recent metadata files (fallback to global)
+				bearerToken := s.config.BearerToken
+				if tenantToken := s.getTenantBearerToken(tenantID); tenantToken != "" {
+					bearerToken = tenantToken
+				}
+
+				if err := s.BatchRawFiles(tenantID, datasetID, bearerToken); err != nil {
+					log.Warnf("Failed to batch raw files for tenant=%s dataset=%s: %v", tenantID, datasetID, err)
+				}
+			}
+		}
+	}
+}
+
+// getTenantDatasets returns all dataset IDs for a tenant
+func (s *SpoolingService) getTenantDatasets(tenantID string) ([]string, error) {
+	tenantDir := filepath.Join(s.directory, tenantID)
+	entries, err := os.ReadDir(tenantDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var datasets []string
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "meta" && entry.Name() != "dlq" {
+			datasets = append(datasets, entry.Name())
+		}
+	}
+
+	return datasets, nil
+}
+
+// getTenantBearerToken gets the bearer token from recent metadata files for a tenant
+func (s *SpoolingService) getTenantBearerToken(tenantID string) string {
+	files, err := s.getTenantMetadataFiles(tenantID)
+	if err != nil || len(files) == 0 {
+		return ""
+	}
+
+	// Return bearer token from the most recent metadata file
+	var mostRecent SpooledFile
+	for _, file := range files {
+		if mostRecent.CreatedAt.IsZero() || file.CreatedAt.After(mostRecent.CreatedAt) {
+			mostRecent = file
+		}
+	}
+
+	return mostRecent.BearerToken
 }
 
 // cleanupOldFiles removes old spooled files to free space
