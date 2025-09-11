@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
@@ -109,6 +110,70 @@ type OtelConfig struct {
 type HousekeepingConfig struct {
 	Enabled         bool `json:"enabled"`
 	IntervalSeconds int  `json:"interval_seconds"`
+}
+
+// DLQStatsResponse represents DLQ and spooling statistics
+type DLQStatsResponse struct {
+	SpoolingEnabled       bool                           `json:"spooling_enabled"`
+	TotalFilesInQueue     int                            `json:"total_files_in_queue"`
+	TotalFilesInDLQ       int                            `json:"total_files_in_dlq"`
+	TotalBytesInQueue     int64                          `json:"total_bytes_in_queue"`
+	TotalBytesInDLQ       int64                          `json:"total_bytes_in_dlq"`
+	TenantStats           map[string]*TenantDLQStats     `json:"tenant_stats"`
+	OldestQueueFile       *FileInfo                      `json:"oldest_queue_file,omitempty"`
+	OldestDLQFile         *FileInfo                      `json:"oldest_dlq_file,omitempty"`
+	SpoolDirectory        string                         `json:"spool_directory"`
+}
+
+// TenantDLQStats represents per-tenant DLQ statistics
+type TenantDLQStats struct {
+	QueueFiles       int                              `json:"queue_files"`
+	DLQFiles         int                              `json:"dlq_files"`
+	QueueBytes       int64                            `json:"queue_bytes"`
+	DLQBytes         int64                            `json:"dlq_bytes"`
+	DatasetStats     map[string]*DatasetDLQStats      `json:"dataset_stats"`
+}
+
+// DatasetDLQStats represents per-dataset DLQ statistics
+type DatasetDLQStats struct {
+	QueueFiles       int                              `json:"queue_files"`
+	DLQFiles         int                              `json:"dlq_files"`
+	QueueBytes       int64                            `json:"queue_bytes"`
+	DLQBytes         int64                            `json:"dlq_bytes"`
+}
+
+// FileInfo represents basic file information
+type FileInfo struct {
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	DatasetID     string    `json:"dataset_id"`
+	Size          int64     `json:"size"`
+	CreatedAt     time.Time `json:"created_at"`
+	RetryCount    int       `json:"retry_count"`
+	FailureReason string    `json:"failure_reason,omitempty"`
+}
+
+// DLQRetryRequest represents a request to retry DLQ files
+type DLQRetryRequest struct {
+	TenantID  string `json:"tenant_id,omitempty"`  // Optional: specific tenant
+	DatasetID string `json:"dataset_id,omitempty"` // Optional: specific dataset
+}
+
+// DLQRetryResponse represents the response from DLQ retry operation
+type DLQRetryResponse struct {
+	Success       bool              `json:"success"`
+	Message       string            `json:"message"`
+	FilesRetried  int               `json:"files_retried"`
+	Details       []DLQRetryDetail  `json:"details,omitempty"`
+}
+
+// DLQRetryDetail represents details of a single file retry operation
+type DLQRetryDetail struct {
+	FileID    string `json:"file_id"`
+	TenantID  string `json:"tenant_id"`
+	DatasetID string `json:"dataset_id"`
+	Success   bool   `json:"success"`
+	Error     string `json:"error,omitempty"`
 }
 
 // API holds the API configuration and services
@@ -290,4 +355,155 @@ func convertListeners(configListeners []config.UDPListener) []UDPListener {
 		}
 	}
 	return listeners
+}
+
+// GetDLQStats returns DLQ and spooling statistics
+func (api *API) GetDLQStats() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *DLQStatsResponse) error {
+		if !api.Config.Spooling.Enabled {
+			output.SpoolingEnabled = false
+			output.SpoolDirectory = api.Config.Spooling.Directory
+			output.TenantStats = make(map[string]*TenantDLQStats)
+			return nil
+		}
+
+		output.SpoolingEnabled = true
+		output.SpoolDirectory = api.Config.Spooling.Directory
+		
+		// Get DLQ statistics from spooling service
+		dlqStats, err := api.Services.SpoolingService.GetDLQStats()
+		if err != nil {
+			log.Errorf("Failed to get DLQ statistics: %v", err)
+			return err
+		}
+
+		// Populate response
+		output.TotalFilesInQueue = dlqStats.TotalFilesInQueue
+		output.TotalFilesInDLQ = dlqStats.TotalFilesInDLQ
+		output.TotalBytesInQueue = dlqStats.TotalBytesInQueue
+		output.TotalBytesInDLQ = dlqStats.TotalBytesInDLQ
+		output.TenantStats = convertTenantDLQStats(dlqStats.TenantStats)
+
+		// Convert oldest file info
+		if dlqStats.OldestQueueFile != nil {
+			output.OldestQueueFile = convertToFileInfo(dlqStats.OldestQueueFile)
+		}
+		if dlqStats.OldestDLQFile != nil {
+			output.OldestDLQFile = convertToFileInfo(dlqStats.OldestDLQFile)
+		}
+
+		log.Debugf("Retrieved DLQ statistics: queue=%d dlq=%d", output.TotalFilesInQueue, output.TotalFilesInDLQ)
+		return nil
+	})
+
+	u.SetTitle("Get DLQ Statistics")
+	u.SetDescription("Retrieve statistics about queued files and dead letter queue")
+	u.SetTags("DLQ")
+
+	return u
+}
+
+// RetryDLQFiles moves DLQ files back to the processing queue
+func (api *API) RetryDLQFiles() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input *DLQRetryRequest, output *DLQRetryResponse) error {
+		if !api.Config.Spooling.Enabled {
+			output.Success = false
+			output.Message = "Spooling is disabled"
+			output.FilesRetried = 0
+			return nil
+		}
+
+		// Perform DLQ retry operation
+		retryResult, err := api.Services.SpoolingService.RetryDLQFiles(input.TenantID, input.DatasetID)
+		if err != nil {
+			output.Success = false
+			output.Message = err.Error()
+			output.FilesRetried = 0
+			log.Errorf("Failed to retry DLQ files: %v", err)
+			return nil // Don't return error, just populate failed response
+		}
+
+		output.Success = true
+		output.FilesRetried = retryResult.FilesRetried
+		output.Details = convertRetryDetails(retryResult.Details)
+
+		if input.TenantID != "" && input.DatasetID != "" {
+			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s dataset=%s", 
+				retryResult.FilesRetried, input.TenantID, input.DatasetID)
+		} else if input.TenantID != "" {
+			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s", 
+				retryResult.FilesRetried, input.TenantID)
+		} else {
+			output.Message = fmt.Sprintf("Successfully retried %d files from DLQ", retryResult.FilesRetried)
+		}
+
+		log.Infof("DLQ retry completed: %s", output.Message)
+		return nil
+	})
+
+	u.SetTitle("Retry DLQ Files")
+	u.SetDescription("Move files from Dead Letter Queue back to processing queue")
+	u.SetTags("DLQ")
+
+	return u
+}
+
+// convertTenantDLQStats converts service tenant stats to API format
+func convertTenantDLQStats(serviceStats map[string]*services.TenantDLQStats) map[string]*TenantDLQStats {
+	apiStats := make(map[string]*TenantDLQStats)
+	for tenantID, stats := range serviceStats {
+		apiStats[tenantID] = &TenantDLQStats{
+			QueueFiles:   stats.QueueFiles,
+			DLQFiles:     stats.DLQFiles,
+			QueueBytes:   stats.QueueBytes,
+			DLQBytes:     stats.DLQBytes,
+			DatasetStats: convertDatasetDLQStats(stats.DatasetStats),
+		}
+	}
+	return apiStats
+}
+
+// convertDatasetDLQStats converts service dataset stats to API format
+func convertDatasetDLQStats(serviceStats map[string]*services.DatasetDLQStats) map[string]*DatasetDLQStats {
+	apiStats := make(map[string]*DatasetDLQStats)
+	for datasetID, stats := range serviceStats {
+		apiStats[datasetID] = &DatasetDLQStats{
+			QueueFiles: stats.QueueFiles,
+			DLQFiles:   stats.DLQFiles,
+			QueueBytes: stats.QueueBytes,
+			DLQBytes:   stats.DLQBytes,
+		}
+	}
+	return apiStats
+}
+
+// convertToFileInfo converts service SpooledFile to API FileInfo
+func convertToFileInfo(spooledFile *services.SpooledFile) *FileInfo {
+	if spooledFile == nil {
+		return nil
+	}
+	return &FileInfo{
+		ID:            spooledFile.ID,
+		TenantID:      spooledFile.TenantID,
+		DatasetID:     spooledFile.DatasetID,
+		Size:          spooledFile.Size,
+		CreatedAt:     spooledFile.CreatedAt,
+		RetryCount:    spooledFile.RetryCount,
+		FailureReason: spooledFile.FailureReason,
+	}
+}
+
+// convertRetryDetails converts service retry details to API format
+func convertRetryDetails(serviceDetails []services.DLQRetryDetail) []DLQRetryDetail {
+	apiDetails := make([]DLQRetryDetail, len(serviceDetails))
+	for i, detail := range serviceDetails {
+		apiDetails[i] = DLQRetryDetail{
+			FileID:    detail.FileID,
+			TenantID:  detail.TenantID,
+			DatasetID: detail.DatasetID,
+			Success:   detail.Success,
+			Error:     detail.Error,
+		}
+	}
+	return apiDetails
 }
