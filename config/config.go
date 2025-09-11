@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/n0needt0/bytefreezer-proxy/alerts"
+	"github.com/n0needt0/go-goodies/log"
 )
 
 var k = koanf.New(".")
@@ -131,6 +133,11 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 		return errors.Wrapf(err, "failed to unmarshal %s", cfgFile)
 	}
 
+	// Validate multi-tenant configuration
+	if err := validateMultiTenantConfig(cfg); err != nil {
+		return errors.Wrapf(err, "multi-tenant configuration validation failed")
+	}
+
 	// Set defaults
 	if cfg.UDP.BatchTimeoutSeconds == 0 {
 		cfg.UDP.BatchTimeoutSeconds = 30
@@ -199,4 +206,137 @@ func (cfg *Config) GetRetryDelay() time.Duration {
 
 func (cfg *Config) GetBatchTimeout() time.Duration {
 	return time.Duration(cfg.UDP.BatchTimeoutSeconds) * time.Second
+}
+
+// TenantInfo represents tenant configuration details
+type TenantInfo struct {
+	TenantID  string            `json:"tenant_id"`
+	Ports     []int             `json:"ports"`
+	Datasets  map[string]string `json:"datasets"` // dataset_id -> protocol
+	PortCount int               `json:"port_count"`
+}
+
+// validateMultiTenantConfig validates the multi-tenant UDP listener configuration
+func validateMultiTenantConfig(cfg *Config) error {
+	if !cfg.UDP.Enabled {
+		return nil // Skip validation if UDP is disabled
+	}
+
+	portMap := make(map[int]bool)
+	tenantMap := make(map[string]*TenantInfo)
+
+	for i, listener := range cfg.UDP.Listeners {
+		// Validate required fields
+		if listener.Port <= 0 || listener.Port > 65535 {
+			return fmt.Errorf("listener %d: invalid port %d (must be 1-65535)", i, listener.Port)
+		}
+
+		if listener.DatasetID == "" {
+			return fmt.Errorf("listener %d (port %d): dataset_id is required", i, listener.Port)
+		}
+
+		// Check for port conflicts
+		if portMap[listener.Port] {
+			return fmt.Errorf("listener %d (port %d): port already in use", i, listener.Port)
+		}
+		portMap[listener.Port] = true
+
+		// Determine effective tenant ID
+		tenantID := listener.TenantID
+		if tenantID == "" {
+			tenantID = cfg.TenantID
+		}
+		if tenantID == "" {
+			return fmt.Errorf("listener %d (port %d): tenant_id must be specified either per-listener or globally", i, listener.Port)
+		}
+
+		// Validate protocol
+		protocol := listener.Protocol
+		if protocol == "" {
+			protocol = "udp"
+		}
+		validProtocols := map[string]bool{
+			"udp": true, "syslog": true, "netflow": true, "sflow": true,
+		}
+		if !validProtocols[protocol] {
+			return fmt.Errorf("listener %d (port %d): invalid protocol '%s' (supported: udp, syslog, netflow, sflow)", i, listener.Port, protocol)
+		}
+
+		// Build tenant information
+		if tenantMap[tenantID] == nil {
+			tenantMap[tenantID] = &TenantInfo{
+				TenantID: tenantID,
+				Ports:    []int{},
+				Datasets: make(map[string]string),
+			}
+		}
+
+		tenant := tenantMap[tenantID]
+		tenant.Ports = append(tenant.Ports, listener.Port)
+		tenant.Datasets[listener.DatasetID] = protocol
+		tenant.PortCount++
+
+		// Check for dataset conflicts within tenant
+		for existingDataset, existingProtocol := range tenant.Datasets {
+			if existingDataset == listener.DatasetID && existingProtocol != protocol {
+				return fmt.Errorf("listener %d: dataset '%s' for tenant '%s' uses conflicting protocols ('%s' vs '%s')",
+					i, listener.DatasetID, tenantID, protocol, existingProtocol)
+			}
+		}
+	}
+
+	// Log multi-tenant summary
+	if len(tenantMap) > 1 {
+		log.Infof("Multi-tenant configuration detected: %d tenants across %d ports", len(tenantMap), len(portMap))
+		for tenantID, info := range tenantMap {
+			log.Infof("  Tenant '%s': %d ports, %d datasets", tenantID, info.PortCount, len(info.Datasets))
+		}
+	} else if len(tenantMap) == 1 {
+		for tenantID, info := range tenantMap {
+			log.Infof("Single-tenant configuration: '%s' with %d ports, %d datasets", tenantID, info.PortCount, len(info.Datasets))
+		}
+	}
+
+	return nil
+}
+
+// GetTenantInfo returns information about all configured tenants
+func (cfg *Config) GetTenantInfo() map[string]*TenantInfo {
+	tenantMap := make(map[string]*TenantInfo)
+
+	for _, listener := range cfg.UDP.Listeners {
+		if listener.DatasetID == "" {
+			continue // Skip inactive listeners
+		}
+
+		tenantID := listener.TenantID
+		if tenantID == "" {
+			tenantID = cfg.TenantID
+		}
+
+		protocol := listener.Protocol
+		if protocol == "" {
+			protocol = "udp"
+		}
+
+		if tenantMap[tenantID] == nil {
+			tenantMap[tenantID] = &TenantInfo{
+				TenantID: tenantID,
+				Ports:    []int{},
+				Datasets: make(map[string]string),
+			}
+		}
+
+		tenant := tenantMap[tenantID]
+		tenant.Ports = append(tenant.Ports, listener.Port)
+		tenant.Datasets[listener.DatasetID] = protocol
+		tenant.PortCount++
+	}
+
+	return tenantMap
+}
+
+// IsMultiTenant returns true if multiple tenants are configured
+func (cfg *Config) IsMultiTenant() bool {
+	return len(cfg.GetTenantInfo()) > 1
 }

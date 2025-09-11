@@ -1,0 +1,157 @@
+# ByteFreezer Proxy - Multi-Tenant Configuration Example
+#
+# This configuration demonstrates how to set up the proxy to handle
+# multiple tenants using port-based segregation with hierarchical spooling.
+#
+# Architecture: Each tenant gets dedicated port(s) for network isolation,
+# while data is organized hierarchically in the spooling system.
+
+app:
+  name: "bytefreezer-proxy"
+  version: "1.0.0"
+
+logging:
+  level: "info"
+  encoding: "json"
+
+server:
+  api_port: 8080
+
+# Global tenant ID (used as fallback if not specified per-listener)
+# In multi-tenant setups, it's recommended to specify tenant_id per listener
+tenant_id: "default-tenant"
+
+# Bearer token for API authentication
+bearer_token: "your-bearer-token-here"
+
+# UDP Configuration with Multi-Tenant Listeners
+udp:
+  enabled: true
+  host: "0.0.0.0"
+  read_buffer_size_bytes: 65536
+  max_batch_lines: 1000
+  max_batch_bytes: 1048576  # 1MB
+  batch_timeout_seconds: 30
+  compression_level: 6
+  enable_compression: true
+
+  # Multi-tenant listener configuration
+  # Each listener can have its own tenant_id, creating port-based tenant isolation
+  listeners:
+    # === TENANT A: Financial Services Company ===
+    
+    # NetFlow data from financial networks
+    - port: 2055
+      tenant_id: "financial-corp"
+      dataset_id: "network-flows"
+      protocol: "netflow"
+    
+    # Syslog from financial application servers
+    - port: 2056
+      tenant_id: "financial-corp"
+      dataset_id: "app-logs"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+    
+    # Security event logs
+    - port: 2057
+      tenant_id: "financial-corp"
+      dataset_id: "security-events"
+      protocol: "syslog"
+      syslog_mode: "rfc3164"
+
+    # === TENANT B: Healthcare Organization ===
+    
+    # Network monitoring data
+    - port: 2058
+      tenant_id: "healthcare-org"
+      dataset_id: "network-monitoring"
+      protocol: "sflow"
+    
+    # HIPAA audit logs
+    - port: 2059
+      tenant_id: "healthcare-org"
+      dataset_id: "audit-logs"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+    
+    # Medical device telemetry
+    - port: 2060
+      tenant_id: "healthcare-org"
+      dataset_id: "device-telemetry"
+      protocol: "udp"
+
+    # === TENANT C: Retail Chain ===
+    
+    # POS system logs
+    - port: 2061
+      tenant_id: "retail-chain"
+      dataset_id: "pos-logs"
+      protocol: "syslog"
+      syslog_mode: "rfc3164"
+    
+    # Network traffic analysis
+    - port: 2062
+      tenant_id: "retail-chain"
+      dataset_id: "traffic-analysis"
+      protocol: "netflow"
+    
+    # Store metrics
+    - port: 2063
+      tenant_id: "retail-chain"
+      dataset_id: "store-metrics"
+      protocol: "udp"
+    
+    # Inventory system events
+    - port: 2064
+      tenant_id: "retail-chain"
+      dataset_id: "inventory-events"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+
+# Receiver Configuration
+receiver:
+  base_url: "http://bytefreezer-receiver:8080"
+  timeout_seconds: 30
+  retry_count: 3
+  retry_delay_seconds: 5
+
+# Hierarchical Spooling Configuration
+# Organizes failed uploads by tenant and dataset for better management
+spooling:
+  enabled: true
+  directory: "/data/spool"
+  max_size_bytes: 5368709120  # 5GB total
+  retry_attempts: 5
+  retry_interval_seconds: 300  # 5 minutes
+  cleanup_interval_seconds: 1800  # 30 minutes
+  
+  # Multi-tenant organization settings
+  organization: "tenant_dataset"     # Creates /tenant/dataset/ hierarchy
+  per_tenant_limits: true           # Apply 5GB limit per tenant (not globally)
+  max_files_per_dataset: 1000       # Max 1000 files per dataset
+  max_age_days: 7                   # Clean up files older than 7 days
+
+# SOC Alerting
+soc:
+  enabled: true
+  endpoint: "https://your-soc-system.com/api/alerts"
+  timeout: 10
+
+# OpenTelemetry Configuration
+otel:
+  enabled: true
+  endpoint: "http://otel-collector:4317"
+  service_name: "bytefreezer-proxy-multi-tenant"
+  scrape_intervals_seconds: 15
+  prometheus_mode: true
+  metrics_port: 9090
+  metrics_host: "0.0.0.0"
+
+# Housekeeping
+housekeeping:
+  enabled: true
+  intervalseconds: 300  # 5 minutes
+
+# Development mode (set to false in production)
+dev: false

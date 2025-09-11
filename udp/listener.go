@@ -48,9 +48,17 @@ type UDPPortListener struct {
 	sflowParser   *sflow.SFlowParser
 }
 
-// NewListener creates a new UDP listener
+// NewListener creates a new UDP listener with multi-tenant support
 func NewListener(services *services.Services, cfg *config.Config) *Listener {
 	var portListeners []*UDPPortListener
+
+	// Log multi-tenant configuration summary
+	tenantInfo := cfg.GetTenantInfo()
+	if cfg.IsMultiTenant() {
+		log.Infof("Initializing multi-tenant UDP listeners: %d tenants", len(tenantInfo))
+	} else {
+		log.Infof("Initializing single-tenant UDP listeners")
+	}
 
 	// Create listeners for each configured port (only if dataset_id is specified)
 	for _, udpListener := range cfg.UDP.Listeners {
@@ -97,9 +105,9 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 			portListener.sflowParser = sflow.NewSFlowParser()
 		}
 
-		// Debug log to verify values are set
-		log.Debugf("Created port listener - Port: %d, TenantID: '%s', DatasetID: '%s', Protocol: '%s', SyslogMode: '%s'",
-			portListener.port, portListener.tenantID, portListener.datasetID, portListener.protocol, portListener.syslogMode)
+		// Enhanced logging for multi-tenant setup
+		log.Infof("Created listener: Port=%d, Tenant='%s', Dataset='%s', Protocol='%s'",
+			portListener.port, portListener.tenantID, portListener.datasetID, portListener.protocol)
 		portListeners = append(portListeners, portListener)
 	}
 
@@ -643,4 +651,105 @@ func (f *Forwarder) sendToReceiver(batch *domain.DataBatch) error {
 		forwarder = services.NewHTTPForwarder(f.config)
 	}
 	return forwarder.ForwardBatch(batch)
+}
+
+// TenantListenerInfo represents information about listeners for a specific tenant
+type TenantListenerInfo struct {
+	TenantID  string             `json:"tenant_id"`
+	Listeners []*UDPPortListener `json:"listeners"`
+	PortCount int                `json:"port_count"`
+	Protocols map[string]int     `json:"protocols"` // protocol -> count
+	Datasets  []string           `json:"datasets"`
+	Status    string             `json:"status"` // "active", "partial", "inactive"
+}
+
+// GetTenantListeners returns information about listeners grouped by tenant
+func (l *Listener) GetTenantListeners() map[string]*TenantListenerInfo {
+	tenantMap := make(map[string]*TenantListenerInfo)
+
+	for _, listener := range l.listeners {
+		if tenantMap[listener.tenantID] == nil {
+			tenantMap[listener.tenantID] = &TenantListenerInfo{
+				TenantID:  listener.tenantID,
+				Listeners: []*UDPPortListener{},
+				Protocols: make(map[string]int),
+				Datasets:  []string{},
+				Status:    "active",
+			}
+		}
+
+		info := tenantMap[listener.tenantID]
+		info.Listeners = append(info.Listeners, listener)
+		info.PortCount++
+		info.Protocols[listener.protocol]++
+
+		// Check if dataset already exists
+		datasetExists := false
+		for _, existing := range info.Datasets {
+			if existing == listener.datasetID {
+				datasetExists = true
+				break
+			}
+		}
+		if !datasetExists {
+			info.Datasets = append(info.Datasets, listener.datasetID)
+		}
+
+		// Check listener status (basic check if connection exists)
+		if listener.conn == nil {
+			info.Status = "partial"
+		}
+	}
+
+	return tenantMap
+}
+
+// GetListenersByTenant returns UDP listeners for a specific tenant
+func (l *Listener) GetListenersByTenant(tenantID string) []*UDPPortListener {
+	var listeners []*UDPPortListener
+	for _, listener := range l.listeners {
+		if listener.tenantID == tenantID {
+			listeners = append(listeners, listener)
+		}
+	}
+	return listeners
+}
+
+// GetPortsByTenant returns the ports used by a specific tenant
+func (l *Listener) GetPortsByTenant(tenantID string) []int {
+	var ports []int
+	for _, listener := range l.listeners {
+		if listener.tenantID == tenantID {
+			ports = append(ports, listener.port)
+		}
+	}
+	return ports
+}
+
+// GetTenantStats returns basic statistics for all tenants
+func (l *Listener) GetTenantStats() map[string]map[string]interface{} {
+	stats := make(map[string]map[string]interface{})
+	tenantListeners := l.GetTenantListeners()
+
+	for tenantID, info := range tenantListeners {
+		stats[tenantID] = map[string]interface{}{
+			"port_count":    info.PortCount,
+			"dataset_count": len(info.Datasets),
+			"protocols":     info.Protocols,
+			"datasets":      info.Datasets,
+			"status":        info.Status,
+			"ports":         l.GetPortsByTenant(tenantID),
+		}
+	}
+
+	return stats
+}
+
+// IsMultiTenant returns true if this listener instance handles multiple tenants
+func (l *Listener) IsMultiTenant() bool {
+	tenantSet := make(map[string]bool)
+	for _, listener := range l.listeners {
+		tenantSet[listener.tenantID] = true
+	}
+	return len(tenantSet) > 1
 }
