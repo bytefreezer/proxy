@@ -626,26 +626,141 @@ spooling:
 
 **Directory Structure Examples:**
 
-*tenant_dataset organization:*
+*Hierarchical tenant_dataset organization (current):*
 ```
 /var/spool/bytefreezer-proxy/
-├── customer-1/
-│   ├── syslog-data/
-│   │   ├── 20240115-103045-batch-abc.ndjson
-│   │   └── 20240115-103045-batch-abc.meta
-│   └── ebpf-data/
-│       ├── 20240115-103047-batch-def.ndjson
-│       └── 20240115-103047-batch-def.meta
-└── DLQ/
-    ├── 20240115-103045-batch-failed.ndjson
-    └── 20240115-103045-batch-failed.meta
+├── customer-1/                         # Tenant directory
+│   ├── syslog-data/                    # Dataset directories
+│   │   ├── raw/                        # Individual incoming messages
+│   │   │   ├── msg_001.ndjson
+│   │   │   └── msg_002.ndjson
+│   │   └── queue/                      # Compressed batches ready for upload
+│   │       ├── 20240115-103045_customer-1_syslog-data.ndjson.gz
+│   │       └── 20240115-103047_customer-1_syslog-data.ndjson.gz
+│   ├── ebpf-data/
+│   │   ├── raw/
+│   │   │   └── msg_003.ndjson
+│   │   └── queue/
+│   │       └── 20240115-103048_customer-1_ebpf-data.ndjson.gz
+│   ├── meta/                           # Metadata for all datasets in tenant
+│   │   ├── 20240115-103045_customer-1_syslog-data.meta
+│   │   ├── 20240115-103047_customer-1_syslog-data.meta
+│   │   └── 20240115-103048_customer-1_ebpf-data.meta
+│   └── dlq/                           # Dead Letter Queue after 4 retry failures
+│       ├── syslog-data/
+│       │   ├── 20240115-103045_customer-1_syslog-data.ndjson.gz
+│       │   └── 20240115-103045_customer-1_syslog-data.meta
+│       └── ebpf-data/
+│           ├── 20240115-103048_customer-1_ebpf-data.ndjson.gz
+│           └── 20240115-103048_customer-1_ebpf-data.meta
+└── customer-2/                        # Additional tenants follow same structure
+    ├── network-flows/
+    │   ├── raw/
+    │   └── queue/
+    ├── meta/
+    └── dlq/
+        └── network-flows/
 ```
+
+**Spooling Flow:**
+1. **Individual messages** → `tenant/dataset/raw/` (via UDP overflow or individual storage)
+2. **Batch processor** (every 30s) → combines raw files → `.gz` files in `tenant/dataset/queue/`
+3. **Raw files deleted** after successful compression
+4. **Metadata stored** → `tenant/meta/` for retry tracking
+5. **Upload attempts** → retry from queue directory (up to 4 attempts)
+6. **After 4 failed retries** → moved to `tenant/dlq/dataset/` for manual intervention
 
 ## API Endpoints
 
-- `GET /health` - Health check endpoint with service status
-- `GET /config` - View current configuration (sensitive values masked)
-- `GET /docs` - API documentation
+### Core Endpoints
+- `GET /api/v2/health` - Health check endpoint with service status
+- `GET /api/v2/config` - View current configuration (sensitive values masked)
+- `GET /v2/docs` - Interactive API documentation (Swagger UI)
+
+### DLQ Management Endpoints
+- `GET /api/v2/dlq/stats` - Get comprehensive DLQ and spooling statistics
+- `POST /api/v2/dlq/retry` - Retry files from Dead Letter Queue
+
+#### DLQ Statistics Example
+```bash
+curl http://localhost:8080/api/v2/dlq/stats
+```
+
+**Response:**
+```json
+{
+  "spooling_enabled": true,
+  "total_files_in_queue": 5,
+  "total_files_in_dlq": 3,
+  "total_bytes_in_queue": 2048576,
+  "total_bytes_in_dlq": 1024000,
+  "tenant_stats": {
+    "customer-1": {
+      "queue_files": 5,
+      "dlq_files": 3,
+      "queue_bytes": 2048576,
+      "dlq_bytes": 1024000,
+      "dataset_stats": {
+        "syslog-data": {
+          "queue_files": 3,
+          "dlq_files": 2,
+          "queue_bytes": 1400000,
+          "dlq_bytes": 800000
+        },
+        "ebpf-data": {
+          "queue_files": 2,
+          "dlq_files": 1,
+          "queue_bytes": 648576,
+          "dlq_bytes": 224000
+        }
+      }
+    }
+  },
+  "oldest_dlq_file": {
+    "id": "20240115-103045_customer-1_syslog-data",
+    "tenant_id": "customer-1",
+    "dataset_id": "syslog-data",
+    "size": 400000,
+    "created_at": "2024-01-15T10:30:45Z",
+    "retry_count": 4,
+    "failure_reason": "Moved to DLQ after exceeding maximum retry attempts (4)"
+  },
+  "spool_directory": "/var/spool/bytefreezer-proxy"
+}
+```
+
+#### DLQ Retry Examples
+```bash
+# Retry all DLQ files
+curl -X POST http://localhost:8080/api/v2/dlq/retry
+
+# Retry files for specific tenant
+curl -X POST http://localhost:8080/api/v2/dlq/retry \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "customer-1"}'
+
+# Retry files for specific tenant and dataset
+curl -X POST http://localhost:8080/api/v2/dlq/retry \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "customer-1", "dataset_id": "syslog-data"}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully retried 3 files from DLQ",
+  "files_retried": 3,
+  "details": [
+    {
+      "file_id": "20240115-103045_customer-1_syslog-data",
+      "tenant_id": "customer-1",
+      "dataset_id": "syslog-data",
+      "success": true
+    }
+  ]
+}
+```
 
 ## Building and Running
 
