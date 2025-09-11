@@ -79,11 +79,6 @@
         state: started
         daemon_reload: yes
 
-    - name: Clean up temporary directory
-      ansible.builtin.file:
-        path: "{{ temp_dir.path }}"
-        state: absent
-
   post_tasks:
     - name: Display installation status
       debug:
