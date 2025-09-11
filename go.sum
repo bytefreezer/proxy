@@ -53,8 +53,8 @@ github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zx
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
-github.com/n0needt0/go-goodies/log v0.0.0-20250630220836-1971f86125fe h1:3wBHX2SGKDEmevDWQIfXHiJ2bGO8673suUp/5ZysCLE=
-github.com/n0needt0/go-goodies/log v0.0.0-20250630220836-1971f86125fe/go.mod h1:B3ETfLghDJJ3ubBtGJ7Xr5GXw5Qcm8lFEnIWfAXspUo=
+github.com/n0needt0/go-goodies/log v0.0.0-20250911153747-5be7cbbfc35a h1:VW6+fbDSsUxTR9khu1CJXTreGRGB0juxRu4QHU1Mx2Y=
+github.com/n0needt0/go-goodies/log v0.0.0-20250911153747-5be7cbbfc35a/go.mod h1:B3ETfLghDJJ3ubBtGJ7Xr5GXw5Qcm8lFEnIWfAXspUo=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

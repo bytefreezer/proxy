@@ -7,7 +7,7 @@ require (
 	github.com/knadh/koanf/providers/env v0.1.0
 	github.com/knadh/koanf/providers/file v0.1.0
 	github.com/knadh/koanf/v2 v2.0.1
-	github.com/n0needt0/go-goodies/log v0.0.0-20250630220836-1971f86125fe
+	github.com/n0needt0/go-goodies/log v0.0.0-20250911153747-5be7cbbfc35a
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/swaggest/openapi-go v0.2.49

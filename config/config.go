@@ -301,7 +301,8 @@ func validateMultiTenantConfig(cfg *Config) error {
 		}
 	} else if len(tenantMap) == 1 {
 		for tenantID, info := range tenantMap {
-			log.Infof("Single-tenant configuration: '%s' with %d ports, %d datasets", tenantID, info.PortCount, len(info.Datasets))
+			log.Infof("Single-tenant configuration: tenant=%s ports=%d datasets=%d", 
+				tenantID, info.PortCount, len(info.Datasets))
 		}
 	}
 
