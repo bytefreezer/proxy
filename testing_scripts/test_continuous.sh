@@ -75,7 +75,7 @@ main() {
         
         # Show spooling directory status every 3 iterations
         if [ $((i % 3)) -eq 0 ]; then
-            spooled_files=$(find /tmp/bytefreezer-proxy -name "*.ndjson" 2>/dev/null | wc -l || echo 0)
+            spooled_files=$(find /var/spool/bytefreezer-proxy -name "*.ndjson" 2>/dev/null | wc -l || echo 0)
             echo "  📁 Spooled files: $spooled_files"
         fi
         
@@ -90,8 +90,8 @@ main() {
     
     # Final status
     log "📊 Final spooling directory status:"
-    if [ -d "/tmp/bytefreezer-proxy" ]; then
-        find /tmp/bytefreezer-proxy -name "*.ndjson" -printf "%T@ %Tc %p\n" | sort -n | tail -5 | while read timestamp date time file; do
+    if [ -d "/var/spool/bytefreezer-proxy" ]; then
+        find /var/spool/bytefreezer-proxy -name "*.ndjson" -printf "%T@ %Tc %p\n" | sort -n | tail -5 | while read timestamp date time file; do
             echo "  📄 $(basename $file) - $date $time ($(stat -c%s "$file") bytes)"
         done
     else

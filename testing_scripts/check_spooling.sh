@@ -2,7 +2,7 @@
 
 # Script to check ByteFreezer Proxy spooling directory
 
-SPOOLING_DIR="/tmp/bytefreezer-proxy"
+SPOOLING_DIR="/var/spool/bytefreezer-proxy"
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'

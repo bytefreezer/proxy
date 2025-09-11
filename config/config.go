@@ -168,7 +168,7 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 
 	// Spooling defaults
 	if cfg.Spooling.Directory == "" {
-		cfg.Spooling.Directory = "/tmp/bytefreezer-proxy"
+		cfg.Spooling.Directory = "/var/spool/bytefreezer-proxy"
 	}
 	if cfg.Spooling.MaxSizeBytes == 0 {
 		cfg.Spooling.MaxSizeBytes = 1073741824 // 1GB default

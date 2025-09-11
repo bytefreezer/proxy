@@ -279,7 +279,15 @@ func (s *SpoolingService) processRetries() {
 		// #nosec G304 - path is validated by findFilePaths function above
 		data, err := os.ReadFile(dataPath)
 		if err != nil {
-			log.Errorf("Failed to read spooled file %s: %v", file.Filename, err)
+			if os.IsNotExist(err) {
+				// Data file is missing, remove orphaned metadata to prevent repeated errors
+				log.Warnf("Data file %s missing, removing orphaned metadata %s", file.Filename, file.ID)
+				if removeErr := s.removeSpooledFile(file); removeErr != nil {
+					log.Errorf("Failed to remove orphaned metadata for %s: %v", file.ID, removeErr)
+				}
+			} else {
+				log.Errorf("Failed to read spooled file %s: %v", file.Filename, err)
+			}
 			continue
 		}
 
