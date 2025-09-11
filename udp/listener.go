@@ -23,16 +23,15 @@ import (
 
 // Listener represents a UDP listener that collects data and forwards to bytefreezer-receiver
 type Listener struct {
-	services         *services.Services
-	config           *config.Config
-	listeners        []*UDPPortListener
-	quit             chan struct{}
-	batchChannel     chan *domain.UDPMessage
-	forwarderChannel chan *domain.UDPMessage
-	bufferPool       sync.Pool
-	stopOnce         sync.Once
-	wg               sync.WaitGroup
-	forwarder        *Forwarder
+	services     *services.Services
+	config       *config.Config
+	listeners    []*UDPPortListener
+	quit         chan struct{}
+	batchChannel chan *domain.UDPMessage
+	bufferPool   sync.Pool
+	stopOnce     sync.Once
+	wg           sync.WaitGroup
+	forwarder    *Forwarder
 }
 
 // UDPPortListener represents a single UDP port listener
@@ -113,12 +112,11 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 	}
 
 	return &Listener{
-		services:         services,
-		config:           cfg,
-		listeners:        portListeners,
-		quit:             make(chan struct{}),
-		batchChannel:     make(chan *domain.UDPMessage, cfg.UDP.ChannelBufferSize), // Incoming UDP messages
-		forwarderChannel: make(chan *domain.UDPMessage, cfg.UDP.ChannelBufferSize), // Processed messages to forwarder
+		services:     services,
+		config:       cfg,
+		listeners:    portListeners,
+		quit:         make(chan struct{}),
+		batchChannel: make(chan *domain.UDPMessage, cfg.UDP.ChannelBufferSize), // Incoming UDP messages
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return make([]byte, cfg.UDP.ReadBufferSizeBytes)
@@ -177,20 +175,11 @@ func (l *Listener) Start() error {
 		}(portListener)
 	}
 
-	// Start multiple worker goroutines to process messages from batchChannel
-	for i := 0; i < l.config.UDP.WorkerCount; i++ {
-		l.wg.Add(1)
-		go func(workerID int) {
-			defer l.wg.Done()
-			l.processMessageWorker(workerID)
-		}(i)
-	}
-
-	// Start the forwarder with processed messages
+	// Start the forwarder
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
-		l.forwarder.Start(l.forwarderChannel)
+		l.forwarder.Start(l.batchChannel)
 	}()
 
 	return nil
@@ -210,12 +199,8 @@ func (l *Listener) Stop() error {
 			}
 		}
 
-		// Close channels in proper order - first batch channel, then forwarder channel
+		// Close batch channel
 		close(l.batchChannel)
-
-		// Wait a moment for workers to drain
-		time.Sleep(100 * time.Millisecond)
-		close(l.forwarderChannel)
 
 		// Stop the forwarder
 		if l.forwarder != nil {
@@ -387,43 +372,49 @@ func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, por
 			l.services.MetricsService.RecordUDPLinesReceived(ctx, portListener.tenantID, portListener.datasetID, 1) // Each UDP message is one line
 		}
 	default:
-		// Channel is full, drop message and log
-		log.Warnf("UDP message channel full, dropping message from %s", from)
-		l.services.ProxyStats.UDPMessageErrors++
-	}
-}
+		// Channel is full, spool message to disk instead of dropping
+		log.Debugf("UDP message channel full, spooling message from %s to disk", from)
 
-// processMessageWorker is a worker goroutine that processes messages from the batch channel
-func (l *Listener) processMessageWorker(workerID int) {
-	log.Debugf("UDP message worker %d started", workerID)
-	defer log.Debugf("UDP message worker %d stopped", workerID)
-
-	for {
-		select {
-		case <-l.quit:
-			return
-		case msg, ok := <-l.batchChannel:
-			if !ok {
-				// Channel closed
-				return
+		// Spool the message directly to disk
+		if l.services.SpoolingService != nil {
+			// Create a single-message JSON line for spooling
+			var messageData []byte
+			var jsonObj interface{}
+			if err := json.Unmarshal(processedData, &jsonObj); err == nil {
+				// Valid JSON, marshal it to ensure consistent formatting
+				if jsonBytes, err := json.Marshal(jsonObj); err == nil {
+					messageData = append(jsonBytes, '\n')
+				} else {
+					// Fallback to raw data
+					messageData = append(processedData, '\n')
+				}
+			} else {
+				// Not valid JSON, create a JSON envelope
+				envelope := map[string]interface{}{
+					"message":   string(processedData),
+					"source":    from.String(),
+					"timestamp": time.Now().Format(time.RFC3339Nano),
+				}
+				if jsonBytes, err := json.Marshal(envelope); err == nil {
+					messageData = append(jsonBytes, '\n')
+				} else {
+					messageData = append(processedData, '\n')
+				}
 			}
 
-			// Process the message - perform any additional validation or enrichment
-			// For now, we mainly pass through but this provides a place for future enhancements
-			log.Debugf("Worker %d processing message from %s (tenant: %s, dataset: %s)",
-				workerID, msg.From, msg.TenantID, msg.DatasetID)
-
-			// Forward the processed message to the forwarder channel
-			select {
-			case l.forwarderChannel <- msg:
-				// Successfully forwarded to batching/forwarding
-			case <-l.quit:
-				return
-			default:
-				// Forwarder channel is full - this should be very rare with proper sizing
-				log.Warnf("Worker %d: forwarder channel full, dropping message from %s", workerID, msg.From)
+			if spoolErr := l.services.SpoolingService.SpoolData(portListener.tenantID, portListener.datasetID, messageData, "UDP channel overflow"); spoolErr != nil {
+				log.Errorf("Failed to spool message from %s: %v", from, spoolErr)
 				l.services.ProxyStats.UDPMessageErrors++
+			} else {
+				log.Debugf("Successfully spooled message from %s to disk", from)
+				l.services.ProxyStats.UDPMessagesReceived++
+				l.services.ProxyStats.BytesReceived += int64(len(processedData))
+				l.services.ProxyStats.LastActivity = time.Now()
 			}
+		} else {
+			// No spooling service available, this should not happen in production
+			log.Errorf("UDP message channel full and no spooling service available, dropping message from %s", from)
+			l.services.ProxyStats.UDPMessageErrors++
 		}
 	}
 }
