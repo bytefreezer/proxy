@@ -1,60 +1,50 @@
 #!/bin/bash
-#colors
-export red='\033[0;31m'
-export green='\033[0;32m'
-export NC='\033[0m' # No Color
+set -e
 
-set -x 
+# ByteFreezer Proxy Build Script
+# Builds the binary for local Ansible deployment
 
+PROJECT_NAME="bytefreezer-proxy"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANSIBLE_DIST_DIR="$SCRIPT_DIR/ansible/dist"
 
-# Function to display help message
-show_help() {
-  echo "Usage: $0 [--push] [TAG]"
-  echo "Options:"
-  echo "  --push   Optional. If set, will push to dockerhub dont forget to log into dockerhub first."
-  echo "           docker login --username dockerhubusername --password token"
-  echo "  TAG      Optional. The tag for image vX.X.X Defaults to 'latest'."
-  echo "  --help   Show this help message."
-  echo
-  echo "If no TAG provided, will build with the tag 'latest'."
-  echo "If only '--push' is provided, will build and push with the tag 'latest'."
-}
+echo "🔨 Building $PROJECT_NAME..."
 
-# Default values
-PUSH_COMMAND=false
-TAG="latest"
+# Create ansible/dist directory
+mkdir -p "$ANSIBLE_DIST_DIR"
 
-# Check for --help or no parameters
-if [[ "$#" -eq 0 ]] || [[ "$1" == "--help" ]]; then
-  show_help
-  sleep 5
+# Get version info
+VERSION="local-$(date +%Y%m%d-%H%M%S)"
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-  # If only --help is provided, we exit after showing the help message.
-  [[ "$1" == "--help" ]] && exit 0
+echo "Version: $VERSION"
+echo "Build Time: $BUILD_TIME"
+echo "Git Commit: $GIT_COMMIT"
+
+# Build the binary
+echo "Building binary..."
+CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X main.version=$VERSION -X main.buildTime=$BUILD_TIME -X main.gitCommit=$GIT_COMMIT" \
+    -o "$ANSIBLE_DIST_DIR/$PROJECT_NAME" \
+    .
+
+# Verify binary was created
+if [[ ! -f "$ANSIBLE_DIST_DIR/$PROJECT_NAME" ]]; then
+    echo "❌ Error: Binary not found at $ANSIBLE_DIST_DIR/$PROJECT_NAME"
+    exit 1
 fi
 
-# Parse arguments
-for arg in "$@"; do
-  case $arg in
-    --push)
-      PUSH_COMMAND=true
-      shift # Remove --push from processing
-      ;;
-    --help) # Ignore --help if it's not the first argument
-      shift
-      ;;
-    *)
-      TAG=$arg
-      shift # Remove the tag from processing
-      ;;
-  esac
-done
+# Test binary
+echo "Testing binary..."
+"$ANSIBLE_DIST_DIR/$PROJECT_NAME" --version
 
-
-# Always execute with TAG value
-docker build --build-arg GH_PAT=$GH_PAT -t tarsalhq/bytefreezer-proxy:$TAG -f Dockerfile .
-
-# If the --push flag is set, push to dockerhub
-if [ "$PUSH_COMMAND" = true ]; then
-    docker push tarsalhq/bytefreezer-proxy:$TAG
-fi
+echo "✅ Build successful!"
+echo "📦 Binary location: $ANSIBLE_DIST_DIR/$PROJECT_NAME"
+echo ""
+echo "To install with Ansible:"
+echo "  cd ansible"
+echo "  ansible-playbook -i inventory.yml playbooks/local_install.yml"
+echo ""
+echo "Binary info:"
+stat "$ANSIBLE_DIST_DIR/$PROJECT_NAME"

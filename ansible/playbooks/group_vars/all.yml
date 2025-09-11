@@ -20,7 +20,7 @@ paths:
   log_dir: "/var/log/bytefreezer-proxy"
   spool_dir: "/var/spool/bytefreezer-proxy"
   service_path: "/etc/systemd/system/bytefreezer-proxy.service"
-  logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
+  logrotate_path: "/etc/logrotate.d/bytefreezer-proxy" 
 
 # Log rotation settings
 logrotate:
