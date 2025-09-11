@@ -252,8 +252,8 @@ func (s *SpoolingService) processRetries() {
 	failureCount := 0
 
 	for _, file := range files {
-		// Skip files that are permanently failed
-		if file.Status == "failed" {
+		// Skip files that are permanently failed (fallback case if DLQ move failed)
+		if file.Status == "failed" || file.Status == "dlq" {
 			continue
 		}
 
@@ -565,6 +565,11 @@ func (s *SpoolingService) getSpooledFiles() ([]SpooledFile, error) {
 			return err
 		}
 
+		// Skip DLQ directory entirely - don't process files in DLQ
+		if info.IsDir() && info.Name() == "DLQ" {
+			return filepath.SkipDir
+		}
+
 		// Skip directories and non-meta files
 		if info.IsDir() || !strings.HasSuffix(info.Name(), ".meta") {
 			return nil
@@ -641,23 +646,27 @@ func (s *SpoolingService) removeSpooledFile(file SpooledFile) error {
 	return nil
 }
 
-// markAsPermanentlyFailed marks a file as permanently failed but preserves it
+// markAsPermanentlyFailed moves permanently failed files to DLQ
 func (s *SpoolingService) markAsPermanentlyFailed(file SpooledFile) {
-	file.Status = "failed"
-	file.LastRetry = time.Now()
-	file.FailureReason = "Exceeded maximum retry attempts - manual recovery required"
+	if err := s.moveToDeadLetterQueue(file); err != nil {
+		log.Errorf("Failed to move file %s to DLQ: %v", file.ID, err)
+		// Fallback: keep file in main directory but mark as failed
+		file.Status = "failed"
+		file.LastRetry = time.Now()
+		file.FailureReason = "Exceeded maximum retry attempts - DLQ move failed"
 
-	metaPath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", file.ID))
-	metaData, err := json.Marshal(file)
-	if err != nil {
-		log.Warnf("Failed to marshal permanently failed metadata for %s: %v", file.ID, err)
-		return
-	}
+		metaPath := filepath.Join(s.directory, fmt.Sprintf("%s.meta", file.ID))
+		metaData, err := json.Marshal(file)
+		if err != nil {
+			log.Warnf("Failed to marshal permanently failed metadata for %s: %v", file.ID, err)
+			return
+		}
 
-	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
-		log.Warnf("Failed to write permanently failed metadata for %s: %v", file.ID, err)
-	} else {
-		log.Infof("Marked file as permanently failed: %s (preserved for manual recovery)", file.ID)
+		if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
+			log.Warnf("Failed to write permanently failed metadata for %s: %v", file.ID, err)
+		} else {
+			log.Infof("Marked file as permanently failed: %s (preserved for manual recovery)", file.ID)
+		}
 	}
 }
 
@@ -1133,6 +1142,74 @@ func (s *SpoolingService) GetDatasetStats(tenantID, datasetID string) (*DatasetS
 	}
 
 	return datasetStats, nil
+}
+
+// moveToDeadLetterQueue moves permanently failed files to a DLQ subdirectory
+func (s *SpoolingService) moveToDeadLetterQueue(file SpooledFile) error {
+	// Create DLQ directory if it doesn't exist
+	dlqDir := filepath.Join(s.directory, "DLQ")
+	if err := os.MkdirAll(dlqDir, 0750); err != nil {
+		return fmt.Errorf("failed to create DLQ directory: %w", err)
+	}
+
+	// Find current file paths
+	dataPath, metaPath, err := s.findFilePaths(file)
+	if err != nil {
+		return fmt.Errorf("failed to find file paths for DLQ move: %w", err)
+	}
+
+	// Generate new paths in DLQ directory
+	dlqDataPath := filepath.Join(dlqDir, file.Filename)
+	dlqMetaPath := filepath.Join(dlqDir, fmt.Sprintf("%s.meta", file.ID))
+
+	// Move data file to DLQ
+	if err := os.Rename(dataPath, dlqDataPath); err != nil {
+		// If rename fails, try copy and delete
+		if copyErr := s.copyFile(dataPath, dlqDataPath); copyErr != nil {
+			return fmt.Errorf("failed to move data file to DLQ: %w", err)
+		}
+		os.Remove(dataPath) // Best effort cleanup
+	}
+
+	// Update metadata with DLQ status and move to DLQ
+	file.Status = "dlq"
+	file.FailureReason = "Moved to DLQ after exceeding maximum retry attempts"
+	file.LastRetry = time.Now()
+
+	metaData, err := json.Marshal(file)
+	if err != nil {
+		return fmt.Errorf("failed to marshal DLQ metadata: %w", err)
+	}
+
+	if err := os.WriteFile(dlqMetaPath, metaData, 0600); err != nil {
+		return fmt.Errorf("failed to write DLQ metadata: %w", err)
+	}
+
+	// Remove original metadata file
+	os.Remove(metaPath) // Best effort cleanup
+
+	log.Warnf("Moved permanently failed file %s to DLQ: %s", file.ID, dlqDataPath)
+	return nil
+}
+
+// copyFile copies a file from src to dst (paths are validated by caller)
+func (s *SpoolingService) copyFile(src, dst string) error {
+	// #nosec G304 - src path validated by findFilePaths function in moveToDeadLetterQueue caller
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// #nosec G304 - dst path is constructed within DLQ directory by moveToDeadLetterQueue caller
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 // ensureSpoolDirectoryExists checks if the root spool directory exists and recreates it if necessary
