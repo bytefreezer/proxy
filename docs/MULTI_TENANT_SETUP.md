@@ -331,4 +331,4 @@ mv /data/spool/*.ndjson /data/spool/company-a/logs/
 
 ---
 
-For more information, see the [examples/multi-tenant-config.yaml](../examples/multi-tenant-config.yaml) file for a complete configuration example.
+For more information, see the [examples/plugin-config.yaml](../examples/plugin-config.yaml) file for a complete configuration example.

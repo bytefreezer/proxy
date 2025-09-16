@@ -15,7 +15,6 @@ import (
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
-	"github.com/n0needt0/bytefreezer-proxy/udp"
 	"github.com/n0needt0/go-goodies/log"
 
 	// Import plugin packages to register them
@@ -125,12 +124,10 @@ func main() {
 		apiServer.Serve(address, router)
 	}()
 
-	// Decide between legacy UDP system or new plugin system
-	var udpListener *udp.Listener
+	// Use plugin system for input processing
 	var pluginService *services.PluginService
 
 	if len(cfg.Inputs) > 0 {
-		// Use new plugin system
 		log.Infof("Starting plugin system with %d input plugins", len(cfg.Inputs))
 
 		// Create HTTP forwarder
@@ -157,28 +154,8 @@ func main() {
 		}()
 
 		log.Infof("Plugin system started with input types: %v", getPluginTypes(cfg.Inputs))
-
-	} else if cfg.UDP.Enabled {
-		// Use legacy UDP system
-		log.Info("Using legacy UDP system (consider migrating to plugin system)")
-		udpListener = udp.NewListener(svcs, &cfg)
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := udpListener.Start(); err != nil {
-				log.Errorf("UDP listener failed: %v", err)
-				// Send SOC alert
-				if cfg.SOCAlertClient != nil {
-					cfg.SOCAlertClient.SendUDPListenerFailureAlert(err)
-				}
-			}
-		}()
-
-		log.Info("UDP listener enabled on " + cfg.UDP.Host + " with " +
-			fmt.Sprintf("%d", len(cfg.UDP.Listeners)) + " listeners")
 	} else {
-		log.Warn("No input system configured - neither plugins nor UDP enabled")
+		log.Info("No input plugins configured. Please configure inputs in the configuration file.")
 	}
 
 	// Setup signal handling
@@ -211,13 +188,6 @@ func main() {
 		}()
 	}
 
-	if udpListener != nil {
-		go func() {
-			if err := udpListener.Stop(); err != nil {
-				log.Errorf("Error stopping UDP listener: %v", err)
-			}
-		}()
-	}
 
 	// Stop API server
 	go func() {

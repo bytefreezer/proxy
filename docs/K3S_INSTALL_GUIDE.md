@@ -291,5 +291,5 @@ kubectl exec deployment/bytefreezer-proxy -n bytefreezer -- tar -czf - /var/spoo
 
 For issues and questions:
 - GitHub Issues: https://github.com/n0needt0/bytefreezer-proxy/issues
-- Documentation: Check the README.md and configuration examples
+- Documentation: Check the docs/README.md and configuration examples
 - Logs: Always include pod logs when reporting issues

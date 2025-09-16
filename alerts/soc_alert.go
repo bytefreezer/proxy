@@ -63,13 +63,6 @@ func (client *SOCAlertClient) SendAlert(severity, title, message, details string
 	return client.sendAlert(severity, title, message, details)
 }
 
-func (client *SOCAlertClient) SendUDPListenerFailureAlert(err error) error {
-	return client.SendCriticalAlert(
-		"UDP Listener Failure",
-		"ByteFreezer Proxy UDP listener has failed",
-		fmt.Sprintf("Error: %v", err),
-	)
-}
 
 func (client *SOCAlertClient) SendReceiverForwardingFailureAlert(url string, err error) error {
 	return client.SendWarningAlert(

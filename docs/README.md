@@ -697,7 +697,7 @@ bearer_token: "default-bearer-token"
 3. **HTTP Forwarding**: Each batch uses the appropriate bearer token for its tenant
 4. **Spooling Persistence**: Bearer tokens are stored with spooled files for retry operations
 
-See `examples/multi-tenant-config.yaml` for a complete multi-tenant setup example.
+See `../examples/plugin-config.yaml` for a complete plugin configuration example.
 
 ### Receiver Configuration  
 ```yaml
