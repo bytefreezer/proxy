@@ -137,21 +137,7 @@ EOF
 
 ## Monitoring Setup (Optional)
 
-### Install Prometheus Stack
-
-```bash
-# Add Prometheus Helm repository
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# Install Prometheus stack with ByteFreezer configuration
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -f monitoring/prometheus/k3s-prometheus-values-packer.yaml \
-  -n monitoring --create-namespace
-
-# Access Grafana (default: admin/prom-operator)
-kubectl port-forward service/kube-prometheus-stack-grafana 3000:80 -n monitoring
-```
+Monitoring can be set up using your preferred monitoring solution. The ByteFreezer Proxy exposes metrics when OpenTelemetry is enabled in the configuration.
 
 ## Verification
 
