@@ -1,21 +1,30 @@
 # ByteFreezer Proxy
 
-High-performance UDP data streaming proxy for the ByteFreezer platform. Designed for enterprise environments that need to collect, batch, and forward any line-based data efficiently via UDP to the ByteFreezer platform for storage and downstream processing.
+High-performance multi-protocol data streaming proxy for the ByteFreezer platform. Designed for enterprise environments that need to collect, batch, and forward data from diverse sources including UDP, HTTP webhooks, Kafka, and NATS to the ByteFreezer platform for storage and downstream processing.
 
 ## Overview
 
-ByteFreezer Proxy is a **universal data streaming gateway** designed for enterprise environments with diverse data sources. The proxy implements a **stream-first, process-later** architecture that maximizes throughput while enabling sophisticated downstream processing.
+ByteFreezer Proxy is a **universal data streaming gateway** designed for enterprise environments with diverse data sources. The proxy implements a **plugin-based architecture** with a **stream-first, process-later** design that maximizes throughput while enabling sophisticated downstream processing.
 
 ### **Core Capabilities**
-- **🌐 Universal Data Ingestion**: Accepts any line-based data format via UDP
+- **🔌 Plugin Architecture**: Extensible input system supporting UDP, HTTP, Kafka, NATS, and custom plugins
+- **🌐 Universal Data Ingestion**: Accepts any line-based data format from multiple sources
 - **⚡ High-Performance Streaming**: Optimized for high-throughput data collection
 - **📦 Smart Batching**: Efficient line-based batching with gzip compression
 - **🔄 Reliable Delivery**: HTTP forwarding with retry logic and local spooling
-- **🏢 Multi-Tenant Architecture**: Port-based isolation with per-tenant authentication
+- **🏢 Multi-Tenant Architecture**: Isolated data streams with per-tenant authentication
 - **📊 Protocol Intelligence**: Optional lightweight parsing for structured protocols
 - **🛡️ Enterprise-Ready**: Health monitoring, metrics, and operational APIs
 
-### **Supported Data Types**
+### **Supported Input Plugins**
+| Plugin | Protocol | Use Cases |
+|--------|----------|-----------|
+| **UDP** | UDP/Syslog/NetFlow/sFlow | High-throughput streaming, network monitoring |
+| **HTTP** | HTTP Webhooks | Lightweight data submission, API integrations |
+| **Kafka** | Apache Kafka | Message queue integration, event streaming |
+| **NATS** | NATS messaging | Pub/sub patterns, microservice communication |
+
+### **Supported Data Formats**
 | Format | Processing | Use Cases |
 |--------|------------|-----------|
 | **JSON Logs** | Pass-through | Application logs, structured events |
@@ -27,35 +36,61 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 
 ## Architecture & Data Flow
 
-### **Stream-First Design Philosophy**
+### **Plugin-Based Architecture**
 
-ByteFreezer Proxy implements a **separation of concerns** architecture:
+ByteFreezer Proxy implements a **modular plugin system** with **separation of concerns**:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Data Sources  │───▶│  ByteFreezer    │───▶│   ByteFreezer   │
 │                 │    │     Proxy       │    │    Platform     │
-│ • Applications  │    │                 │    │                 │
-│ • System Logs   │    │ • Collect       │    │ • Store (S3)    │
-│ • Network Flows │    │ • Batch         │    │ • Process       │
-│ • Metrics       │    │ • Forward       │    │ • Analyze       │
+│ • UDP Streams   │    │                 │    │                 │
+│ • HTTP Webhooks │    │ • Plugin System │    │ • Store (S3)    │
+│ • Kafka Topics  │    │ • Batch & Route │    │ • Process       │
+│ • NATS Messages │    │ • Forward       │    │ • Analyze       │
+│ • Custom Sources│    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### **Plugin Architecture Overview**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ByteFreezer Proxy                        │
+├─────────────────────────────────────────────────────────────┤
+│              Plugin Manager & Registry                      │
+├─────────────────────────────────────────────────────────────┤
+│  UDP Plugin  │ HTTP Plugin │ Kafka Plugin │ NATS Plugin    │
+│  ┌─────────┐ │ ┌─────────┐ │ ┌─────────┐  │ ┌─────────┐   │
+│  │ Syslog  │ │ │Webhooks │ │ │Consumer │  │ │Subscribe│   │
+│  │ NetFlow │ │ │Auth     │ │ │Groups   │  │ │Topics   │   │
+│  │ sFlow   │ │ │Limits   │ │ │Topics   │  │ │Queues   │   │
+│  └─────────┘ │ └─────────┘ │ └─────────┘  │ └─────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Batch Processor & Forwarder                   │
+│  • Line-based batching  • Compression  • HTTP delivery     │
+│  • Multi-tenant routing • Retry logic  • Local spooling    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### **Core Principles**
 1. **🚀 Speed**: Minimal processing, maximum throughput
 2. **🔄 Reliability**: Robust delivery with spooling and retry
-3. **📊 Flexibility**: Support any line-based data format
+3. **📊 Flexibility**: Plugin-based extensibility for any data source
 4. **⚡ Scalability**: Horizontal scaling through multiple instances
 5. **🛡️ Resilience**: Graceful handling of network issues and failures
 
-### **Port-Based Data Collection**
+### **Plugin-Based Data Collection**
 
-Each UDP port represents an isolated data stream:
+Each input plugin represents an isolated data collection method:
 
-- **🌐 Format Agnostic**: Any port accepts any line-based data format
-- **🔧 Protocol Modes**: Optional processing for `udp`, `syslog`, `netflow`, `sflow`
-- **⚡ Smart Activation**: Only configured ports consume resources
+- **🔌 Extensible Architecture**: Add new input types through plugins
+- **🌐 Format Agnostic**: Accept any line-based data format
+- **🔧 Protocol Support**: Native support for UDP, HTTP, Kafka, NATS
+- **⚡ Smart Activation**: Only configured plugins consume resources
 - **🏗️ Per-Dataset Isolation**: Dedicated processing pipeline per dataset
 - **📈 Independent Scaling**: Scale data sources independently
 
@@ -66,39 +101,42 @@ Each UDP port represents an isolated data stream:
 tenant_id: "customer-1"           # Valid: alphanumeric with hyphens
 bearer_token: "your-token-here"
 
-udp:
-  listeners:
-    # Application JSON logs
-    - port: 2056
-      dataset_id: "app-logs-json"  # Valid: alphanumeric with hyphens
-      protocol: "udp"
-      # Receives: {"timestamp":"2024-01-15T10:30:00Z","level":"info","message":"User logged in","user_id":123}
-    
-    # System syslog messages
-    - port: 2057
-      dataset_id: "system-logs"    # Valid: alphanumeric with hyphens
-      protocol: "syslog"
-      syslog_mode: "rfc3164"
-      # Receives: <134>Jan 15 10:30:00 web01 nginx[1234]: 192.168.1.1 GET /api/status 200
-    
-    # Metrics in CSV format
-    - port: 2058
-      dataset_id: "server_metrics" # Valid: alphanumeric with underscores
-      protocol: "udp"
-      # Receives: timestamp,hostname,cpu_usage,memory_usage\n2024-01-15T10:30:00,web01,45.2,78.1
-    
-    # Network flow monitoring with per-tenant override
-    - port: 2059
-      dataset_id: "network-flows"
-      tenant_id: "security-team"   # Valid: alphanumeric with hyphens
-      protocol: "netflow"
-      # Receives: Binary NetFlow v5/v9 packets
-    
-    # Plain text log files
-    - port: 2060
-      dataset_id: "legacy_logs"    # Valid: alphanumeric with underscores
-      protocol: "udp"
-      # Receives: [2024-01-15 10:30:00] ERROR: Database connection failed
+# Plugin-based input configuration
+inputs:
+  # UDP Plugin - High-throughput streaming
+  - plugin: "udp"
+    config:
+      host: "0.0.0.0"
+      port: 2056
+      dataset_id: "syslog-data"
+      protocol: "syslog"           # Optional: syslog, netflow, sflow, udp
+      
+  # HTTP Plugin - Webhook endpoints
+  - plugin: "http"
+    config:
+      host: "0.0.0.0"
+      port: 8081
+      path: "/webhook"
+      dataset_id: "webhook-data"
+      bearer_token: "webhook-token"
+      max_payload_size: 10485760   # 10MB
+      max_lines_per_request: 1000
+      
+  # Kafka Plugin - Message queue integration
+  - plugin: "kafka"
+    config:
+      brokers: ["localhost:9092"]
+      topics: ["app-logs", "metrics"]
+      group_id: "bytefreezer-proxy"
+      dataset_id: "kafka-data"
+      
+  # NATS Plugin - Pub/sub messaging
+  - plugin: "nats"
+    config:
+      servers: ["nats://localhost:4222"]
+      subjects: ["logs.>", "metrics.>"]
+      queue_group: "bytefreezer"
+      dataset_id: "nats-data"
 ```
 
 ### **Identifier Validation Rules**

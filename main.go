@@ -18,6 +18,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 
 	// Import plugin packages to register them
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/http"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kafka"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/nats"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/udp"

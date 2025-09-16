@@ -67,6 +67,11 @@ func (r *Registry) GetPluginNames() []string {
 // Global registry instance
 var GlobalRegistry = NewRegistry()
 
+// GetRegistry returns the global plugin registry instance
+func GetRegistry() *Registry {
+	return GlobalRegistry
+}
+
 // Register is a convenience function for registering plugins with the global registry
 func Register(name string, factory InputPluginFactory) error {
 	return GlobalRegistry.Register(name, factory)
