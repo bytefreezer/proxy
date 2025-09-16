@@ -36,3 +36,4 @@ ansible/dist/
 *.DS_Store
 
 distribution/docker/bytefreezer-cache
+.claude

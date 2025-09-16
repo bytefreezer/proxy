@@ -84,7 +84,7 @@ type UDPConfig struct {
 	MaxBatchBytes       int64         `json:"max_batch_bytes"`
 	BatchTimeoutSeconds int           `json:"batch_timeout_seconds"`
 	CompressionLevel    int           `json:"compression_level"`
-	EnableCompression   bool          `json:"enable_compression"`
+	// Compression is always enabled for raw data
 }
 
 type ReceiverConfigMasked struct {
@@ -114,32 +114,32 @@ type HousekeepingConfig struct {
 
 // DLQStatsResponse represents DLQ and spooling statistics
 type DLQStatsResponse struct {
-	SpoolingEnabled       bool                           `json:"spooling_enabled"`
-	TotalFilesInQueue     int                            `json:"total_files_in_queue"`
-	TotalFilesInDLQ       int                            `json:"total_files_in_dlq"`
-	TotalBytesInQueue     int64                          `json:"total_bytes_in_queue"`
-	TotalBytesInDLQ       int64                          `json:"total_bytes_in_dlq"`
-	TenantStats           map[string]*TenantDLQStats     `json:"tenant_stats"`
-	OldestQueueFile       *FileInfo                      `json:"oldest_queue_file,omitempty"`
-	OldestDLQFile         *FileInfo                      `json:"oldest_dlq_file,omitempty"`
-	SpoolDirectory        string                         `json:"spool_directory"`
+	SpoolingEnabled   bool                       `json:"spooling_enabled"`
+	TotalFilesInQueue int                        `json:"total_files_in_queue"`
+	TotalFilesInDLQ   int                        `json:"total_files_in_dlq"`
+	TotalBytesInQueue int64                      `json:"total_bytes_in_queue"`
+	TotalBytesInDLQ   int64                      `json:"total_bytes_in_dlq"`
+	TenantStats       map[string]*TenantDLQStats `json:"tenant_stats"`
+	OldestQueueFile   *FileInfo                  `json:"oldest_queue_file,omitempty"`
+	OldestDLQFile     *FileInfo                  `json:"oldest_dlq_file,omitempty"`
+	SpoolDirectory    string                     `json:"spool_directory"`
 }
 
 // TenantDLQStats represents per-tenant DLQ statistics
 type TenantDLQStats struct {
-	QueueFiles       int                              `json:"queue_files"`
-	DLQFiles         int                              `json:"dlq_files"`
-	QueueBytes       int64                            `json:"queue_bytes"`
-	DLQBytes         int64                            `json:"dlq_bytes"`
-	DatasetStats     map[string]*DatasetDLQStats      `json:"dataset_stats"`
+	QueueFiles   int                         `json:"queue_files"`
+	DLQFiles     int                         `json:"dlq_files"`
+	QueueBytes   int64                       `json:"queue_bytes"`
+	DLQBytes     int64                       `json:"dlq_bytes"`
+	DatasetStats map[string]*DatasetDLQStats `json:"dataset_stats"`
 }
 
 // DatasetDLQStats represents per-dataset DLQ statistics
 type DatasetDLQStats struct {
-	QueueFiles       int                              `json:"queue_files"`
-	DLQFiles         int                              `json:"dlq_files"`
-	QueueBytes       int64                            `json:"queue_bytes"`
-	DLQBytes         int64                            `json:"dlq_bytes"`
+	QueueFiles int   `json:"queue_files"`
+	DLQFiles   int   `json:"dlq_files"`
+	QueueBytes int64 `json:"queue_bytes"`
+	DLQBytes   int64 `json:"dlq_bytes"`
 }
 
 // FileInfo represents basic file information
@@ -161,10 +161,10 @@ type DLQRetryRequest struct {
 
 // DLQRetryResponse represents the response from DLQ retry operation
 type DLQRetryResponse struct {
-	Success       bool              `json:"success"`
-	Message       string            `json:"message"`
-	FilesRetried  int               `json:"files_retried"`
-	Details       []DLQRetryDetail  `json:"details,omitempty"`
+	Success      bool             `json:"success"`
+	Message      string           `json:"message"`
+	FilesRetried int              `json:"files_retried"`
+	Details      []DLQRetryDetail `json:"details,omitempty"`
 }
 
 // DLQRetryDetail represents details of a single file retry operation
@@ -294,7 +294,7 @@ func (api *API) GetConfig() usecase.Interactor {
 			MaxBatchBytes:       cfg.UDP.MaxBatchBytes,
 			BatchTimeoutSeconds: cfg.UDP.BatchTimeoutSeconds,
 			CompressionLevel:    cfg.UDP.CompressionLevel,
-			EnableCompression:   cfg.UDP.EnableCompression,
+			// Compression is always enabled for raw data
 		}
 
 		// Receiver configuration
@@ -369,7 +369,7 @@ func (api *API) GetDLQStats() usecase.Interactor {
 
 		output.SpoolingEnabled = true
 		output.SpoolDirectory = api.Config.Spooling.Directory
-		
+
 		// Get DLQ statistics from spooling service
 		dlqStats, err := api.Services.SpoolingService.GetDLQStats()
 		if err != nil {
@@ -428,10 +428,10 @@ func (api *API) RetryDLQFiles() usecase.Interactor {
 		output.Details = convertRetryDetails(retryResult.Details)
 
 		if input.TenantID != "" && input.DatasetID != "" {
-			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s dataset=%s", 
+			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s dataset=%s",
 				retryResult.FilesRetried, input.TenantID, input.DatasetID)
 		} else if input.TenantID != "" {
-			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s", 
+			output.Message = fmt.Sprintf("Successfully retried %d files for tenant=%s",
 				retryResult.FilesRetried, input.TenantID)
 		} else {
 			output.Message = fmt.Sprintf("Successfully retried %d files from DLQ", retryResult.FilesRetried)

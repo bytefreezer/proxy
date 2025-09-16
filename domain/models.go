@@ -19,7 +19,7 @@ type DataBatch struct {
 	ID           string
 	TenantID     string
 	DatasetID    string
-	BearerToken  string    // Authentication token for this tenant
+	BearerToken  string // Authentication token for this tenant
 	Messages     []UDPMessage
 	LineCount    int
 	TotalBytes   int64

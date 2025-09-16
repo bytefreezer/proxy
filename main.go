@@ -13,9 +13,15 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/api"
 	"github.com/n0needt0/bytefreezer-proxy/config"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
 	"github.com/n0needt0/bytefreezer-proxy/udp"
 	"github.com/n0needt0/go-goodies/log"
+
+	// Import plugin packages to register them
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kafka"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/nats"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/udp"
 )
 
 var (
@@ -119,9 +125,42 @@ func main() {
 		apiServer.Serve(address, router)
 	}()
 
-	// Create and start UDP listener if enabled
+	// Decide between legacy UDP system or new plugin system
 	var udpListener *udp.Listener
-	if cfg.UDP.Enabled {
+	var pluginService *services.PluginService
+
+	if len(cfg.Inputs) > 0 {
+		// Use new plugin system
+		log.Infof("Starting plugin system with %d input plugins", len(cfg.Inputs))
+
+		// Create HTTP forwarder
+		forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
+
+		// Create plugin service
+		var err error
+		pluginService, err = services.NewPluginService(&cfg, forwarder)
+		if err != nil {
+			log.Fatalf("Failed to create plugin service: %v", err)
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := pluginService.Start(); err != nil {
+				log.Errorf("Plugin service failed: %v", err)
+				// Send SOC alert
+				if cfg.SOCAlertClient != nil {
+					cfg.SOCAlertClient.SendAlert("high", "Plugin Service Failed",
+						"Input plugin system failed to start", err.Error())
+				}
+			}
+		}()
+
+		log.Infof("Plugin system started with input types: %v", getPluginTypes(cfg.Inputs))
+
+	} else if cfg.UDP.Enabled {
+		// Use legacy UDP system
+		log.Info("Using legacy UDP system (consider migrating to plugin system)")
 		udpListener = udp.NewListener(svcs, &cfg)
 
 		wg.Add(1)
@@ -129,7 +168,6 @@ func main() {
 			defer wg.Done()
 			if err := udpListener.Start(); err != nil {
 				log.Errorf("UDP listener failed: %v", err)
-
 				// Send SOC alert
 				if cfg.SOCAlertClient != nil {
 					cfg.SOCAlertClient.SendUDPListenerFailureAlert(err)
@@ -140,7 +178,7 @@ func main() {
 		log.Info("UDP listener enabled on " + cfg.UDP.Host + " with " +
 			fmt.Sprintf("%d", len(cfg.UDP.Listeners)) + " listeners")
 	} else {
-		log.Info("UDP listener is disabled")
+		log.Warn("No input system configured - neither plugins nor UDP enabled")
 	}
 
 	// Setup signal handling
@@ -164,7 +202,15 @@ func main() {
 		}
 	}()
 
-	// Stop UDP listener
+	// Stop input systems
+	if pluginService != nil {
+		go func() {
+			if err := pluginService.Stop(); err != nil {
+				log.Errorf("Error stopping plugin service: %v", err)
+			}
+		}()
+	}
+
 	if udpListener != nil {
 		go func() {
 			if err := udpListener.Stop(); err != nil {
@@ -206,4 +252,13 @@ func setLogLevel(levelStr string) {
 	case "error":
 		log.SetMinLogLevel(log.MinLevelError)
 	}
+}
+
+// getPluginTypes extracts plugin types from input configurations for logging
+func getPluginTypes(inputs []plugins.PluginConfig) []string {
+	types := make([]string, len(inputs))
+	for i, input := range inputs {
+		types[i] = input.Type
+	}
+	return types
 }

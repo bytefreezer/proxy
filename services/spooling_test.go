@@ -187,7 +187,7 @@ func TestSpoolingService_GetDLQStats(t *testing.T) {
 	// Create test directory structure with files (only .ndjson.gz files are counted)
 	testStructure := map[string]string{
 		"tenant1/dataset1/queue/batch1.ndjson.gz": "test compressed data 1",
-		"tenant1/dataset1/queue/batch2.ndjson.gz": "test compressed data 2", 
+		"tenant1/dataset1/queue/batch2.ndjson.gz": "test compressed data 2",
 		"tenant1/dataset2/queue/batch3.ndjson.gz": "test compressed data 3",
 		"tenant1/dlq/dataset1/failed1.ndjson.gz":  "failed compressed data 1",
 		"tenant1/dlq/dataset2/failed2.ndjson.gz":  "failed compressed data 2",

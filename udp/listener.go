@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -15,10 +14,7 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
-	"github.com/n0needt0/bytefreezer-proxy/netflow"
 	"github.com/n0needt0/bytefreezer-proxy/services"
-	"github.com/n0needt0/bytefreezer-proxy/sflow"
-	"github.com/n0needt0/bytefreezer-proxy/syslog"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -37,17 +33,14 @@ type Listener struct {
 
 // UDPPortListener represents a single UDP port listener
 type UDPPortListener struct {
-	port          int
-	tenantID      string
-	datasetID     string
-	bearerToken   string // Authentication token for this listener
-	protocol      string // "udp", "syslog", "netflow", or "sflow"
-	syslogMode    string // "rfc3164" or "rfc5424"
-	addr          *net.UDPAddr
-	conn          *net.UDPConn
-	syslogParser  *syslog.SyslogParser
-	netflowParser *netflow.NetFlowParser
-	sflowParser   *sflow.SFlowParser
+	port        int
+	tenantID    string
+	datasetID   string
+	bearerToken string // Authentication token for this listener
+	protocol    string // "udp", "syslog", "netflow", or "sflow" (for metadata/logging only)
+	syslogMode  string // "rfc3164" or "rfc5424" (for metadata/logging only)
+	addr        *net.UDPAddr
+	conn        *net.UDPConn
 }
 
 // NewListener creates a new UDP listener with multi-tenant support
@@ -103,15 +96,8 @@ func NewListener(services *services.Services, cfg *config.Config) *Listener {
 			},
 		}
 
-		// Initialize parsers based on protocol
-		switch protocol {
-		case "syslog":
-			portListener.syslogParser = syslog.NewSyslogParser()
-		case "netflow":
-			portListener.netflowParser = netflow.NewNetFlowParser()
-		case "sflow":
-			portListener.sflowParser = sflow.NewSFlowParser()
-		}
+		// Raw data approach - no parsers needed
+		// Protocol is kept for logging/metrics purposes only
 
 		// Enhanced logging for multi-tenant setup
 		log.Infof("Created listener: Port=%d, Tenant='%s', Dataset='%s', Protocol='%s'",
@@ -267,157 +253,57 @@ func (l *Listener) handleMessagesForPort(portListener *UDPPortListener) {
 
 // processMessageWithContext processes a single UDP message with tenant/dataset context
 func (l *Listener) processMessageWithContext(data []byte, from *net.UDPAddr, portListener *UDPPortListener) {
-	// Clean up the payload
-	payload := bytes.TrimSpace(data)
-	payload = bytes.Trim(payload, "\x08\x00")
+	// Minimal cleanup - only remove null bytes
+	payload := bytes.Trim(data, "\x00")
 
 	if len(payload) == 0 {
 		return
 	}
 
-	var processedData []byte
-
-	// Process based on protocol type
-	switch portListener.protocol {
-	case "syslog":
-		if portListener.syslogParser != nil {
-			// Parse syslog message
-			syslogMsg, parseErr := portListener.syslogParser.Parse(payload)
-			if parseErr != nil {
-				log.Debugf("Failed to parse syslog message from %s: %v", from.String(), parseErr)
-				// Fallback to raw data
-				processedData = payload
-			} else {
-				// Convert to JSON
-				if jsonData, jsonErr := syslogMsg.ToJSON(); jsonErr != nil {
-					log.Debugf("Failed to convert syslog message to JSON: %v", jsonErr)
-					processedData = payload
-				} else {
-					processedData = jsonData
-				}
-			}
-		} else {
-			processedData = payload
-		}
-
-	case "netflow":
-		if portListener.netflowParser != nil {
-			// Parse NetFlow data
-			if jsonData, parseErr := portListener.netflowParser.ParseToJSON(payload); parseErr != nil {
-				log.Debugf("Failed to parse NetFlow data from %s: %v", from.String(), parseErr)
-				// Create error envelope for invalid NetFlow data
-				errorEnvelope := map[string]interface{}{
-					"error":     "netflow_parse_failed",
-					"reason":    parseErr.Error(),
-					"raw_data":  fmt.Sprintf("%x", payload),
-					"source":    from.String(),
-					"timestamp": time.Now().Format(time.RFC3339Nano),
-				}
-				if errorBytes, err := json.Marshal(errorEnvelope); err == nil {
-					processedData = errorBytes
-				} else {
-					processedData = payload
-				}
-			} else {
-				processedData = jsonData
-			}
-		} else {
-			processedData = payload
-		}
-
-	case "sflow":
-		if portListener.sflowParser != nil {
-			// Parse sFlow data
-			if jsonData, parseErr := portListener.sflowParser.ParseToJSON(payload); parseErr != nil {
-				log.Debugf("Failed to parse sFlow data from %s: %v", from.String(), parseErr)
-				// Create error envelope for invalid sFlow data
-				errorEnvelope := map[string]interface{}{
-					"error":     "sflow_parse_failed",
-					"reason":    parseErr.Error(),
-					"raw_data":  fmt.Sprintf("%x", payload),
-					"source":    from.String(),
-					"timestamp": time.Now().Format(time.RFC3339Nano),
-				}
-				if errorBytes, err := json.Marshal(errorEnvelope); err == nil {
-					processedData = errorBytes
-				} else {
-					processedData = payload
-				}
-			} else {
-				processedData = jsonData
-			}
-		} else {
-			processedData = payload
-		}
-
-	default:
-		// Plain UDP data
-		processedData = payload
-	}
+	// Raw data approach - no parsing, just pass through as-is
+	// Store exactly what was received for downstream processing in piper
 
 	// Create UDP message with context
 	msg := &domain.UDPMessage{
-		Data:        make([]byte, len(processedData)),
+		Data:        make([]byte, len(payload)),
 		From:        from.String(),
 		Timestamp:   time.Now(),
 		TenantID:    portListener.tenantID,
 		DatasetID:   portListener.datasetID,
 		BearerToken: portListener.bearerToken,
 	}
-	copy(msg.Data, processedData)
+	copy(msg.Data, payload)
 
 	// Try to send to batch channel (non-blocking)
 	select {
 	case l.batchChannel <- msg:
 		l.services.ProxyStats.UDPMessagesReceived++
-		l.services.ProxyStats.BytesReceived += int64(len(processedData))
+		l.services.ProxyStats.BytesReceived += int64(len(payload))
 		l.services.ProxyStats.LastActivity = time.Now()
 
 		// Record metrics if metrics service is available
 		if l.services.MetricsService != nil {
 			ctx := context.Background()
-			l.services.MetricsService.RecordUDPBytesReceived(ctx, portListener.tenantID, portListener.datasetID, int64(len(processedData)))
+			l.services.MetricsService.RecordUDPBytesReceived(ctx, portListener.tenantID, portListener.datasetID, int64(len(payload)))
 			l.services.MetricsService.RecordUDPPacketsReceived(ctx, portListener.tenantID, portListener.datasetID, 1)
-			l.services.MetricsService.RecordUDPLinesReceived(ctx, portListener.tenantID, portListener.datasetID, 1) // Each UDP message is one line
+			l.services.MetricsService.RecordUDPLinesReceived(ctx, portListener.tenantID, portListener.datasetID, 1) // Each UDP message is one raw message
 		}
 	default:
 		// Channel is full, spool message to disk instead of dropping
 		log.Debugf("UDP message channel full, spooling message from %s to disk", from)
 
-		// Spool the message directly to disk
+		// Spool the raw message directly to disk
 		if l.services.SpoolingService != nil {
-			// Create a single-message JSON line for spooling
-			var messageData []byte
-			var jsonObj interface{}
-			if err := json.Unmarshal(processedData, &jsonObj); err == nil {
-				// Valid JSON, marshal it to ensure consistent formatting
-				if jsonBytes, err := json.Marshal(jsonObj); err == nil {
-					messageData = append(jsonBytes, '\n')
-				} else {
-					// Fallback to raw data
-					messageData = append(processedData, '\n')
-				}
-			} else {
-				// Not valid JSON, create a JSON envelope
-				envelope := map[string]interface{}{
-					"message":   string(processedData),
-					"source":    from.String(),
-					"timestamp": time.Now().Format(time.RFC3339Nano),
-				}
-				if jsonBytes, err := json.Marshal(envelope); err == nil {
-					messageData = append(jsonBytes, '\n')
-				} else {
-					messageData = append(processedData, '\n')
-				}
-			}
+			// Store raw data as-is (add newline for line separation)
+			messageData := append(payload, '\n')
 
 			if spoolErr := l.services.SpoolingService.StoreRawMessage(portListener.tenantID, portListener.datasetID, portListener.bearerToken, messageData); spoolErr != nil {
 				log.Errorf("Failed to spool message from %s: %v", from, spoolErr)
 				l.services.ProxyStats.UDPMessageErrors++
 			} else {
-				log.Debugf("Successfully spooled message from %s to disk", from)
+				log.Debugf("Successfully spooled raw message from %s to disk", from)
 				l.services.ProxyStats.UDPMessagesReceived++
-				l.services.ProxyStats.BytesReceived += int64(len(processedData))
+				l.services.ProxyStats.BytesReceived += int64(len(payload))
 				l.services.ProxyStats.LastActivity = time.Now()
 			}
 		} else {
@@ -580,87 +466,53 @@ func (f *Forwarder) Stop() {
 // compressAndPersistBatch compresses batch data and saves it to a temporary file
 // Returns the file path, final data, and message count, clears batch.Messages to free memory
 func (f *Forwarder) compressAndPersistBatch(batch *domain.DataBatch) (string, []byte, int, error) {
-	// Convert messages to NDJSON
-	var ndjsonData bytes.Buffer
+	// Raw data approach - concatenate messages as-is with newline separation
+	var rawData bytes.Buffer
 	for _, msg := range batch.Messages {
-		// Try to parse as JSON first
-		var jsonObj interface{}
-		if err := json.Unmarshal(msg.Data, &jsonObj); err == nil {
-			// Valid JSON, marshal it to ensure consistent formatting
-			if jsonBytes, err := json.Marshal(jsonObj); err == nil {
-				ndjsonData.Write(jsonBytes)
-				ndjsonData.WriteByte('\n')
-			} else {
-				// Fallback to raw data
-				ndjsonData.Write(msg.Data)
-				ndjsonData.WriteByte('\n')
-			}
-		} else {
-			// Not valid JSON, create a JSON envelope
-			envelope := map[string]interface{}{
-				"message":   string(msg.Data),
-				"source":    msg.From,
-				"timestamp": msg.Timestamp.Format(time.RFC3339Nano),
-			}
-			if jsonBytes, err := json.Marshal(envelope); err == nil {
-				ndjsonData.Write(jsonBytes)
-				ndjsonData.WriteByte('\n')
-			}
-		}
+		// Write raw data exactly as received
+		rawData.Write(msg.Data)
+		rawData.WriteByte('\n')
 	}
 
 	// Store message count before clearing
 	messageCount := len(batch.Messages)
-	
+
 	// Clear messages from memory to save space
 	batch.Messages = nil
 
-	// Compress if enabled
-	var finalData []byte
-	var tempFile *os.File
-	var err error
-	
-	if f.config.UDP.EnableCompression {
-		var compressed bytes.Buffer
-		gzipWriter, err := gzip.NewWriterLevel(&compressed, f.config.UDP.CompressionLevel)
-		if err != nil {
-			return "", nil, 0, fmt.Errorf("failed to create gzip writer: %w", err)
-		}
-
-		if _, err := gzipWriter.Write(ndjsonData.Bytes()); err != nil {
-			return "", nil, 0, fmt.Errorf("failed to compress data: %w", err)
-		}
-
-		if err := gzipWriter.Close(); err != nil {
-			return "", nil, 0, fmt.Errorf("failed to close gzip writer: %w", err)
-		}
-
-		finalData = compressed.Bytes()
-		batch.CompressedAt = time.Now()
-		
-		// Create temporary compressed file
-		tempFile, err = os.CreateTemp("", fmt.Sprintf("bytefreezer-batch-%s-*.ndjson.gz", batch.ID))
-		if err != nil {
-			return "", nil, 0, fmt.Errorf("failed to create temp file: %w", err)
-		}
-	} else {
-		finalData = ndjsonData.Bytes()
-		// Create temporary uncompressed file
-		tempFile, err = os.CreateTemp("", fmt.Sprintf("bytefreezer-batch-%s-*.ndjson", batch.ID))
-		if err != nil {
-			return "", nil, 0, fmt.Errorf("failed to create temp file: %w", err)
-		}
+	// Always compress raw data
+	var compressed bytes.Buffer
+	gzipWriter, err := gzip.NewWriterLevel(&compressed, f.config.UDP.CompressionLevel)
+	if err != nil {
+		return "", nil, 0, fmt.Errorf("failed to create gzip writer: %w", err)
 	}
-	
+
+	if _, err := gzipWriter.Write(rawData.Bytes()); err != nil {
+		return "", nil, 0, fmt.Errorf("failed to compress data: %w", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return "", nil, 0, fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	finalData := compressed.Bytes()
+	batch.CompressedAt = time.Now()
+
+	// Create temporary compressed file
+	tempFile, err := os.CreateTemp("", fmt.Sprintf("bytefreezer-batch-%s-*.raw.gz", batch.ID))
+	if err != nil {
+		return "", nil, 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
 	tempFilePath := tempFile.Name()
-	
+
 	// Write data to temporary file
 	if _, err := tempFile.Write(finalData); err != nil {
 		tempFile.Close()
 		os.Remove(tempFilePath)
 		return "", nil, 0, fmt.Errorf("failed to write batch to temp file: %w", err)
 	}
-	
+
 	if err := tempFile.Close(); err != nil {
 		os.Remove(tempFilePath)
 		return "", nil, 0, fmt.Errorf("failed to close temp file: %w", err)
@@ -673,7 +525,7 @@ func (f *Forwarder) compressAndPersistBatch(batch *domain.DataBatch) (string, []
 // sendBatch sends a batch to bytefreezer-receiver
 func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 	startTime := time.Now()
-	
+
 	// Step 1: Compress and persist batch, clear source data from memory
 	tempFilePath, finalData, messageCount, err := f.compressAndPersistBatch(batch)
 	if err != nil {
@@ -681,7 +533,7 @@ func (f *Forwarder) sendBatch(batch *domain.DataBatch) {
 		f.services.ProxyStats.ForwardingErrors++
 		return
 	}
-	
+
 	// Ensure cleanup of temporary file
 	defer func() {
 		if err := os.Remove(tempFilePath); err != nil && !os.IsNotExist(err) {

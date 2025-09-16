@@ -12,24 +12,26 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/n0needt0/bytefreezer-proxy/alerts"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/go-goodies/log"
 )
 
 var k = koanf.New(".")
 
 type Config struct {
-	App          App           `mapstructure:"app"`
-	Logging      LoggingConfig `mapstructure:"logging"`
-	Server       Server        `mapstructure:"server"`
-	UDP          UDP           `mapstructure:"udp"`
-	Receiver     Receiver      `mapstructure:"receiver"`
-	TenantID     string        `mapstructure:"tenant_id"`
-	BearerToken  string        `mapstructure:"bearer_token"`
-	SOC          SOCAlert      `mapstructure:"soc"`
-	Otel         Otel          `mapstructure:"otel"`
-	Housekeeping Housekeeping  `mapstructure:"housekeeping"`
-	Spooling     Spooling      `mapstructure:"spooling"`
-	Dev          bool          `mapstructure:"dev"`
+	App          App                    `mapstructure:"app"`
+	Logging      LoggingConfig          `mapstructure:"logging"`
+	Server       Server                 `mapstructure:"server"`
+	Inputs       []plugins.PluginConfig `mapstructure:"inputs"` // New plugin-based input system
+	UDP          UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
+	Receiver     Receiver               `mapstructure:"receiver"`
+	TenantID     string                 `mapstructure:"tenant_id"`
+	BearerToken  string                 `mapstructure:"bearer_token"`
+	SOC          SOCAlert               `mapstructure:"soc"`
+	Otel         Otel                   `mapstructure:"otel"`
+	Housekeeping Housekeeping           `mapstructure:"housekeeping"`
+	Spooling     Spooling               `mapstructure:"spooling"`
+	Dev          bool                   `mapstructure:"dev"`
 
 	// Runtime components
 	SOCAlertClient *alerts.SOCAlertClient `mapstructure:"-"`
@@ -50,17 +52,17 @@ type Server struct {
 }
 
 type UDP struct {
-	Enabled             bool          `mapstructure:"enabled"`
-	Host                string        `mapstructure:"host"`
-	ReadBufferSizeBytes int           `mapstructure:"read_buffer_size_bytes"`
-	MaxBatchLines       int           `mapstructure:"max_batch_lines"`
-	MaxBatchBytes       int64         `mapstructure:"max_batch_bytes"`
-	BatchTimeoutSeconds int           `mapstructure:"batch_timeout_seconds"`
-	CompressionLevel    int           `mapstructure:"compression_level"`
-	EnableCompression   bool          `mapstructure:"enable_compression"`
-	ChannelBufferSize   int           `mapstructure:"channel_buffer_size"` // Buffer size for UDP message channel
-	WorkerCount         int           `mapstructure:"worker_count"`        // Number of worker goroutines for processing
-	Listeners           []UDPListener `mapstructure:"listeners"`
+	Enabled             bool   `mapstructure:"enabled"`
+	Host                string `mapstructure:"host"`
+	ReadBufferSizeBytes int    `mapstructure:"read_buffer_size_bytes"`
+	MaxBatchLines       int    `mapstructure:"max_batch_lines"`
+	MaxBatchBytes       int64  `mapstructure:"max_batch_bytes"`
+	BatchTimeoutSeconds int    `mapstructure:"batch_timeout_seconds"`
+	CompressionLevel    int    `mapstructure:"compression_level"`
+	// Compression is always enabled for raw data - removed EnableCompression field
+	ChannelBufferSize int           `mapstructure:"channel_buffer_size"` // Buffer size for UDP message channel
+	WorkerCount       int           `mapstructure:"worker_count"`        // Number of worker goroutines for processing
+	Listeners         []UDPListener `mapstructure:"listeners"`
 }
 
 type UDPListener struct {
@@ -258,7 +260,7 @@ func validateMultiTenantConfig(cfg *Config) error {
 
 		// Check for dataset conflicts - same dataset on multiple ports not allowed
 		if existingPort, exists := datasetMap[listener.DatasetID]; exists {
-			return fmt.Errorf("listener %d (port %d): dataset_id '%s' is already configured on port %d. Each dataset must use a unique port to prevent data mixing", 
+			return fmt.Errorf("listener %d (port %d): dataset_id '%s' is already configured on port %d. Each dataset must use a unique port to prevent data mixing",
 				i, listener.Port, listener.DatasetID, existingPort)
 		}
 		datasetMap[listener.DatasetID] = listener.Port
@@ -318,7 +320,7 @@ func validateMultiTenantConfig(cfg *Config) error {
 		}
 	} else if len(tenantMap) == 1 {
 		for tenantID, info := range tenantMap {
-			log.Infof("Single-tenant configuration: tenant=%s ports=%d datasets=%d", 
+			log.Infof("Single-tenant configuration: tenant=%s ports=%d datasets=%d",
 				tenantID, info.PortCount, len(info.Datasets))
 		}
 	}
@@ -366,15 +368,17 @@ func (cfg *Config) IsMultiTenant() bool {
 
 // validateIdentifiers validates all tenant and dataset identifiers in the configuration
 func validateIdentifiers(cfg *Config) error {
-	if !cfg.UDP.Enabled {
-		return nil // Skip validation if UDP is disabled
+	// Always validate global tenant ID (required for plugin system)
+	if cfg.TenantID == "" {
+		return fmt.Errorf("tenant_id is required")
+	}
+	if err := ValidateTenantID(cfg.TenantID); err != nil {
+		return fmt.Errorf("global tenant_id: %w", err)
 	}
 
-	// Validate global tenant ID if present
-	if cfg.TenantID != "" {
-		if err := ValidateTenantID(cfg.TenantID); err != nil {
-			return fmt.Errorf("global tenant_id: %w", err)
-		}
+	// Skip UDP validation if UDP is disabled (plugin system doesn't use UDP listeners)
+	if !cfg.UDP.Enabled {
+		return nil
 	}
 
 	// Validate UDP listener identifiers

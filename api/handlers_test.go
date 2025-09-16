@@ -168,7 +168,7 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 	tenantDir := filepath.Join(tempDir, "test-tenant")
 	testDatasetDir := filepath.Join(tenantDir, "test-dataset")
 	dlqDir := filepath.Join(tenantDir, "dlq", "test-dataset")
-	
+
 	// Create all necessary directories
 	if err := os.MkdirAll(testDatasetDir, 0750); err != nil {
 		t.Fatalf("Failed to create dataset directory: %v", err)
@@ -290,7 +290,7 @@ func TestAPI_RetryDLQFiles_SpecificTenant(t *testing.T) {
 			// Create tenant/dataset structure so getTenantDatasets can discover them
 			datasetDir := filepath.Join(tempDir, tenant, dataset)
 			dlqDir := filepath.Join(tempDir, tenant, "dlq", dataset)
-			
+
 			if err := os.MkdirAll(datasetDir, 0750); err != nil {
 				t.Fatalf("Failed to create dataset directory: %v", err)
 			}
@@ -380,7 +380,7 @@ func TestAPI_RetryDLQFiles_SpecificTenantAndDataset(t *testing.T) {
 	// Create DLQ files for specific tenant and dataset
 	datasetDir := filepath.Join(tempDir, "specific-tenant", "specific-dataset")
 	dlqDir := filepath.Join(tempDir, "specific-tenant", "dlq", "specific-dataset")
-	
+
 	if err := os.MkdirAll(datasetDir, 0750); err != nil {
 		t.Fatalf("Failed to create dataset directory: %v", err)
 	}

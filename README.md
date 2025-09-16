@@ -973,9 +973,9 @@ POST {base_url}/data/{tenant_id}/{dataset_id}
 
 ## Monitoring
 
-### Prometheus Metrics
+### Metrics Collection
 
-ByteFreezer Proxy provides comprehensive Prometheus metrics on port 9099:
+ByteFreezer Proxy provides comprehensive metrics collection:
 
 - **UDP Metrics**: Bytes/packets/lines received per tenant and dataset
 - **HTTP Metrics**: Bytes/lines forwarded, request success rates, response times  
@@ -983,58 +983,9 @@ ByteFreezer Proxy provides comprehensive Prometheus metrics on port 9099:
 - **Spool Metrics**: Queue sizes, disk usage for failed batches
 - **System Metrics**: Service health, resource usage
 
-**Quick Start with Docker Compose:**
-```bash
-# Start ByteFreezer Proxy with Prometheus monitoring
-docker-compose -f docker-compose.prometheus.yml up -d
-
-# Access services:
-# - ByteFreezer Proxy: http://localhost:8088/health
-# - Prometheus: http://localhost:9090
-# - Grafana: http://localhost:3000 (admin/admin123)
-# - AlertManager: http://localhost:9093
-```
-
-**Key Metrics Available:**
-```prometheus
-# Throughput metrics
-bytefreezer_proxy_udp_bytes_received_total{tenant_id="customer-1", dataset_id="syslog-data"}
-bytefreezer_proxy_http_bytes_forwarded_total{tenant_id="customer-1", dataset_id="syslog-data"}
-
-# Performance metrics
-bytefreezer_proxy_forward_duration_seconds{tenant_id="customer-1", dataset_id="syslog-data"}
-bytefreezer_proxy_batch_size_bytes{tenant_id="customer-1", dataset_id="syslog-data"}
-
-# Reliability metrics
-bytefreezer_proxy_http_requests_total{tenant_id="customer-1", dataset_id="syslog-data", status="success"}
-bytefreezer_proxy_spool_queue_size{tenant_id="customer-1", dataset_id="syslog-data"}
-```
-
-### Alerting Rules
-
-Pre-configured alerts for:
-- **Service Down**: ByteFreezer Proxy instance offline
-- **No UDP Traffic**: No data received for 5+ minutes
-- **High Error Rate**: HTTP forwarding failures >10/sec
-- **Slow Forwarding**: 95th percentile >30s processing time
-- **Spool Queue Full**: >1000 queued files or >500MB disk usage
-
-### Kubernetes Monitoring
-
-For Kubernetes deployments with Prometheus Operator:
-```bash
-# Enable ServiceMonitor in kustomization.yaml
-kubectl apply -k kubernetes/
-
-# Or apply monitoring separately
-kubectl apply -f kubernetes/servicemonitor.yaml
-kubectl apply -f kubernetes/podmonitor.yaml
-```
-
-### Legacy OpenTelemetry Integration
-
-Also supports OTLP gRPC export by setting `prometheus_mode: false`:
-- OpenTelemetry integration for metrics and tracing
+**Metrics Integration:**
+OpenTelemetry integration is available but disabled by default:
+- OpenTelemetry support for metrics and tracing (configure with `otel.enabled: true`)
 - SOC alerting for operational issues
 - Structured logging with configurable levels
 
@@ -1234,14 +1185,8 @@ find /var/spool/bytefreezer-proxy/DLQ -name "*.meta" -mtime -1 | \
   xargs -I {} sh -c 'echo "=== {} ==="; jq ".tenant_id,.dataset_id,.failure_reason" {}'
 ```
 
-**Prometheus Metrics for DLQ:**
-```prometheus
-# DLQ file count (from filesystem monitoring)
-node_filesystem_files{mountpoint="/var/spool/bytefreezer-proxy"}
-
-# DLQ disk usage  
-node_filesystem_avail_bytes{mountpoint="/var/spool/bytefreezer-proxy"}
-```
+**Monitoring DLQ:**
+Monitor DLQ directory size and file count using filesystem monitoring tools.
 
 #### DLQ Best Practices
 

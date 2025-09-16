@@ -147,7 +147,7 @@ func TestValidateTenantID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateTenantID(tt.tenantID)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error for tenant_id '%s', but got none", tt.tenantID)
@@ -222,7 +222,7 @@ func TestValidateDatasetID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateDatasetID(tt.datasetID)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error for dataset_id '%s', but got none", tt.datasetID)
@@ -285,7 +285,7 @@ func TestValidateIdentifierPair(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateIdentifierPair(tt.tenantID, tt.datasetID)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error for pair (%s, %s), but got none", tt.tenantID, tt.datasetID)

@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: bytefreezer
-  labels:
-    name: bytefreezer
-    app.kubernetes.io/name: bytefreezer
-    app.kubernetes.io/component: proxy

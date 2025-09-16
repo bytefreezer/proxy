@@ -52,7 +52,7 @@ GOOS=darwin GOARCH=amd64 go build -o bytefreezer-proxy-darwin
 docker build -t bytefreezer-proxy .
 
 # Run container
-docker run -p 8088:8088 -p 2056-2058:2056-2058/udp bytefreezer-proxy
+docker run -p 8080:8080 -p 2055:2055/udp bytefreezer-proxy
 ```
 
 ## Release

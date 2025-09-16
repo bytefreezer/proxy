@@ -206,7 +206,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		if !bytes.HasSuffix(data, []byte("\n")) {
 			ndjsonData.WriteByte('\n')
 		}
-		
+
 		processedFiles = append(processedFiles, filePath)
 		totalBytes += int64(len(data))
 	}
@@ -218,7 +218,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 	// Generate batch ID and paths
 	now := time.Now()
 	batchID := fmt.Sprintf("%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
-	
+
 	// Compress data
 	var compressed bytes.Buffer
 	gzipWriter, err := gzip.NewWriterLevel(&compressed, 6)
@@ -237,7 +237,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 	// Write compressed batch to queue
 	batchFileName := fmt.Sprintf("%s.ndjson.gz", batchID)
 	batchFilePath := filepath.Join(queueDir, batchFileName)
-	
+
 	if err := os.WriteFile(batchFilePath, compressed.Bytes(), 0600); err != nil {
 		return fmt.Errorf("failed to write compressed batch: %w", err)
 	}
@@ -276,9 +276,9 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		}
 	}
 
-	log.Infof("Created batch %s from %d raw files for tenant=%s dataset=%s", 
+	log.Infof("Created batch %s from %d raw files for tenant=%s dataset=%s",
 		batchID, len(processedFiles), tenantID, datasetID)
-	
+
 	return nil
 }
 
@@ -305,7 +305,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 	// Generate batch ID and paths
 	now := time.Now()
 	batchID := fmt.Sprintf("%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
-	
+
 	// Determine file extension based on compression
 	var extension string
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
@@ -317,7 +317,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 	// Write batch file to queue
 	batchFileName := fmt.Sprintf("%s%s", batchID, extension)
 	batchFilePath := filepath.Join(queueDir, batchFileName)
-	
+
 	if err := os.WriteFile(batchFilePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write batch to queue: %w", err)
 	}
@@ -353,9 +353,9 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}
 
-	log.Infof("Stored failed batch %s to queue for tenant=%s dataset=%s", 
+	log.Infof("Stored failed batch %s to queue for tenant=%s dataset=%s",
 		batchID, tenantID, datasetID)
-	
+
 	return nil
 }
 
@@ -479,7 +479,7 @@ func (s *SpoolingService) retryWorker() {
 	}
 }
 
-// getTenants returns list of tenant directories  
+// getTenants returns list of tenant directories
 func (s *SpoolingService) getTenants() ([]string, error) {
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
@@ -498,7 +498,7 @@ func (s *SpoolingService) getTenants() ([]string, error) {
 // getTenantMetadataFiles returns metadata files for a specific tenant
 func (s *SpoolingService) getTenantMetadataFiles(tenantID string) ([]SpooledFile, error) {
 	metaDir := filepath.Join(s.directory, tenantID, "meta")
-	
+
 	entries, err := os.ReadDir(metaDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -577,7 +577,7 @@ func (s *SpoolingService) removeSuccessfulFile(tenantID string, file SpooledFile
 	log.Debugf("Successfully removed files for %s", file.ID)
 }
 
-// moveToNewDLQ moves failed files to tenant/dlq/dataset/ structure  
+// moveToNewDLQ moves failed files to tenant/dlq/dataset/ structure
 func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 	// Create DLQ directory: tenant/dlq/dataset/
 	dlqDir := filepath.Join(s.directory, file.TenantID, "dlq", file.DatasetID)
@@ -800,7 +800,7 @@ func (s *SpoolingService) processBatches() {
 			// Process if we have raw files (could be configurable threshold)
 			if ndjsonCount > 0 {
 				log.Debugf("Processing %d raw files for tenant=%s dataset=%s", ndjsonCount, tenantID, datasetID)
-				
+
 				// Get bearer token from recent metadata files (fallback to global)
 				bearerToken := s.config.BearerToken
 				if tenantToken := s.getTenantBearerToken(tenantID); tenantToken != "" {
@@ -1100,7 +1100,6 @@ func (s *SpoolingService) getSpooledFiles() ([]SpooledFile, error) {
 
 	return files, nil
 }
-
 
 // removeSpooledFile removes both data and metadata files
 func (s *SpoolingService) removeSpooledFile(file SpooledFile) error {
@@ -1605,8 +1604,6 @@ func (s *SpoolingService) GetDatasetStats(tenantID, datasetID string) (*DatasetS
 	return datasetStats, nil
 }
 
-
-
 // copyFile copies a file from src to dst (paths are validated by caller)
 func (s *SpoolingService) copyFile(src, dst string) error {
 	// #nosec G304 - src path validated by findFilePaths function in moveToDeadLetterQueue caller
@@ -1643,36 +1640,36 @@ func (s *SpoolingService) ensureSpoolDirectoryExists() error {
 
 // DLQStats represents comprehensive DLQ statistics
 type DLQStats struct {
-	TotalFilesInQueue  int                          `json:"total_files_in_queue"`
-	TotalFilesInDLQ    int                          `json:"total_files_in_dlq"`
-	TotalBytesInQueue  int64                        `json:"total_bytes_in_queue"`
-	TotalBytesInDLQ    int64                        `json:"total_bytes_in_dlq"`
-	TenantStats        map[string]*TenantDLQStats   `json:"tenant_stats"`
-	OldestQueueFile    *SpooledFile                 `json:"oldest_queue_file,omitempty"`
-	OldestDLQFile      *SpooledFile                 `json:"oldest_dlq_file,omitempty"`
+	TotalFilesInQueue int                        `json:"total_files_in_queue"`
+	TotalFilesInDLQ   int                        `json:"total_files_in_dlq"`
+	TotalBytesInQueue int64                      `json:"total_bytes_in_queue"`
+	TotalBytesInDLQ   int64                      `json:"total_bytes_in_dlq"`
+	TenantStats       map[string]*TenantDLQStats `json:"tenant_stats"`
+	OldestQueueFile   *SpooledFile               `json:"oldest_queue_file,omitempty"`
+	OldestDLQFile     *SpooledFile               `json:"oldest_dlq_file,omitempty"`
 }
 
 // TenantDLQStats represents per-tenant DLQ statistics
 type TenantDLQStats struct {
-	QueueFiles       int                              `json:"queue_files"`
-	DLQFiles         int                              `json:"dlq_files"`
-	QueueBytes       int64                            `json:"queue_bytes"`
-	DLQBytes         int64                            `json:"dlq_bytes"`
-	DatasetStats     map[string]*DatasetDLQStats      `json:"dataset_stats"`
+	QueueFiles   int                         `json:"queue_files"`
+	DLQFiles     int                         `json:"dlq_files"`
+	QueueBytes   int64                       `json:"queue_bytes"`
+	DLQBytes     int64                       `json:"dlq_bytes"`
+	DatasetStats map[string]*DatasetDLQStats `json:"dataset_stats"`
 }
 
 // DatasetDLQStats represents per-dataset DLQ statistics
 type DatasetDLQStats struct {
-	QueueFiles       int                              `json:"queue_files"`
-	DLQFiles         int                              `json:"dlq_files"`
-	QueueBytes       int64                            `json:"queue_bytes"`
-	DLQBytes         int64                            `json:"dlq_bytes"`
+	QueueFiles int   `json:"queue_files"`
+	DLQFiles   int   `json:"dlq_files"`
+	QueueBytes int64 `json:"queue_bytes"`
+	DLQBytes   int64 `json:"dlq_bytes"`
 }
 
 // DLQRetryResult represents the result of DLQ retry operation
 type DLQRetryResult struct {
-	FilesRetried     int                              `json:"files_retried"`
-	Details          []DLQRetryDetail                 `json:"details,omitempty"`
+	FilesRetried int              `json:"files_retried"`
+	Details      []DLQRetryDetail `json:"details,omitempty"`
 }
 
 // DLQRetryDetail represents details of a single file retry operation
@@ -1727,7 +1724,7 @@ func (s *SpoolingService) GetDLQStats() (*DLQStats, error) {
 			queueFiles, queueBytes, queueOldest := s.countFilesInDirectory(queueDir, ".ndjson.gz")
 			datasetStats.QueueFiles = queueFiles
 			datasetStats.QueueBytes = queueBytes
-			
+
 			if queueOldest != nil && (oldestQueueFile == nil || queueOldest.CreatedAt.Before(oldestQueueFile.CreatedAt)) {
 				oldestQueueFile = queueOldest
 			}
@@ -1791,7 +1788,7 @@ func (s *SpoolingService) countFilesInDirectory(dirPath, extension string) (int,
 		// Try to find corresponding metadata to get creation time
 		baseName := strings.TrimSuffix(file.Name(), extension)
 		metaFiles := []string{
-			filepath.Join(dirPath, baseName+".meta"),                    // DLQ meta files
+			filepath.Join(dirPath, baseName+".meta"),                             // DLQ meta files
 			filepath.Join(filepath.Dir(dirPath), "..", "meta", baseName+".meta"), // Queue meta files
 		}
 

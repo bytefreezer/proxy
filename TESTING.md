@@ -1,50 +1,50 @@
 # Testing Guide
 
-## Quick Test
+## Quick Test - Plugin System
 
 ```bash
-# Start service
+# Start service with plugin configuration
 ./bytefreezer-proxy --config config.yaml
 
-# Send test data
-echo '{"test": "message"}' | nc -u localhost 2056
+# Test UDP plugin
+echo '{"test": "message"}' | nc -u localhost 2055
 
 # Check health
-curl http://localhost:8088/health
+curl http://localhost:8080/health
 ```
 
-## Test Scripts
+## Plugin Testing
 
-### UDP Streams Test
+### Test Plugin Health
 ```bash
-./testing_scripts/test_udp_streams.sh
-```
-Tests all UDP ports (2056, 2057, 2058) and verifies spooling.
+# Check all plugins
+curl http://localhost:8080/api/plugins/health
 
-### Continuous Load Test
-```bash
-./testing_scripts/test_continuous.sh
+# Get plugin metrics
+curl http://localhost:8080/metrics | grep plugin
 ```
-Sends continuous data to test batching and performance.
 
-### Check Spooling
+### Test Different Input Plugins
 ```bash
-./testing_scripts/check_spooling.sh
+# If Kafka plugin is configured
+kafka-console-producer --broker-list localhost:9092 --topic test-topic
+
+# If NATS plugin is configured
+nats pub test.subject "test message"
 ```
-Shows spooled files and directory status.
 
 ## Manual Testing
 
-### Send Data to Different Ports
+### Send Data to Plugin Inputs
 ```bash
-# Syslog data (port 2056)
-echo '{"level": "info", "message": "test log"}' | nc -u localhost 2056
+# UDP plugin (default port 2055)
+echo '{"level": "info", "message": "test log"}' | nc -u localhost 2055
 
-# eBPF data (port 2057)  
-echo '{"event": "process_exec", "pid": 1234}' | nc -u localhost 2057
+# Test plugin health
+curl http://localhost:8080/api/plugins/health
 
-# Application logs (port 2058)
-echo '{"app": "web", "status": "started"}' | nc -u localhost 2058
+# View plugin metrics
+curl http://localhost:8080/metrics
 ```
 
 ### Check Results
@@ -63,7 +63,7 @@ tail -f /var/log/bytefreezer-proxy/bytefreezer-proxy.log
 
 ```bash
 # Run with Docker
-docker run -p 8088:8088 -p 2056-2058:2056-2058/udp ghcr.io/n0needt0/bytefreezer-proxy:latest
+docker run -p 8080:8080 -p 2055:2055/udp ghcr.io/n0needt0/bytefreezer-proxy:latest
 
 # Test from host
 echo '{"test": "docker"}' | nc -u localhost 2056

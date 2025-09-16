@@ -68,12 +68,9 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	}
 
-	if f.config.UDP.EnableCompression {
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Content-Type", "application/x-ndjson")
-	} else {
-		req.Header.Set("Content-Type", "application/x-ndjson")
-	}
+	// Always send compressed raw data
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Content-Type", "application/octet-stream")
 
 	// Add custom headers for metadata
 	req.Header.Set("X-Proxy-Batch-ID", batch.ID)

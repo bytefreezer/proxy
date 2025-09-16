@@ -1,0 +1,107 @@
+# ByteFreezer Proxy - Plugin System Configuration Example
+#
+# This configuration demonstrates the new plugin architecture for input data sources.
+# The proxy now supports multiple input plugins (UDP, Kafka, NATS) that can be
+# configured independently to ingest data from various sources.
+
+app:
+  name: "bytefreezer-proxy"
+  version: "1.0.0"
+
+logging:
+  level: "info"
+  encoding: "json"
+
+server:
+  api_port: 8080
+
+# Input Plugins Configuration
+# Each plugin type can have multiple instances with different configurations
+inputs:
+  # UDP Plugin - Raw UDP packet ingestion
+  - type: "udp"
+    name: "syslog-udp"
+    config:
+      host: "0.0.0.0"
+      port: 2055
+      tenant_id: "company-a"
+      dataset_id: "syslog-data"
+      protocol: "syslog"
+      syslog_mode: "rfc5424"
+      read_buffer_size: 65536
+      worker_count: 4
+      channel_buffer_size: 10000
+
+  # Another UDP Plugin instance for different data type
+  - type: "udp"
+    name: "metrics-udp"
+    config:
+      host: "0.0.0.0"
+      port: 2056
+      tenant_id: "company-a"
+      dataset_id: "metrics"
+      protocol: "udp"
+      read_buffer_size: 32768
+      worker_count: 2
+
+  # Kafka Plugin - Consume from Kafka topics
+  - type: "kafka"
+    name: "application-logs"
+    config:
+      brokers: ["kafka-broker1:9092", "kafka-broker2:9092"]
+      topics: ["app-logs", "error-logs"]
+      group_id: "bytefreezer-proxy-group"
+      tenant_id: "company-b"
+      dataset_id: "application-logs"
+      auto_offset_reset: "latest"
+      session_timeout: 30
+      heartbeat_interval: 10
+
+  # NATS Plugin - Subscribe to NATS subjects
+  - type: "nats"
+    name: "telemetry-nats"
+    config:
+      servers: ["nats://nats-server1:4222", "nats://nats-server2:4222"]
+      subjects: ["telemetry.>", "metrics.>"]
+      queue_group: "bytefreezer-workers"
+      tenant_id: "company-c"
+      dataset_id: "telemetry"
+      max_reconnect: -1
+      reconnect_wait: 2
+      timeout: 10
+
+# Receiver Configuration - Where processed data is sent
+receiver:
+  base_url: "http://bytefreezer-receiver:8081"
+  timeout_seconds: 30
+  retry_count: 3
+  retry_delay_seconds: 5
+
+# Batch Processing Configuration
+batching:
+  enabled: true
+  max_lines: 1000
+  max_bytes: 1048576  # 1MB
+  timeout_seconds: 30
+  compression_enabled: true
+  compression_level: 6
+
+# Spooling for failed uploads
+spooling:
+  enabled: true
+  directory: "/data/spool"
+  max_size_bytes: 1073741824  # 1GB
+  retry_attempts: 5
+  retry_interval_seconds: 300
+  cleanup_interval_seconds: 1800
+
+# OpenTelemetry Configuration (disabled by default)
+otel:
+  enabled: false
+  service_name: "bytefreezer-proxy"
+  scrape_intervals_seconds: 15
+
+# Housekeeping
+housekeeping:
+  enabled: true
+  intervalseconds: 300
