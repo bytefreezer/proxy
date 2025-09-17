@@ -1,12 +1,6 @@
-about documentation. i would like to have only the following:
+  Need to explain in readme that this is required for all udp based plugins, setting is global on udp:
 
-1. readme a main document explaining what the proxy is 
-- how to build 
-- how to configure
-- how to install via AWX/docker and github action builds and via helm
-- how to test it end to end . put all test scripts for currently implemented plugins to /integration-tests directory, i see you already started testing.md 
-- monitoring.md since we have that, but include section on how to enable and test it
+  #udp buffer size, make sure it matches your buffere size
+  sysctl -w net.core.rmem_max=<value>
+  sysctl -w net.core.rmem_default=<value>
 
---for developers since  this is open source i think we should explain how to build input plugins for it and integrate them 
-- include example on how to build and configure new input plugin: use ZMQ as example
-- /example directory, lets rename it to plugins-examples and move all dev related docs and code there

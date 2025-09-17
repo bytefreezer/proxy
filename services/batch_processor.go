@@ -45,7 +45,7 @@ func NewBatchProcessor(cfg *config.Config) *BatchProcessor {
 	return &BatchProcessor{
 		config:       cfg,
 		batches:      make(map[string]*activeBatch),
-		batchChannel: make(chan *domain.DataBatch, 100),
+		batchChannel: make(chan *domain.DataBatch, 10000), // Increased from 100 to 10000
 		ctx:          ctx,
 		cancel:       cancel,
 		ticker:       time.NewTicker(time.Duration(cfg.UDP.BatchTimeoutSeconds) * time.Second),
@@ -172,13 +172,11 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 		BearerToken: batch.BearerToken,
 	}
 
-	// Send to batch channel
+	// Send to batch channel - NEVER drop batches, always block if needed
 	select {
 	case bp.batchChannel <- domainBatch:
 	case <-bp.ctx.Done():
 		return
-	default:
-		log.Warnf("Batch channel full, dropping batch %s", key)
 	}
 }
 

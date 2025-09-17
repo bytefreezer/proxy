@@ -211,6 +211,35 @@ inputs:
     worker_count: 4              # Number of worker goroutines
 ```
 
+**⚠️ Important: UDP Buffer Size Requirements**
+
+UDP plugins handle all UDP-based protocols including **raw UDP**, **syslog**, **netflow**, and **sflow** data streams. For these plugins to handle high-throughput data without packet drops, the `read_buffer_size` setting must match your system's UDP receive buffer configuration:
+
+```bash
+# Check current system UDP buffer settings
+sysctl net.core.rmem_max
+sysctl net.core.rmem_default
+
+# Set UDP buffer size to match your plugin configuration
+# (This setting applies globally to ALL UDP-based plugins: syslog, netflow, sflow, etc.)
+sysctl -w net.core.rmem_max=65536
+sysctl -w net.core.rmem_default=65536
+
+# Make persistent across reboots
+echo 'net.core.rmem_max = 65536' >> /etc/sysctl.conf
+echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
+```
+
+**Buffer Size Guidelines:**
+- **Production (eBPF/Syslog/Netflow/Sflow)**: 64KB (`65536`) - **Recommended**
+- **Development/Testing**: 8KB-32KB (`8192`-`32768`)
+- **Low-volume/Lab**: 4KB (`4096`)
+
+**Important Notes:**
+- **Syslog**, **netflow**, and **sflow** are all UDP-based protocols that benefit from larger buffers
+- All UDP-based plugins share the same system buffer settings
+- Mismatched buffer sizes will cause kernel-level packet drops that cannot be recovered
+
 #### HTTP Plugin
 
 ```yaml
