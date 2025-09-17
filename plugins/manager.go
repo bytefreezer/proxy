@@ -48,12 +48,39 @@ func NewManager(configs []PluginConfig, output chan<- *DataMessage, registry *Re
 	}
 }
 
+// NewManagerWithGlobals creates a new plugin manager with global configuration support
+func NewManagerWithGlobals(configs []PluginConfig, output chan<- *DataMessage, registry *Registry, globalTenantID, globalBearerToken string) *Manager {
+	// Enrich plugin configs with global values when missing
+	enrichedConfigs := make([]PluginConfig, len(configs))
+	for i, config := range configs {
+		enrichedConfigs[i] = config
+		
+		// Copy the config map to avoid modifying the original
+		enrichedConfigs[i].Config = make(map[string]interface{})
+		for k, v := range config.Config {
+			enrichedConfigs[i].Config[k] = v
+		}
+		
+		// Add global tenant_id if not present
+		if _, exists := enrichedConfigs[i].Config["tenant_id"]; !exists && globalTenantID != "" {
+			enrichedConfigs[i].Config["tenant_id"] = globalTenantID
+		}
+		
+		// Add global bearer_token if not present
+		if _, exists := enrichedConfigs[i].Config["bearer_token"]; !exists && globalBearerToken != "" {
+			enrichedConfigs[i].Config["bearer_token"] = globalBearerToken
+		}
+	}
+	
+	return NewManager(enrichedConfigs, output, registry)
+}
+
 // Start initializes and starts all configured plugins
 func (m *Manager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Infof("Starting plugin manager with %d plugins", len(m.configs))
+	log.Infof("Starting plugin manager with %d configs", len(m.configs))
 
 	// Initialize and start each plugin
 	for _, config := range m.configs {

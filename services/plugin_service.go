@@ -29,6 +29,7 @@ type PluginService struct {
 
 // NewPluginService creates a new plugin service
 func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder) (*PluginService, error) {
+
 	if len(cfg.Inputs) == 0 {
 		return nil, fmt.Errorf("no input plugins configured")
 	}
@@ -38,8 +39,8 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder) (*PluginServ
 	// Create input channel for plugin messages
 	inputChannel := make(chan *plugins.DataMessage, 10000)
 
-	// Create plugin manager
-	pluginManager := plugins.NewManager(cfg.Inputs, inputChannel, plugins.GlobalRegistry)
+	// Create plugin manager with global configuration support
+	pluginManager := plugins.NewManagerWithGlobals(cfg.Inputs, inputChannel, plugins.GlobalRegistry, cfg.TenantID, cfg.BearerToken)
 
 	// Create batch processor (reuse existing batching logic)
 	batchProcessor := NewBatchProcessor(cfg)
