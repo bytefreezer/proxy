@@ -15,25 +15,20 @@ logging:
 server:
   api_port: {{ config.server.api_port }}
 
-# UDP listener configuration
-udp:
-  enabled: {{ config.udp.enabled | lower }}
-  host: "{{ config.udp.host }}"
-  read_buffer_size_bytes: {{ config.udp.read_buffer_size_bytes }}
-  max_batch_lines: {{ config.udp.max_batch_lines }}        # Primary limit - batches sent when line count reached
-  max_batch_bytes: {{ config.udp.max_batch_bytes }}        # Additional constraint, whichever limit hit first
-  batch_timeout_seconds: {{ config.udp.batch_timeout_seconds }}
-  enable_compression: {{ config.udp.enable_compression | lower }}
-  compression_level: {{ config.udp.compression_level }}
-  
-  # Multiple port configuration with dataset mapping
-  listeners:
-{% for listener in config.udp.listeners %}
-    - port: {{ listener.port }}
-      dataset_id: "{{ listener.dataset_id }}"
-{% if listener.tenant_id is defined %}
-      tenant_id: "{{ listener.tenant_id }}"
+# Plugin-based input configuration
+inputs:
+{% for input in config.inputs %}
+  # {{ input.name }} - {{ input.type }} plugin
+  - type: "{{ input.type }}"
+    name: "{{ input.name }}"
+    config:
+{% for key, value in input.config.items() %}
+{% if value is string %}
+      {{ key }}: "{{ value }}"
+{% else %}
+      {{ key }}: {{ value }}
 {% endif %}
+{% endfor %}
 {% endfor %}
 
 # Global tenant configuration

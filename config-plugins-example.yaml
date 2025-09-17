@@ -14,29 +14,26 @@ server:
 # NEW: Plugin-based input configuration
 # This replaces the old UDP listeners section
 inputs:
-  # UDP Plugin (equivalent to old UDP listener functionality)
+  # UDP Plugin for eBPF data (port 2056 standard)
+  - type: "udp"
+    name: "ebpf-udp-listener"
+    config:
+      host: "0.0.0.0"
+      port: 2056
+      dataset_id: "ebpf-data"
+      protocol: "udp"
+      read_buffer_size: 65536
+      worker_count: 4
+
+  # Syslog UDP Plugin for system logs
   - type: "udp"
     name: "syslog-udp-listener"
     config:
       host: "0.0.0.0"
-      port: 2056
-      tenant_id: "customer-1"
+      port: 2057
       dataset_id: "syslog-data"
-      bearer_token: "bearer-token-customer-1-dev"  # Optional: overrides global
       protocol: "syslog"
       syslog_mode: "rfc3164"
-      read_buffer_size: 65536
-      worker_count: 4
-
-  # Another UDP Plugin for different data
-  - type: "udp"
-    name: "app-logs-udp"
-    config:
-      host: "0.0.0.0"
-      port: 2057
-      tenant_id: "customer-1"
-      dataset_id: "application-logs"
-      protocol: "udp"
 
   # Kafka Plugin (NEW!)
   - type: "kafka"

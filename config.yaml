@@ -1,6 +1,6 @@
 app:
   name: bytefreezer-proxy
-  version: 1.0.0
+  version: 0.0.2
 
 # Logging configuration   
 logging:
@@ -9,35 +9,28 @@ logging:
 
 # API server configuration
 server:
-  api_port: 8080
+  api_port: 8088
 
 # Plugin-based input configuration
-# Supports UDP, Kafka, and NATS plugins
 inputs:
-  # UDP Plugin for raw data ingestion
+  # UDP Plugin for eBPF data on port 2056
   - type: "udp"
-    name: "main-udp"
+    name: "ebpf-udp-listener"
     config:
       host: "0.0.0.0"
-      port: 2055
-      tenant_id: "customer-1"
-      dataset_id: "logs"
+      port: 2056
+      dataset_id: "ebpf-data"
       protocol: "udp"
       read_buffer_size: 65536
       worker_count: 4
-      channel_buffer_size: 10000
 
-# Backward compatibility: legacy UDP system (if no inputs configured)
-udp:
-  enabled: false  # Disabled when using plugin system
-
-# Global tenant configuration (used as fallback)
+# Global tenant configuration (used as fallback for plugins)
 tenant_id: "customer-1"
 bearer_token: "bearer-token-customer-1-dev"
 
 # Bytefreezer-receiver configuration
 receiver:
-  base_url: "http://localhost:8081/data/{tenantid}/{datasetid}"
+  base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
   timeout_seconds: 30
   retry_count: 3
   retry_delay_seconds: 1

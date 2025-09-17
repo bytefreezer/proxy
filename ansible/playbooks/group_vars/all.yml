@@ -39,41 +39,39 @@ config:
   server:
     api_port: 8088
   
-  udp:
-    enabled: true
-    host: "0.0.0.0"
-    read_buffer_size_bytes: 134217728  # 128MB
-    max_batch_lines: 1000000
-    max_batch_bytes: 268435456  # 256MB
-    batch_timeout_seconds: 30
-    enable_compression: true
-    compression_level: 6
-    
-    # Multiple port configuration with dataset mapping (up to 10 datasets supported)
-    # Only ports with dataset_id configured will be activated
-    # Ports 2056-2065 are pre-allocated for dataset use
-    listeners:
-      - port: 2056
+  # Plugin-based input configuration
+  inputs:
+    # UDP Plugin for eBPF data on port 2056 (standard)
+    - type: "udp"
+      name: "ebpf-udp-listener"
+      config:
+        host: "0.0.0.0"
+        port: 2056
         dataset_id: "ebpf-data"
-      - port: 2057
-        dataset_id: "syslog-data"
-      - port: 2058
-        dataset_id: "application-logs"
-      # Additional dataset slots (uncomment and configure as needed):
-      # - port: 2059
-      #   dataset_id: "security-logs"
-      # - port: 2060
-      #   dataset_id: "network-data"
-      # - port: 2061
-      #   dataset_id: "performance-metrics"
-      # - port: 2062
-      #   dataset_id: "audit-logs"
-      # - port: 2063
-      #   dataset_id: "container-logs"
-      # - port: 2064
-      #   dataset_id: "database-logs"
-      # - port: 2065
-      #   dataset_id: "custom-dataset"
+        protocol: "udp"
+        read_buffer_size: 65536
+        worker_count: 4
+    
+    # Optional: Additional plugins (uncomment as needed)
+    # - type: "udp"
+    #   name: "syslog-udp-listener"
+    #   config:
+    #     host: "0.0.0.0"
+    #     port: 2057
+    #     dataset_id: "syslog-data"
+    #     protocol: "syslog"
+    #     syslog_mode: "rfc3164"
+    #
+    # - type: "http"
+    #   name: "webhook-endpoint"
+    #   config:
+    #     host: "0.0.0.0"
+    #     port: 8081
+    #     path: "/webhook"
+    #     dataset_id: "webhook-data"
+    #     max_payload_size: 10485760
+    #     max_lines_per_request: 1000
+    #     enable_authentication: true
   
   # Global tenant configuration
   tenant_id: "customer-1"
@@ -91,12 +89,12 @@ config:
     timeout: 30
   
   otel:
-    enabled: true
+    enabled: false  # Disabled by default (enable for monitoring)
     service_name: "bytefreezer-proxy"
     scrapeIntervalseconds: 15
     # Prometheus mode - expose metrics on HTTP endpoint for scraping
     prometheus_mode: true
-    metrics_port: 9099
+    metrics_port: 9090
     # Bind to all interfaces for external scraping
     metrics_host: "0.0.0.0"
   
