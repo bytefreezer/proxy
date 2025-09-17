@@ -1,6 +1,10 @@
-  Need to explain in readme that this is required for all udp based plugins, setting is global on udp:
+spooling rework
 
-  #udp buffer size, make sure it matches your buffere size
-  sysctl -w net.core.rmem_max=<value>
-  sysctl -w net.core.rmem_default=<value>
+- all plugins should spool locally first before attempting to send file out
+- there should be size limit of such file, as is now on receive
+- the files from spool directory should be asyncronously be sent to receiver
+- the file should be attempted to send data N times to receiver, if N reached we should send message to SOC alerter
+- the file should be moved to local DLQ and not attempted to be resent
+
+
 

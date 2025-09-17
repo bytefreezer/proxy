@@ -20,6 +20,7 @@ type PluginService struct {
 	pluginManager   *plugins.Manager
 	batchProcessor  *BatchProcessor
 	forwarder       *HTTPForwarder
+	spoolingService *SpoolingService
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
@@ -28,7 +29,7 @@ type PluginService struct {
 }
 
 // NewPluginService creates a new plugin service
-func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder) (*PluginService, error) {
+func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingService *SpoolingService) (*PluginService, error) {
 
 	if len(cfg.Inputs) == 0 {
 		return nil, fmt.Errorf("no input plugins configured")
@@ -50,6 +51,7 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder) (*PluginServ
 		pluginManager:   pluginManager,
 		batchProcessor:  batchProcessor,
 		forwarder:       forwarder,
+		spoolingService: spoolingService,
 		ctx:             ctx,
 		cancel:          cancel,
 		inputChannel:    inputChannel,
@@ -185,15 +187,36 @@ func (ps *PluginService) processBatches() {
 	}
 }
 
-// forwardBatch forwards a batch to the receiver
+// forwardBatch spools batch data immediately (spool-first architecture)
 func (ps *PluginService) forwardBatch(batch *domain.DataBatch) {
-	if err := ps.forwarder.ForwardBatch(batch); err != nil {
-		log.Errorf("Failed to forward batch %s: %v", batch.ID, err)
-		// TODO: Add to spooling system for retry
+	// SPOOL FIRST - all data goes to spool before any transmission attempts
+	if err := ps.spoolBatch(batch); err != nil {
+		log.Errorf("CRITICAL: Failed to spool batch %s - DATA LOSS: %v", batch.ID, err)
+		// Send SOC alert for spooling failure
+		if ps.config.SOCAlertClient != nil {
+			ps.config.SOCAlertClient.SendAlert("critical", "Data Spooling Failed",
+				fmt.Sprintf("Failed to spool batch %s", batch.ID), err.Error())
+		}
 	} else {
-		log.Debugf("Successfully forwarded batch %s (%d bytes, %d lines)",
+		log.Debugf("Spooled batch %s (%d bytes, %d lines) for async transmission",
 			batch.ID, batch.TotalBytes, batch.LineCount)
 	}
+}
+
+// spoolBatch saves batch data immediately to spool (spool-first architecture)
+func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
+	if ps.spoolingService == nil {
+		return fmt.Errorf("spooling service not available")
+	}
+	
+	// Use the already compressed data from the batch
+	return ps.spoolingService.StoreBatchToQueue(
+		batch.TenantID,
+		batch.DatasetID, 
+		batch.BearerToken,
+		batch.Data, // Already compressed data
+		"", // No failure reason - this is initial spooling
+	)
 }
 
 // compressData compresses raw data using gzip

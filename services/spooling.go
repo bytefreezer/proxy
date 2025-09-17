@@ -669,6 +669,14 @@ func (s *SpoolingService) processRetries() {
 			if file.RetryCount >= 4 {
 				// Move to DLQ
 				log.Warnf("File %s exceeded retry limit (4), moving to DLQ", file.ID)
+				
+				// Send SOC alert for data delivery failure
+				if s.config.SOCAlertClient != nil {
+					s.config.SOCAlertClient.SendAlert("high", "Data Delivery Failed",
+						fmt.Sprintf("File %s failed to deliver after 4 attempts, moved to DLQ", file.ID),
+						fmt.Sprintf("Tenant: %s, Dataset: %s, File: %s", file.TenantID, file.DatasetID, file.Filename))
+				}
+				
 				if dlqErr := s.moveToNewDLQ(file); dlqErr != nil {
 					log.Errorf("Failed to move file %s to DLQ: %v", file.ID, dlqErr)
 				}

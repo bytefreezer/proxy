@@ -134,9 +134,9 @@ func main() {
 		// Create HTTP forwarder
 		forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
 
-		// Create plugin service
+		// Create plugin service with spooling support
 		var err error
-		pluginService, err = services.NewPluginService(&cfg, forwarder)
+		pluginService, err = services.NewPluginService(&cfg, forwarder, svcs.SpoolingService)
 		if err != nil {
 			log.Fatalf("Failed to create plugin service: %v", err)
 		}

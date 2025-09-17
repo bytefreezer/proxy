@@ -64,7 +64,7 @@ housekeeping:
 # Local spooling for failed uploads
 spooling:
   enabled: true
-  directory: "/var/spool/bytefreezer-proxy"
+  directory: "/tmp/bytefreezer-proxy"
   max_size_bytes: 1073741824  # 1GB
   retry_attempts: 5
   retry_interval_seconds: 60  # 1 minute
