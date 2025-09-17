@@ -1,697 +1,710 @@
-# ByteFreezer Proxy Monitoring Setup Guide
+# ByteFreezer Proxy - Monitoring Setup
 
-This guide provides comprehensive instructions for setting up monitoring, metrics, and alerting for ByteFreezer Proxy deployments.
+This document describes the comprehensive monitoring setup for ByteFreezer Proxy using OpenTelemetry with Prometheus integration.
 
 ## Overview
 
-ByteFreezer Proxy provides detailed metrics through Prometheus endpoints and integrates with standard Kubernetes monitoring stacks. All metrics are automatically tagged with tenant and dataset information for multi-tenant visibility.
+The ByteFreezer Proxy provides detailed metrics through OpenTelemetry with Prometheus integration. This setup includes:
 
-## Monitoring Architecture
+- **Metrics Collection**: Prometheus scraping from HTTP endpoint (configurable port)
+- **Plugin Metrics**: Per-plugin performance and health monitoring
+- **System Metrics**: Go runtime and system resource monitoring
+- **Custom Metrics**: Proxy-specific operational metrics
+- **Health Monitoring**: API endpoints for service health checks
 
-```
-[ByteFreezer Proxy] → [Prometheus] → [Grafana]
-                   → [AlertManager] → [Notifications]
-```
+## Available Metrics
 
-## Quick Setup
+The proxy exposes the following key metrics:
 
-### For k3s with Prometheus Stack
+### Core Proxy Metrics
+- `bytefreezer_proxy_uptime_seconds` - Service uptime in seconds
+- `bytefreezer_proxy_plugin_status` - Plugin health status (0=unhealthy, 1=healthy)
+- `bytefreezer_proxy_batch_processing_duration_seconds` - Batch processing time histogram
+- `bytefreezer_proxy_http_requests_total` - Total HTTP forwarding requests by status
 
-```bash
-# 1. Deploy Prometheus stack
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
+### Plugin-Specific Metrics
 
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -f prometheus-configs/k3s-prometheus-values-proxy.yaml \
-  -n monitoring --create-namespace
+#### UDP Plugin Metrics
+- `bytefreezer_proxy_udp_bytes_received_total` - Total bytes received per port/dataset
+- `bytefreezer_proxy_udp_packets_received_total` - Total packets received per port/dataset  
+- `bytefreezer_proxy_udp_packets_dropped_total` - Total dropped packets per port/dataset
+- `bytefreezer_proxy_udp_processing_duration_seconds` - UDP processing time histogram
 
-# 2. Deploy ServiceMonitor for auto-discovery
-kubectl apply -f k8s/monitoring/prometheus-servicemonitor.yaml
+#### HTTP Plugin Metrics
+- `bytefreezer_proxy_http_webhook_requests_total` - Total webhook requests per endpoint/status
+- `bytefreezer_proxy_http_webhook_bytes_total` - Total bytes received per endpoint
+- `bytefreezer_proxy_http_auth_failures_total` - Authentication failures per endpoint
+- `bytefreezer_proxy_http_payload_too_large_total` - Payload size violations per endpoint
+- `bytefreezer_proxy_http_request_duration_seconds` - HTTP request processing time histogram
 
-# 3. Import Grafana dashboard
-kubectl apply -f k8s/monitoring/grafana-dashboard-configmap.yaml
+#### Kafka Plugin Metrics  
+- `bytefreezer_proxy_kafka_messages_consumed_total` - Total messages consumed per topic
+- `bytefreezer_proxy_kafka_bytes_consumed_total` - Total bytes consumed per topic
+- `bytefreezer_proxy_kafka_consumer_lag` - Consumer lag per topic/partition
+- `bytefreezer_proxy_kafka_connection_errors_total` - Connection errors per broker
 
-# 4. Access Grafana (default: admin/prom-operator)
-kubectl port-forward service/kube-prometheus-stack-grafana 3000:80 -n monitoring
-```
+#### NATS Plugin Metrics
+- `bytefreezer_proxy_nats_messages_received_total` - Total messages received per subject
+- `bytefreezer_proxy_nats_bytes_received_total` - Total bytes received per subject
+- `bytefreezer_proxy_nats_connection_errors_total` - Connection errors per server
+- `bytefreezer_proxy_nats_reconnects_total` - Reconnection attempts per server
 
-### For Existing Prometheus
+### Forwarding & Spooling Metrics
+- `bytefreezer_proxy_batches_forwarded_total` - Total batches forwarded by status
+- `bytefreezer_proxy_batch_size_bytes` - Batch size distribution histogram
+- `bytefreezer_proxy_batch_size_lines` - Batch line count distribution histogram
+- `bytefreezer_proxy_spool_queue_size` - Files in spool queue
+- `bytefreezer_proxy_spool_queue_bytes` - Bytes in spool queue
+- `bytefreezer_proxy_dlq_files_total` - Files in dead letter queue
 
-If you already have Prometheus running, add ByteFreezer Proxy scraping:
+### System Metrics (Go Runtime)
+- `go_goroutines` - Number of goroutines
+- `go_memstats_alloc_bytes` - Allocated memory bytes
+- `go_memstats_sys_bytes` - System memory bytes
+- `process_cpu_seconds_total` - CPU usage
+- `process_resident_memory_bytes` - Resident memory usage
 
-```bash
-# Apply external configuration
-kubectl apply -f prometheus-configs/prometheus-external-config-proxy.yaml
+## Configuration
 
-# Or manually add to your prometheus.yml
-# See prometheus-configs/prometheus-external-config-proxy.yaml for configuration
-```
+### Enable Monitoring
 
-## Metrics Endpoints
-
-ByteFreezer Proxy exposes the following endpoints:
-
-| Endpoint | Port | Description |
-|----------|------|-------------|
-| `/metrics` | 9099 | Prometheus metrics |
-| `/health` | 8088 | Health check endpoint |
-
-### Key Metrics
-
-#### Application Metrics
-
-| Metric Name | Type | Description |
-|------------|------|-------------|
-| `bytefreezer_proxy_udp_packets_total` | Counter | Total UDP packets received |
-| `bytefreezer_proxy_udp_bytes_total` | Counter | Total UDP bytes received |
-| `bytefreezer_proxy_forwarded_requests_total` | Counter | Requests forwarded to receiver |
-| `bytefreezer_proxy_failed_requests_total` | Counter | Failed forwarding requests |
-| `bytefreezer_proxy_spooled_files_total` | Gauge | Files currently spooled (active retries) |
-| `bytefreezer_proxy_dlq_files_total` | Gauge | Files in Dead Letter Queue (failed permanently) |
-| `bytefreezer_proxy_spool_queue_size` | Gauge | Current spool queue size by tenant and dataset |
-| `bytefreezer_proxy_spool_queue_bytes` | Gauge | Current bytes in spool queue by tenant and dataset |
-| `bytefreezer_proxy_active_listeners` | Gauge | Active UDP listeners |
-
-#### System Metrics
-
-| Metric Name | Type | Description |
-|------------|------|-------------|
-| `process_cpu_seconds_total` | Counter | CPU time consumed |
-| `process_memory_bytes` | Gauge | Memory usage |
-| `go_memstats_alloc_bytes` | Gauge | Go memory allocations |
-| `go_goroutines` | Gauge | Number of goroutines |
-
-## Configuration Files
-
-### Prometheus Values for k3s
-
-The `prometheus-configs/k3s-prometheus-values-proxy.yaml` file provides:
-
-- **External Host Monitoring**: Scrape ByteFreezer Proxy running on external hosts
-- **Kubernetes Service Discovery**: Auto-discover proxy services in k8s
-- **Persistent Storage**: 20GB storage for metrics retention
-- **AlertManager Integration**: Built-in alerting capabilities
-
-Key configuration sections:
+Add OTEL configuration to your `config.yaml`:
 
 ```yaml
-# External hosts (update with your IPs)
-- job_name: 'bytefreezer-proxy-external'
-  static_configs:
-    - targets:
-        - '192.168.1.100:9099'  # Update with actual IPs
-        - '192.168.1.101:9099'
-
-# Kubernetes services
-- job_name: 'bytefreezer-proxy-k8s'
-  kubernetes_sd_configs:
-    - role: service
-  relabel_configs:
-    - source_labels: [__meta_kubernetes_service_name]
-      action: keep
-      regex: bytefreezer-proxy
+otel:
+  enabled: true                    # Enable OpenTelemetry metrics
+  service_name: "bytefreezer-proxy"
+  prometheus_mode: true            # Enable Prometheus format
+  metrics_port: 9090               # Metrics endpoint port
+  metrics_host: "0.0.0.0"          # Bind address (0.0.0.0 for all interfaces)
+  scrapeIntervalseconds: 15        # Metrics collection interval
 ```
 
-### Target Files
+### Production Configuration
 
-Use JSON target files for dynamic service discovery:
+```yaml
+otel:
+  enabled: true
+  service_name: "bytefreezer-proxy-prod"
+  prometheus_mode: true
+  metrics_port: 9090
+  metrics_host: "127.0.0.1"        # Restrict to localhost in production
+  scrapeIntervalseconds: 30        # Less frequent collection for performance
+```
+
+### Development Configuration
+
+```yaml
+otel:
+  enabled: true
+  service_name: "bytefreezer-proxy-dev"
+  prometheus_mode: true
+  metrics_port: 9090
+  metrics_host: "0.0.0.0"
+  scrapeIntervalseconds: 5         # Frequent collection for debugging
+```
+
+## Deployment Options
+
+### 1. Standalone Deployment
+
+For production deployments, the proxy exposes metrics on the configured port that can be scraped by existing Prometheus instances.
+
+#### Prometheus Configuration
+
+Add this job to your existing `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'bytefreezer-proxy'
+    static_configs:
+      - targets: ['proxy-host:9090']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    honor_labels: true
+```
+
+#### Multi-Instance Monitoring
+
+For multiple proxy instances:
+
+```yaml
+scrape_configs:
+  - job_name: 'bytefreezer-proxy'
+    static_configs:
+      - targets: 
+          - 'proxy-1:9090'
+          - 'proxy-2:9090'
+          - 'proxy-3:9090'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        regex: '([^:]+):.+'
+        target_label: hostname
+        replacement: '${1}'
+```
+
+### 2. Docker Deployment
+
+#### Docker Compose with Monitoring
+
+```yaml
+version: '3.8'
+services:
+  bytefreezer-proxy:
+    image: ghcr.io/n0needt0/bytefreezer-proxy:latest
+    ports:
+      - "8088:8088"     # API
+      - "9090:9090"     # Metrics
+      - "2056:2056/udp" # UDP
+      - "8081:8081"     # HTTP
+    volumes:
+      - ./config.yaml:/config.yaml
+    environment:
+      - OTEL_ENABLED=true
+      - OTEL_METRICS_PORT=9090
+      
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      
+volumes:
+  grafana-storage:
+```
+
+### 3. Kubernetes Deployment
+
+#### ServiceMonitor for Prometheus Operator
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bytefreezer-proxy
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: bytefreezer-proxy
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+```
+
+#### PodMonitor for Pod-level Discovery
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: bytefreezer-proxy
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: bytefreezer-proxy
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+```
+
+#### Service Definition
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytefreezer-proxy
+  labels:
+    app: bytefreezer-proxy
+spec:
+  ports:
+    - name: api
+      port: 8088
+      targetPort: 8088
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+    - name: udp
+      port: 2056
+      targetPort: 2056
+      protocol: UDP
+    - name: http
+      port: 8081
+      targetPort: 8081
+  selector:
+    app: bytefreezer-proxy
+```
+
+### 4. Ansible Deployment
+
+The Ansible playbooks support metrics configuration:
 
 ```bash
-# Update prometheus-configs/prometheus-proxy-targets-example.json
-[
-  {
-    "targets": [
-      "192.168.1.100:9099",
-      "192.168.1.101:9099"
-    ],
-    "labels": {
-      "job": "bytefreezer-proxy",
-      "environment": "production"
-    }
-  }
-]
+# Deploy with monitoring enabled
+ansible-playbook -i inventory.yml install.yml \
+  -e otel_enabled=true \
+  -e otel_metrics_port=9090 \
+  -e otel_prometheus_mode=true
+```
+
+Ansible variables for monitoring:
+
+```yaml
+# inventory.yml or group_vars/all.yml
+otel_enabled: true
+otel_service_name: "bytefreezer-proxy-{{ inventory_hostname }}"
+otel_metrics_port: 9090
+otel_metrics_host: "0.0.0.0"
+otel_scrape_interval: 30
+```
+
+## Testing Monitoring
+
+### Enable and Test Monitoring
+
+1. **Enable monitoring in config:**
+   ```yaml
+   otel:
+     enabled: true
+     metrics_port: 9090
+   ```
+
+2. **Start the proxy:**
+   ```bash
+   ./bytefreezer-proxy --config config.yaml
+   ```
+
+3. **Test metrics endpoint:**
+   ```bash
+   curl http://localhost:9090/metrics
+   ```
+
+4. **Run monitoring integration test:**
+   ```bash
+   cd integration-tests
+   ./test-with-monitoring.sh
+   ```
+
+### Verify Metrics Collection
+
+#### Check Metrics Endpoint
+```bash
+# Test metrics availability
+curl -s http://localhost:9090/metrics | head -20
+
+# Check for proxy-specific metrics
+curl -s http://localhost:9090/metrics | grep bytefreezer_proxy
+
+# Check for plugin metrics
+curl -s http://localhost:9090/metrics | grep -E "(udp|http|kafka|nats)_"
+```
+
+#### Generate Test Data
+
+```bash
+# Generate UDP data for metrics
+for i in {1..100}; do
+  echo "Test message $i" | nc -u localhost 2056
+done
+
+# Generate HTTP data for metrics  
+for i in {1..50}; do
+  curl -X POST http://localhost:8081/webhook \
+    -H "Content-Type: application/json" \
+    -d "{\"test\":$i,\"timestamp\":\"$(date -Iseconds)\"}"
+done
+
+# Check updated metrics
+curl -s http://localhost:9090/metrics | grep _total
+```
+
+#### Verify Metric Labels
+
+```bash
+# Check metric labels for plugin identification
+curl -s http://localhost:9090/metrics | grep 'plugin=' | head -5
+
+# Check tenant/dataset labels
+curl -s http://localhost:9090/metrics | grep 'tenant_id=' | head -5
+
+# Check status labels
+curl -s http://localhost:9090/metrics | grep 'status=' | head -5
 ```
 
 ## Grafana Dashboards
 
-### Pre-built Dashboard
+### Import Proxy Dashboard
 
-The monitoring setup includes a pre-configured Grafana dashboard with:
+Create a Grafana dashboard with the following panels:
 
-- **Request Rate Graphs**: Visualize incoming UDP traffic
-- **Error Rate Monitoring**: Track failed requests and errors  
-- **Resource Usage**: Monitor CPU, memory, and network usage
-- **Spool Statistics**: Track spooled files and disk usage
+#### 1. Overview Panel
+```json
+{
+  "title": "ByteFreezer Proxy Overview",
+  "type": "stat",
+  "targets": [
+    {
+      "expr": "bytefreezer_proxy_uptime_seconds",
+      "legendFormat": "Uptime (seconds)"
+    }
+  ]
+}
+```
 
-### Importing Custom Dashboards
+#### 2. Plugin Status Panel
+```json
+{
+  "title": "Plugin Health Status",
+  "type": "stat",
+  "targets": [
+    {
+      "expr": "bytefreezer_proxy_plugin_status",
+      "legendFormat": "{{plugin}} - {{dataset_id}}"
+    }
+  ]
+}
+```
 
-1. **Access Grafana UI**:
+#### 3. Throughput Panel
+```json
+{
+  "title": "Data Throughput",
+  "type": "graph",
+  "targets": [
+    {
+      "expr": "rate(bytefreezer_proxy_udp_bytes_received_total[5m])",
+      "legendFormat": "UDP {{port}} - {{dataset_id}}"
+    },
+    {
+      "expr": "rate(bytefreezer_proxy_http_webhook_bytes_total[5m])",
+      "legendFormat": "HTTP {{port}} - {{dataset_id}}"
+    }
+  ]
+}
+```
+
+#### 4. Error Rate Panel
+```json
+{
+  "title": "Error Rates",
+  "type": "graph",
+  "targets": [
+    {
+      "expr": "rate(bytefreezer_proxy_udp_packets_dropped_total[5m])",
+      "legendFormat": "UDP Drops {{port}}"
+    },
+    {
+      "expr": "rate(bytefreezer_proxy_http_auth_failures_total[5m])",
+      "legendFormat": "HTTP Auth Failures {{port}}"
+    }
+  ]
+}
+```
+
+#### 5. Performance Panel
+```json
+{
+  "title": "Processing Performance",
+  "type": "graph",
+  "targets": [
+    {
+      "expr": "histogram_quantile(0.95, rate(bytefreezer_proxy_batch_processing_duration_seconds_bucket[5m]))",
+      "legendFormat": "95th percentile batch processing"
+    },
+    {
+      "expr": "histogram_quantile(0.50, rate(bytefreezer_proxy_http_request_duration_seconds_bucket[5m]))",
+      "legendFormat": "50th percentile HTTP processing"
+    }
+  ]
+}
+```
+
+### Dashboard Variables
+
+Add dashboard variables for filtering:
+
+```json
+{
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "query": "label_values(bytefreezer_proxy_uptime_seconds, instance)"
+      },
+      {
+        "name": "plugin",
+        "type": "query", 
+        "query": "label_values(bytefreezer_proxy_plugin_status, plugin)"
+      },
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "query": "label_values(bytefreezer_proxy_udp_bytes_received_total, tenant_id)"
+      }
+    ]
+  }
+}
+```
+
+## Alert Rules
+
+### Prometheus Alert Rules
+
+Create alert rules in `bytefreezer_proxy_rules.yml`:
+
+```yaml
+groups:
+  - name: bytefreezer-proxy-alerts
+    rules:
+      # Service availability alerts
+      - alert: ByteFreezerProxyDown
+        expr: up{job="bytefreezer-proxy"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy instance is down"
+          description: "ByteFreezer Proxy instance {{ $labels.instance }} has been down for more than 1 minute."
+
+      # Plugin health alerts
+      - alert: ByteFreezerProxyPluginUnhealthy
+        expr: bytefreezer_proxy_plugin_status == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy plugin unhealthy"
+          description: "Plugin {{ $labels.plugin }} on instance {{ $labels.instance }} has been unhealthy for more than 2 minutes."
+
+      # High error rate alerts
+      - alert: ByteFreezerProxyHighUDPDropRate
+        expr: rate(bytefreezer_proxy_udp_packets_dropped_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high UDP drop rate"
+          description: "Instance {{ $labels.instance }} port {{ $labels.port }} is dropping UDP packets at rate of {{ $value }} packets/sec."
+
+      - alert: ByteFreezerProxyHighHTTPErrorRate
+        expr: rate(bytefreezer_proxy_http_webhook_requests_total{status!="success"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high HTTP error rate"
+          description: "Instance {{ $labels.instance }} has high HTTP error rate: {{ $value }} errors/sec."
+
+      # Performance alerts
+      - alert: ByteFreezerProxySlowProcessing
+        expr: histogram_quantile(0.95, rate(bytefreezer_proxy_batch_processing_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy slow batch processing"
+          description: "Instance {{ $labels.instance }} 95th percentile processing time is {{ $value }}s."
+
+      # Spooling alerts
+      - alert: ByteFreezerProxyHighSpoolQueueSize
+        expr: bytefreezer_proxy_spool_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy high spool queue size"
+          description: "Instance {{ $labels.instance }} has {{ $value }} files in spool queue."
+
+      - alert: ByteFreezerProxyDLQFilesAccumulating
+        expr: bytefreezer_proxy_dlq_files_total > 10
+        for: 2m
+        labels:
+          severity: critical
+          service: bytefreezer-proxy
+        annotations:
+          summary: "ByteFreezer Proxy DLQ files accumulating"
+          description: "Instance {{ $labels.instance }} has {{ $value }} files in dead letter queue."
+
+  - name: bytefreezer-proxy-performance
+    rules:
+      # Recording rules for dashboards
+      - record: bytefreezer_proxy:udp_throughput_bytes_per_second
+        expr: rate(bytefreezer_proxy_udp_bytes_received_total[1m])
+
+      - record: bytefreezer_proxy:http_throughput_bytes_per_second
+        expr: rate(bytefreezer_proxy_http_webhook_bytes_total[1m])
+
+      - record: bytefreezer_proxy:batch_success_rate
+        expr: |
+          rate(bytefreezer_proxy_batches_forwarded_total{status="success"}[5m]) /
+          rate(bytefreezer_proxy_batches_forwarded_total[5m])
+
+      - record: bytefreezer_proxy:avg_batch_size_bytes
+        expr: rate(bytefreezer_proxy_batch_size_bytes_sum[5m]) / rate(bytefreezer_proxy_batch_size_bytes_count[5m])
+
+      - record: bytefreezer_proxy:avg_batch_size_lines
+        expr: rate(bytefreezer_proxy_batch_size_lines_sum[5m]) / rate(bytefreezer_proxy_batch_size_lines_count[5m])
+```
+
+### Load Alert Rules
+
+```bash
+# Add to prometheus.yml
+rule_files:
+  - "bytefreezer_proxy_rules.yml"
+
+# Restart Prometheus to load rules
+systemctl restart prometheus
+
+# Verify rules loaded
+curl http://localhost:9090/api/v1/rules
+```
+
+## Troubleshooting
+
+### Metrics Not Appearing
+
+1. **Check proxy configuration:**
    ```bash
-   kubectl port-forward service/kube-prometheus-stack-grafana 3000:80 -n monitoring
-   # Default credentials: admin / prom-operator
+   curl http://localhost:8088/api/v2/config | jq '.otel'
    ```
 
-2. **Import Dashboard**:
-   - Navigate to "+" → Import
-   - Upload `k8s/monitoring/grafana-dashboard-configmap.yaml` content
-   - Configure data sources and save
-
-### Key Dashboard Panels
-
-#### UDP Traffic Panel
-```json
-{
-  "title": "UDP Packets per Second",
-  "targets": [{
-    "expr": "rate(bytefreezer_proxy_udp_packets_total[5m])",
-    "legendFormat": "{{instance}} - {{port}}"
-  }]
-}
-```
-
-#### Error Rate Panel
-```json
-{
-  "title": "Error Rate %",
-  "targets": [{
-    "expr": "rate(bytefreezer_proxy_failed_requests_total[5m]) / rate(bytefreezer_proxy_forwarded_requests_total[5m]) * 100",
-    "legendFormat": "Error Rate %"
-  }]
-}
-```
-
-## Alerting Rules
-
-### Basic Alert Rules
-
-Create alerting rules in your Prometheus configuration:
-
-```yaml
-# bytefreezer_proxy_alerts.yml
-groups:
-- name: bytefreezer-proxy
-  rules:
-  
-  # Service availability
-  - alert: ByteFreezerProxyDown
-    expr: up{job="bytefreezer-proxy"} == 0
-    for: 1m
-    labels:
-      severity: critical
-    annotations:
-      summary: "ByteFreezer Proxy instance is down"
-      description: "ByteFreezer Proxy instance {{ $labels.instance }} has been down for more than 1 minute"
-
-  # High error rate
-  - alert: ByteFreezerProxyHighErrorRate
-    expr: rate(bytefreezer_proxy_failed_requests_total[5m]) / rate(bytefreezer_proxy_forwarded_requests_total[5m]) > 0.1
-    for: 5m
-    labels:
-      severity: warning
-    annotations:
-      summary: "High error rate in ByteFreezer Proxy"
-      description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
-
-  # High memory usage
-  - alert: ByteFreezerProxyHighMemory
-    expr: process_memory_bytes{job="bytefreezer-proxy"} > 500000000  # 500MB
-    for: 5m
-    labels:
-      severity: warning
-    annotations:
-      summary: "ByteFreezer Proxy high memory usage"
-      description: "Memory usage is {{ $value | humanizeBytes }} on {{ $labels.instance }}"
-
-  # Spooling queue building up
-  - alert: ByteFreezerProxySpoolBacklog
-    expr: bytefreezer_proxy_spooled_files_total > 100
-    for: 2m
-    labels:
-      severity: warning
-    annotations:
-      summary: "ByteFreezer Proxy spool backlog"
-      description: "{{ $value }} files are spooled on {{ $labels.instance }}"
-
-  # Dead Letter Queue accumulation (critical for data recovery)
-  - alert: ByteFreezerProxyDLQAccumulation
-    expr: increase(bytefreezer_proxy_dlq_files_total[1h]) > 0
-    for: 0m
-    labels:
-      severity: critical
-    annotations:
-      summary: "ByteFreezer Proxy DLQ accumulating files"
-      description: "{{ $value }} files moved to DLQ in last hour on {{ $labels.instance }}. Data recovery required!"
-
-  # Large DLQ requiring immediate attention
-  - alert: ByteFreezerProxyDLQLarge
-    expr: bytefreezer_proxy_dlq_files_total > 50
-    for: 5m
-    labels:
-      severity: warning
-    annotations:
-      summary: "ByteFreezer Proxy large DLQ"
-      description: "{{ $value }} files in DLQ on {{ $labels.instance }}. Review and recover failed batches."
-```
-
-### AlertManager Configuration
-
-Configure AlertManager to send notifications:
-
-```yaml
-# alertmanager.yml
-global:
-  smtp_smarthost: 'localhost:587'
-  smtp_from: 'alertmanager@yourdomain.com'
-
-route:
-  group_by: ['alertname']
-  group_wait: 10s
-  group_interval: 10s
-  repeat_interval: 1h
-  receiver: 'web.hook'
-
-receivers:
-- name: 'web.hook'
-  email_configs:
-  - to: 'admin@yourdomain.com'
-    subject: 'ByteFreezer Proxy Alert: {{ .GroupLabels.alertname }}'
-    body: |
-      {{ range .Alerts }}
-      Alert: {{ .Annotations.summary }}
-      Description: {{ .Annotations.description }}
-      Instance: {{ .Labels.instance }}
-      Severity: {{ .Labels.severity }}
-      {{ end }}
-```
-
-## Advanced Monitoring
-
-### Custom Metrics
-
-ByteFreezer Proxy supports custom metrics through configuration:
-
-```yaml
-# config.yaml
-otel:
-  enabled: true
-  prometheus_mode: true
-  metrics_port: 9099
-  metrics_host: "0.0.0.0"
-  custom_metrics:
-    - name: "custom_processing_time"
-      help: "Custom processing time metric"
-      type: "histogram"
-```
-
-### Log Aggregation
-
-Integrate with log aggregation systems:
-
-```yaml
-# fluent-bit configuration
-[INPUT]
-    Name              tail
-    Path              /var/log/bytefreezer-proxy/*.log
-    Tag               bytefreezer.proxy
-    Parser            json
-
-[OUTPUT]
-    Name              es
-    Match             bytefreezer.*
-    Host              elasticsearch.monitoring.svc.cluster.local
-    Port              9200
-    Index             bytefreezer-logs
-```
-
-### Distributed Tracing
-
-Enable distributed tracing with OpenTelemetry:
-
-```yaml
-# config.yaml
-otel:
-  enabled: true
-  endpoint: "jaeger-collector.monitoring.svc.cluster.local:4317"
-  service_name: "bytefreezer-proxy"
-  trace_sampling_rate: 0.1
-```
-
-## Monitoring in Different Environments
-
-### Development Environment
-
-```yaml
-# Reduced monitoring overhead
-otel:
-  enabled: true
-  scrapeIntervalseconds: 30
-  prometheus_mode: true
-  
-logging:
-  level: "debug"
-  
-resources:
-  limits:
-    memory: "256Mi"
-    cpu: "250m"
-```
-
-### Production Environment
-
-```yaml
-# Full monitoring enabled
-otel:
-  enabled: true
-  scrapeIntervalseconds: 15
-  prometheus_mode: true
-  metrics_port: 9099
-  metrics_host: "0.0.0.0"
-  
-logging:
-  level: "info"
-  format: "json"
-  
-resources:
-  limits:
-    memory: "1Gi"
-    cpu: "500m"
-```
-
-## Troubleshooting Monitoring
-
-### Common Issues
-
-#### 1. Metrics Not Appearing
-
-```bash
-# Check if metrics endpoint is accessible
-kubectl port-forward service/bytefreezer-proxy 9099:9099 -n bytefreezer
-curl http://localhost:9099/metrics
-
-# Verify ServiceMonitor
-kubectl get servicemonitor bytefreezer-proxy-metrics -n bytefreezer -o yaml
-
-# Check Prometheus targets
-kubectl port-forward service/kube-prometheus-stack-prometheus 9090:9090 -n monitoring
-# Visit http://localhost:9090/targets
-```
-
-#### 2. Grafana Dashboard Not Loading
-
-```bash
-# Check if dashboard ConfigMap is applied
-kubectl get configmap bytefreezer-proxy-dashboard -n monitoring
-
-# Verify Grafana can access Prometheus
-kubectl logs -f deployment/kube-prometheus-stack-grafana -n monitoring
-```
-
-#### 3. Alerts Not Firing
-
-```bash
-# Check AlertManager status
-kubectl port-forward service/kube-prometheus-stack-alertmanager 9093:9093 -n monitoring
-
-# Verify alert rules are loaded
-kubectl get prometheusrule -n monitoring
-
-# Check rule syntax
-kubectl describe prometheusrule -n monitoring
-```
-
-### Debug Commands
-
-```bash
-# Check all monitoring components
-kubectl get all -n monitoring
-
-# View Prometheus configuration
-kubectl get secret kube-prometheus-stack-prometheus -n monitoring -o yaml
-
-# Check ServiceMonitor discovery
-kubectl get servicemonitor -A
-
-# View metrics directly from pod
-kubectl exec deployment/bytefreezer-proxy -n bytefreezer -- curl localhost:9099/metrics
-```
-
-## Performance Considerations
-
-### Metrics Collection Overhead
-
-- **Scrape Interval**: 15s is optimal for most use cases
-- **Metric Cardinality**: Monitor the number of unique metric series
-- **Resource Usage**: Metrics collection uses ~50MB RAM + 10m CPU
-
-### Storage Requirements
-
-- **Retention**: Default 15 days, adjust based on needs
-- **Storage**: ~1GB per million samples, plan accordingly
-- **Compression**: Enable compression for long-term storage
-
-### Optimization Tips
-
-1. **Reduce Scrape Frequency** for development environments
-2. **Use Recording Rules** for complex queries
-3. **Implement Metric Filtering** to reduce cardinality
-4. **Monitor Prometheus Performance** itself
-
-## Security Considerations
-
-1. **Network Policies**: Restrict access to metrics endpoints
-2. **Authentication**: Enable authentication for Grafana access
-3. **TLS**: Use TLS for metric scraping in production
-4. **RBAC**: Limit Prometheus service account permissions
-5. **Multi-Tenant Token Security**: 
-   - Store bearer tokens securely (use Kubernetes secrets, Vault, etc.)
-   - Rotate bearer tokens regularly for each tenant
-   - Monitor for authentication failures by tenant
-   - Ensure tenant isolation in alerting and dashboard access
-
-## Maintenance
-
-### Regular Tasks
-
-```bash
-# Update monitoring stack
-helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -f prometheus-configs/k3s-prometheus-values-proxy.yaml -n monitoring
-
-# Backup Grafana dashboards
-kubectl get configmap -n monitoring -o yaml > grafana-dashboards-backup.yaml
-
-# Check metric storage usage
-kubectl exec prometheus-kube-prometheus-stack-prometheus-0 -n monitoring -- \
-  du -sh /prometheus/
-```
-
-### Scaling Monitoring
-
-For large deployments:
-
-1. **Federation**: Set up Prometheus federation
-2. **Remote Storage**: Use remote storage backends
-3. **Horizontal Scaling**: Deploy multiple Prometheus instances
-4. **Metric Sampling**: Implement sampling for high-cardinality metrics
-
-## DLQ Operations and Monitoring
-
-### DLQ Metrics Collection
-
-Since DLQ files are stored on the filesystem, use node exporter metrics for monitoring:
-
-```yaml
-# Add to Prometheus scrape configs
-- job_name: 'node-exporter-dlq'
-  static_configs:
-    - targets: ['bytefreezer-proxy-host:9100']
-  metric_relabel_configs:
-    # Only collect filesystem metrics for spool directory
-    - source_labels: [__name__, mountpoint]
-      regex: 'node_filesystem_.+;/var/spool/bytefreezer-proxy'
-      target_label: __tmp_dlq_metric
-      replacement: 'true'
-    - source_labels: [__tmp_dlq_metric]
-      regex: 'true'
-      target_label: service
-      replacement: 'bytefreezer-proxy-dlq'
-```
-
-### DLQ Dashboard Panels
-
-**Grafana DLQ Panels:**
-
-1. **DLQ File Count:**
-```prometheus
-# Query
-node_filesystem_files_free{service="bytefreezer-proxy-dlq"} - node_filesystem_files{service="bytefreezer-proxy-dlq"}
-
-# Panel Settings
-- Title: "DLQ Files Count"
-- Type: Stat/Single Value
-- Unit: "Files"
-- Alert: > 10 files (warning), > 50 files (critical)
-```
-
-2. **DLQ Directory Size:**
-```prometheus  
-# Query
-(node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} - node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"}) / 1024 / 1024
-
-# Panel Settings  
-- Title: "DLQ Directory Size"
-- Type: Graph/Time Series
-- Unit: "MB"
-- Alert: > 500MB (warning), > 2GB (critical)
-```
-
-3. **DLQ Growth Rate:**
-```prometheus
-# Query
-increase(node_filesystem_files{service="bytefreezer-proxy-dlq"}[1h])
-
-# Panel Settings
-- Title: "DLQ Files Added (Hourly)"  
-- Type: Bar Graph
-- Unit: "Files/hour"
-- Alert: > 0 files/hour (immediate attention)
-```
-
-### DLQ Alerting Rules
-
-```yaml
-# dlq_alerts.yml
-groups:
-- name: bytefreezer_dlq_alerts
-  rules:
-  - alert: DLQFilesDetected
-    expr: (node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} - node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"}) > 0
-    for: 0m
-    labels:
-      severity: critical
-      component: dlq
-    annotations:
-      summary: "DLQ files detected - data recovery required"
-      description: "Dead Letter Queue contains failed batches on {{ $labels.instance }}. Immediate data recovery action required."
-      runbook_url: "https://docs.bytefreezer.com/proxy/dlq-recovery"
-
-  - alert: DLQDirectoryFull
-    expr: node_filesystem_avail_bytes{service="bytefreezer-proxy-dlq"} / node_filesystem_size_bytes{service="bytefreezer-proxy-dlq"} < 0.1
-    for: 5m
-    labels:
-      severity: warning
-      component: dlq
-    annotations:
-      summary: "DLQ directory filling up"
-      description: "DLQ directory is {{ $value | humanizePercentage }} full on {{ $labels.instance }}"
-```
-
-### DLQ Recovery Automation
-
-**Automated DLQ Check Script:**
-
-```bash
-#!/bin/bash
-# dlq_check.sh - Add to cron for regular DLQ monitoring
-
-DLQ_DIR="/var/spool/bytefreezer-proxy/DLQ"
-ALERT_WEBHOOK="https://your-webhook-url"
-
-# Count DLQ files
-DLQ_COUNT=$(find "$DLQ_DIR" -name "*.ndjson" 2>/dev/null | wc -l)
-
-if [ "$DLQ_COUNT" -gt 0 ]; then
-    # Send alert
-    curl -X POST "$ALERT_WEBHOOK" -H "Content-Type: application/json" -d "{
-        \"text\": \"🚨 DLQ Alert: $DLQ_COUNT failed batches detected in ByteFreezer Proxy\",
-        \"severity\": \"high\",
-        \"component\": \"dlq\",
-        \"action_required\": \"Data recovery needed\",
-        \"dlq_files\": $DLQ_COUNT
-    }"
-    
-    # Log recent DLQ files for analysis
-    echo "Recent DLQ files:" | logger -t dlq_check
-    find "$DLQ_DIR" -name "*.meta" -mtime -1 -exec basename {} .meta \; | logger -t dlq_check
-fi
-```
-
-**Cron Configuration:**
-```bash
-# Check DLQ every 15 minutes
-*/15 * * * * /opt/scripts/dlq_check.sh
-
-# Daily DLQ summary report  
-0 8 * * * /opt/scripts/dlq_daily_report.sh
-```
-
-### DLQ Recovery Procedures
-
-**Standard Operating Procedure for DLQ Files:**
-
-1. **Immediate Response (< 1 hour):**
+2. **Verify metrics endpoint:**
    ```bash
-   # Assess DLQ situation
-   cd /var/spool/bytefreezer-proxy/DLQ
-   echo "DLQ Files: $(ls *.ndjson | wc -l)"
-   echo "Total Size: $(du -sh .)"
+   curl http://localhost:9090/metrics
+   ```
+
+3. **Check proxy logs:**
+   ```bash
+   tail -f /var/log/bytefreezer-proxy/proxy.log | grep -i otel
+   ```
+
+4. **Test with data generation:**
+   ```bash
+   cd integration-tests
+   ./test-with-monitoring.sh
+   ```
+
+### High Resource Usage
+
+Monitor these metrics for resource consumption:
+
+```bash
+# Check memory usage
+curl -s http://localhost:9090/metrics | grep process_resident_memory_bytes
+
+# Check CPU usage
+curl -s http://localhost:9090/metrics | grep process_cpu_seconds_total
+
+# Check goroutine count
+curl -s http://localhost:9090/metrics | grep go_goroutines
+```
+
+### Prometheus Scraping Issues
+
+1. **Check Prometheus targets:**
+   ```bash
+   curl http://prometheus:9090/api/v1/targets
+   ```
+
+2. **Verify network connectivity:**
+   ```bash
+   curl -v http://proxy-host:9090/metrics
+   ```
+
+3. **Check Prometheus logs:**
+   ```bash
+   tail -f /var/log/prometheus/prometheus.log | grep bytefreezer-proxy
+   ```
+
+### Plugin Metrics Missing
+
+1. **Ensure plugins are active:**
+   ```bash
+   curl http://localhost:8088/api/v2/health
+   ```
+
+2. **Generate plugin activity:**
+   ```bash
+   # UDP plugin
+   echo "test" | nc -u localhost 2056
    
-   # Check failure reasons
-   jq -r '.failure_reason' *.meta | sort | uniq -c
+   # HTTP plugin
+   curl -X POST http://localhost:8081/webhook -d "test"
    ```
 
-2. **Analysis Phase (< 4 hours):**
+3. **Check for plugin-specific metrics:**
    ```bash
-   # Group by failure type and tenant
-   for meta in *.meta; do
-     echo "=== $meta ==="
-     jq '{tenant: .tenant_id, dataset: .dataset_id, reason: .failure_reason, retry_count: .retry_count}' "$meta"
-   done | tee dlq_analysis.log
+   curl -s http://localhost:9090/metrics | grep -E "(udp|http|kafka|nats)_"
    ```
 
-3. **Recovery Phase (< 24 hours):**
-   ```bash
-   # Attempt reprocessing (adjust URL as needed)
-   for file in *.ndjson; do
-     meta="${file%.ndjson}.meta"
-     tenant=$(jq -r '.tenant_id' "$meta")
-     dataset=$(jq -r '.dataset_id' "$meta")
-     
-     echo "Reprocessing $file..."
-     curl -f -X POST \
-       -H "Content-Type: application/x-ndjson" \
-       --data-binary "@$file" \
-       "http://bytefreezer-receiver:8080/data/$tenant/$dataset" && \
-       rm "$file" "$meta" && \
-       echo "✅ Successfully recovered $file"
-   done
+## Performance Impact
+
+The monitoring setup has minimal performance impact:
+
+- **Metrics collection**: <1% CPU overhead
+- **Memory usage**: ~5-10MB additional for metrics storage
+- **Network**: Metrics scraping adds <1KB/s traffic per scrape
+- **Disk**: Prometheus TSDB storage requirements vary by retention period
+
+### Optimization Recommendations
+
+1. **Adjust scrape intervals** based on monitoring needs:
+   - Production: 30-60 seconds
+   - Development: 5-15 seconds
+   - High-volume: 60-120 seconds
+
+2. **Use recording rules** for complex queries to reduce dashboard load
+
+3. **Configure appropriate retention** in Prometheus:
+   ```yaml
+   # prometheus.yml
+   global:
+     scrape_interval: 30s
+   
+   # Command line
+   --storage.tsdb.retention.time=30d
+   --storage.tsdb.retention.size=10GB
    ```
 
-### DLQ Maintenance Tasks
+4. **Monitor the monitoring** - track Prometheus resource usage
 
-**Weekly DLQ Maintenance:**
-- Review DLQ trends and patterns
-- Archive old DLQ files (>30 days) 
-- Update recovery procedures based on patterns
-- Test DLQ monitoring alerts
+## Support
 
-**Monthly DLQ Analysis:**
-- Analyze root cause patterns
-- Optimize retry configurations
-- Review DLQ storage requirements
-- Update operational runbooks
-
-## Support and Resources
-
-- **Documentation**: [Prometheus Docs](https://prometheus.io/docs/)
-- **Community**: [Grafana Community](https://community.grafana.com/)
-- **Issues**: Report monitoring issues to ByteFreezer repository
-- **Examples**: See `prometheus-configs/` for configuration examples
-
-## Next Steps
-
-- Configure [alerting notifications](ALERTING_GUIDE.md)
-- Set up [log aggregation](LOGGING_GUIDE.md)
-- Implement [distributed tracing](TRACING_GUIDE.md)
-- Plan [capacity and scaling](SCALING_GUIDE.md)
+For monitoring-related issues:
+1. Check the proxy logs for OTEL initialization errors
+2. Verify network connectivity to metrics endpoint
+3. Review Prometheus configuration and target health
+4. Use the monitoring integration test for validation
+5. Consult the main README.md for general proxy issues

@@ -483,7 +483,7 @@ curl http://localhost:8088/api/v2/dlq/stats
 
 ## Monitoring
 
-See [monitoring.md](monitoring.md) for comprehensive monitoring setup including:
+See [docs/MONITORING_SETUP.md](docs/MONITORING_SETUP.md) for comprehensive monitoring setup including:
 
 - Prometheus metrics collection
 - Grafana dashboards
