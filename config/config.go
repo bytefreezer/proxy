@@ -24,6 +24,7 @@ type Config struct {
 	Server       Server                 `mapstructure:"server"`
 	Inputs       []plugins.PluginConfig `mapstructure:"inputs"` // New plugin-based input system
 	UDP          UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
+	Batching     Batching               `mapstructure:"batching"`
 	Receiver     Receiver               `mapstructure:"receiver"`
 	TenantID     string                 `mapstructure:"tenant_id"`
 	BearerToken  string                 `mapstructure:"bearer_token"`
@@ -72,6 +73,15 @@ type UDPListener struct {
 	BearerToken string `mapstructure:"bearer_token,omitempty"` // Optional: override global bearer token
 	Protocol    string `mapstructure:"protocol,omitempty"`     // "udp" (default) or "syslog"
 	SyslogMode  string `mapstructure:"syslog_mode,omitempty"`  // "rfc3164" (default) or "rfc5424"
+}
+
+type Batching struct {
+	Enabled            bool  `mapstructure:"enabled"`
+	MaxLines           int   `mapstructure:"max_lines"`
+	MaxBytes           int64 `mapstructure:"max_bytes"`
+	TimeoutSeconds     int   `mapstructure:"timeout_seconds"`
+	CompressionEnabled bool  `mapstructure:"compression_enabled"`
+	CompressionLevel   int   `mapstructure:"compression_level"`
 }
 
 type Receiver struct {
@@ -152,6 +162,24 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	if cfg.UDP.BatchTimeoutSeconds == 0 {
 		cfg.UDP.BatchTimeoutSeconds = 30
 	}
+	
+	// Batching defaults
+	if cfg.Batching.TimeoutSeconds == 0 {
+		cfg.Batching.TimeoutSeconds = 30
+	}
+	if cfg.Batching.MaxLines == 0 {
+		cfg.Batching.MaxLines = 1000
+	}
+	if cfg.Batching.MaxBytes == 0 {
+		cfg.Batching.MaxBytes = 1048576 // 1MB
+	}
+	if !cfg.Batching.CompressionEnabled {
+		cfg.Batching.CompressionEnabled = true
+	}
+	if cfg.Batching.CompressionLevel == 0 {
+		cfg.Batching.CompressionLevel = 6
+	}
+	
 	if cfg.Receiver.TimeoutSec == 0 {
 		cfg.Receiver.TimeoutSec = 30
 	}

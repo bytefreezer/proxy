@@ -48,7 +48,7 @@ func NewBatchProcessor(cfg *config.Config) *BatchProcessor {
 		batchChannel: make(chan *domain.DataBatch, 10000), // Increased from 100 to 10000
 		ctx:          ctx,
 		cancel:       cancel,
-		ticker:       time.NewTicker(time.Duration(cfg.UDP.BatchTimeoutSeconds) * time.Second),
+		ticker:       time.NewTicker(time.Duration(cfg.Batching.TimeoutSeconds) * time.Second),
 	}
 }
 
@@ -60,7 +60,7 @@ func (bp *BatchProcessor) Start() error {
 	bp.wg.Add(1)
 	go bp.timeoutChecker()
 
-	log.Infof("Batch processor started with %d second timeout", bp.config.UDP.BatchTimeoutSeconds)
+	log.Infof("Batch processor started with %d second timeout", bp.config.Batching.TimeoutSeconds)
 	return nil
 }
 
@@ -127,12 +127,12 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 // shouldFinalizeBatch determines if a batch should be finalized
 func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) bool {
 	// Check line count limit
-	if batch.LineCount >= int64(bp.config.UDP.MaxBatchLines) {
+	if batch.LineCount >= int64(bp.config.Batching.MaxLines) {
 		return true
 	}
 
 	// Check byte size limit
-	if batch.TotalBytes >= bp.config.UDP.MaxBatchBytes {
+	if batch.TotalBytes >= bp.config.Batching.MaxBytes {
 		return true
 	}
 
@@ -200,7 +200,7 @@ func (bp *BatchProcessor) checkTimeouts() {
 	defer bp.mu.Unlock()
 
 	now := time.Now()
-	timeout := time.Duration(bp.config.UDP.BatchTimeoutSeconds) * time.Second
+	timeout := time.Duration(bp.config.Batching.TimeoutSeconds) * time.Second
 
 	var keysToDelete []string
 
