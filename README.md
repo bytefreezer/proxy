@@ -312,8 +312,9 @@ services:
     image: ghcr.io/n0needt0/bytefreezer-proxy:latest
     ports:
       - "8088:8088"     # API
-      - "2056:2056/udp" # UDP
-      - "8081:8081"     # HTTP
+      - "9090:9090"     # Metrics
+      - "2056:2056/udp" # UDP Plugin
+      - "8081:8081"     # HTTP Plugin
     volumes:
       - ./config.yaml:/config.yaml
       - ./spool:/var/spool/bytefreezer-proxy
@@ -326,10 +327,11 @@ services:
 # Create spool directory
 mkdir -p ./spool
 
-# Run with mounted config and spool
+# Run with mounted config and spool (expose common plugin ports)
 docker run -d \
   --name bytefreezer-proxy \
   -p 8088:8088 \
+  -p 9090:9090 \
   -p 2056:2056/udp \
   -p 8081:8081 \
   -v $(pwd)/config.yaml:/config.yaml \

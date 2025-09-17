@@ -1,4 +1,20 @@
-# Dockerfile for distributing binary via GitHub Container Registry
+# Dockerfile.release - Minimal container for binary distribution
+# Used for extracting pre-built binaries from containers
 FROM scratch
+
+# Copy the statically-linked binary
 COPY bytefreezer-proxy /bytefreezer-proxy
+
+# Default entrypoint
 ENTRYPOINT ["/bytefreezer-proxy"]
+
+# Metadata labels
+ARG VERSION=unknown
+ARG BUILD_TIME=unknown
+LABEL maintainer="ByteFreezer Team" \
+      org.opencontainers.image.title="ByteFreezer Proxy (Minimal)" \
+      org.opencontainers.image.description="Minimal distribution of ByteFreezer Proxy binary for extraction and deployment" \
+      org.opencontainers.image.vendor="ByteFreezer" \
+      org.opencontainers.image.source="https://github.com/n0needt0/bytefreezer-proxy" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_TIME}"
