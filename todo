@@ -1,12 +1,20 @@
 ok now it looks good. lets test its.
-please create configuration like so:
+please create configuration for 2 tenants like so:
+
 
 tenant: customer-1
 ebpf-data 2056 udp
 
+tenant: customer-1
+http 20566 http
+
 
 tenant: customer-2
-ebpf-data 2056 udp
+ebpf-data 2057 udp
 
+tenant: customer-2
+http 20577 http
+
+please create me a test script to run to http ports for above 2 customers (or suggest tool to use), udp i have load teaster
 
 
