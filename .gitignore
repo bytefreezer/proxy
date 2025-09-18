@@ -26,8 +26,8 @@ go.work
 gorm.db
 
 #ignore build files
-#bytefreezer-proxy
-#bytefreezer-proxy-*
+bytefreezer-proxy
+bytefreezer-proxy-*
 
 # Ansible build artifacts
 ansible/dist/
