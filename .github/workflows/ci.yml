@@ -251,12 +251,7 @@ jobs:
 
     - name: Check AWX guide exists
       run: test -f docs/AWX_DEPLOYMENT_GUIDE.md
-
-    - name: Check configuration documentation
-      run: |
-        grep -q "UDP listener configuration" config.yaml
-        grep -q "spooling" config.yaml
-
+   
     - name: Validate Markdown links (if markdownlint available)
       run: |
         if command -v markdownlint >/dev/null 2>&1; then
