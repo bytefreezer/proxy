@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
@@ -174,6 +175,34 @@ type DLQRetryDetail struct {
 	DatasetID string `json:"dataset_id"`
 	Success   bool   `json:"success"`
 	Error     string `json:"error,omitempty"`
+}
+
+// DLQListRequest represents a request to list DLQ files
+type DLQListRequest struct {
+	TenantID  string `query:"tenant_id" description:"Filter by tenant ID (optional)"`
+	DatasetID string `query:"dataset_id" description:"Filter by dataset ID (optional)"`
+}
+
+// DLQListResponse represents the response for listing DLQ files
+type DLQListResponse struct {
+	SpoolingEnabled bool          `json:"spooling_enabled"`
+	Files           []DLQFileInfo `json:"files"`
+	Message         string        `json:"message"`
+}
+
+// DLQFileInfo represents information about a file in the DLQ
+type DLQFileInfo struct {
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	DatasetID     string    `json:"dataset_id"`
+	Filename      string    `json:"filename"`
+	Size          int64     `json:"size"`
+	LineCount     int       `json:"line_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastRetry     time.Time `json:"last_retry"`
+	RetryCount    int       `json:"retry_count"`
+	Status        string    `json:"status"`
+	FailureReason string    `json:"failure_reason,omitempty"`
 }
 
 // API holds the API configuration and services
@@ -443,6 +472,75 @@ func (api *API) RetryDLQFiles() usecase.Interactor {
 
 	u.SetTitle("Retry DLQ Files")
 	u.SetDescription("Move files from Dead Letter Queue back to processing queue")
+	u.SetTags("DLQ")
+
+	return u
+}
+
+// ListDLQFiles returns a list of files in the DLQ
+func (api *API) ListDLQFiles() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input *DLQListRequest, output *DLQListResponse) error {
+		log.Info("Listing DLQ files")
+
+		if !api.Config.Spooling.Enabled {
+			output.SpoolingEnabled = false
+			output.Files = []DLQFileInfo{}
+			output.Message = "Spooling is disabled"
+			return nil
+		}
+
+		output.SpoolingEnabled = true
+
+		// Get DLQ file list from spooling service
+		files, err := api.Services.SpoolingService.ListDLQFiles(input.TenantID, input.DatasetID)
+		if err != nil {
+			log.Errorf("Failed to list DLQ files: %v", err)
+			return fmt.Errorf("failed to list DLQ files: %w", err)
+		}
+
+		// Convert to API response format
+		output.Files = make([]DLQFileInfo, len(files))
+		for i, file := range files {
+			output.Files[i] = DLQFileInfo{
+				ID:            file.ID,
+				TenantID:      file.TenantID,
+				DatasetID:     file.DatasetID,
+				Filename:      filepath.Base(file.Filename),
+				Size:          file.Size,
+				LineCount:     file.LineCount,
+				CreatedAt:     file.CreatedAt,
+				LastRetry:     file.LastRetry,
+				RetryCount:    file.RetryCount,
+				Status:        file.Status,
+				FailureReason: file.FailureReason,
+			}
+		}
+
+		// Set response message
+		if len(files) == 0 {
+			if input.TenantID != "" && input.DatasetID != "" {
+				output.Message = fmt.Sprintf("No files in DLQ for tenant=%s dataset=%s", input.TenantID, input.DatasetID)
+			} else if input.TenantID != "" {
+				output.Message = fmt.Sprintf("No files in DLQ for tenant=%s", input.TenantID)
+			} else {
+				output.Message = "No files in DLQ"
+			}
+		} else {
+			if input.TenantID != "" && input.DatasetID != "" {
+				output.Message = fmt.Sprintf("Found %d files in DLQ for tenant=%s dataset=%s", len(files), input.TenantID, input.DatasetID)
+			} else if input.TenantID != "" {
+				output.Message = fmt.Sprintf("Found %d files in DLQ for tenant=%s", len(files), input.TenantID)
+			} else {
+				output.Message = fmt.Sprintf("Found %d files in DLQ", len(files))
+			}
+		}
+
+		log.Infof("DLQ file listing completed: %s", output.Message)
+		return nil
+	})
+
+	u.SetTitle("List DLQ Files")
+	u.SetDescription("List all files in the Dead Letter Queue, optionally filtered by tenant and dataset")
 	u.SetTags("DLQ")
 
 	return u

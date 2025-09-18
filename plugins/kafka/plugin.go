@@ -348,9 +348,3 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 	}
 }
 
-// GetMetrics returns current plugin metrics
-func (p *Plugin) GetMetrics() PluginMetrics {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.metrics
-}

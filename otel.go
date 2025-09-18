@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/prometheus"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -178,7 +177,3 @@ func setupMetrics(ctx context.Context, cfg *config.Config, res *resource.Resourc
 	}, nil
 }
 
-// GetMeter returns an OTEL meter for the proxy service
-func GetMeter() metric.Meter {
-	return otel.Meter("bytefreezer-proxy")
-}

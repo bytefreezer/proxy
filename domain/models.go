@@ -41,22 +41,3 @@ type ProxyStats struct {
 	UptimeSeconds       int64
 }
 
-// ReceiverConfig represents configuration for forwarding to bytefreezer-receiver
-type ReceiverConfig struct {
-	BaseURL    string
-	TenantID   string
-	DatasetID  string
-	Timeout    time.Duration
-	RetryCount int
-}
-
-// UDPConfig represents UDP listener configuration
-type UDPConfig struct {
-	Host              string
-	ReadBufferSize    int
-	MaxBatchLines     int
-	MaxBatchBytes     int64
-	BatchTimeoutSec   int
-	CompressionLevel  int
-	EnableCompression bool
-}

@@ -121,7 +121,7 @@ func TestSpoolingService_BatchRawFiles(t *testing.T) {
 	}
 
 	// Verify metadata was created
-	metaDir := filepath.Join(tempDir, "test-tenant", "meta")
+	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
 	metaFiles, err := os.ReadDir(metaDir)
 	if err != nil {
 		t.Fatalf("Failed to read meta directory: %v", err)
@@ -189,10 +189,10 @@ func TestSpoolingService_GetDLQStats(t *testing.T) {
 		"tenant1/dataset1/queue/batch1.ndjson.gz": "test compressed data 1",
 		"tenant1/dataset1/queue/batch2.ndjson.gz": "test compressed data 2",
 		"tenant1/dataset2/queue/batch3.ndjson.gz": "test compressed data 3",
-		"tenant1/dlq/dataset1/failed1.ndjson.gz":  "failed compressed data 1",
-		"tenant1/dlq/dataset2/failed2.ndjson.gz":  "failed compressed data 2",
+		"tenant1/dataset1/dlq/failed1.ndjson.gz":  "failed compressed data 1",
+		"tenant1/dataset2/dlq/failed2.ndjson.gz":  "failed compressed data 2",
 		"tenant2/dataset3/queue/batch4.ndjson.gz": "test compressed data 4",
-		"tenant2/dlq/dataset3/failed3.ndjson.gz":  "failed compressed data 3",
+		"tenant2/dataset3/dlq/failed3.ndjson.gz":  "failed compressed data 3",
 	}
 
 	for path, content := range testStructure {
@@ -262,7 +262,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 	service := NewSpoolingService(cfg)
 
 	// Create DLQ structure with files and metadata
-	dlqDir := filepath.Join(tempDir, "test-tenant", "dlq", "test-dataset")
+	dlqDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "dlq")
 	if err := os.MkdirAll(dlqDir, 0750); err != nil {
 		t.Fatalf("Failed to create DLQ directory: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 	}
 
 	// Verify metadata was moved and reset
-	metaDir := filepath.Join(tempDir, "test-tenant", "meta")
+	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
 	metaFiles, err := os.ReadDir(metaDir)
 	if err != nil {
 		t.Fatalf("Failed to read meta directory: %v", err)
@@ -414,7 +414,7 @@ func TestSpoolingService_StoreBatchToQueue(t *testing.T) {
 	}
 
 	// Verify metadata was created with correct failure reason
-	metaDir := filepath.Join(tempDir, "test-tenant", "meta")
+	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
 	metaFiles, err := os.ReadDir(metaDir)
 	if err != nil {
 		t.Fatalf("Failed to read meta directory: %v", err)

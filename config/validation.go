@@ -81,50 +81,6 @@ func isReservedName(name string) bool {
 	return false
 }
 
-// SanitizeIdentifier attempts to convert an invalid identifier to a valid one
-// This is useful for automatic cleanup but should be used carefully
-func SanitizeIdentifier(input string) string {
-	if input == "" {
-		return "default"
-	}
-
-	// Replace invalid characters with underscores
-	sanitized := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(input, "_")
-
-	// Remove leading/trailing hyphens and underscores
-	sanitized = strings.Trim(sanitized, "_-")
-
-	// Ensure it starts and ends with alphanumeric
-	if len(sanitized) == 0 {
-		return "default"
-	}
-
-	// If it starts with non-alphanumeric, prepend 'id'
-	if !regexp.MustCompile(`^[a-zA-Z0-9]`).MatchString(sanitized) {
-		sanitized = "id" + sanitized
-	}
-
-	// If it ends with non-alphanumeric, append '1'
-	if !regexp.MustCompile(`[a-zA-Z0-9]$`).MatchString(sanitized) {
-		sanitized = sanitized + "1"
-	}
-
-	// Truncate to max length
-	if len(sanitized) > 64 {
-		sanitized = sanitized[:64]
-		// Ensure it still ends with alphanumeric after truncation
-		if !regexp.MustCompile(`[a-zA-Z0-9]$`).MatchString(sanitized) {
-			sanitized = sanitized[:63] + "1"
-		}
-	}
-
-	// Check if it's reserved and modify if needed
-	if isReservedName(sanitized) {
-		sanitized = sanitized + "1"
-	}
-
-	return sanitized
-}
 
 // ValidateIdentifierPair validates both tenant and dataset IDs together
 func ValidateIdentifierPair(tenantID, datasetID string) error {

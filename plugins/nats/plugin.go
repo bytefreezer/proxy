@@ -308,25 +308,3 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 	}
 }
 
-// GetMetrics returns current plugin metrics
-func (p *Plugin) GetMetrics() PluginMetrics {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.metrics
-}
-
-// GetConnectionStatus returns NATS connection status
-func (p *Plugin) GetConnectionStatus() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.conn == nil {
-		return "Not connected"
-	}
-
-	if p.conn.IsConnected() {
-		return fmt.Sprintf("Connected to %s", p.conn.ConnectedUrl())
-	}
-
-	return "Disconnected"
-}

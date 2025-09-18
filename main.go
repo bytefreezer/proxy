@@ -13,7 +13,7 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/api"
 	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
 	"github.com/n0needt0/go-goodies/log"
 
@@ -154,7 +154,11 @@ func main() {
 			}
 		}()
 
-		log.Infof("Plugin system started with input types: %v", getPluginTypes(cfg.Inputs))
+		pluginTypes := make([]string, len(cfg.Inputs))
+		for i, input := range cfg.Inputs {
+			pluginTypes[i] = input.Type
+		}
+		log.Infof("Plugin system started with input types: %v", pluginTypes)
 	} else {
 		log.Info("No input plugins configured. Please configure inputs in the configuration file.")
 	}
@@ -225,11 +229,3 @@ func setLogLevel(levelStr string) {
 	}
 }
 
-// getPluginTypes extracts plugin types from input configurations for logging
-func getPluginTypes(inputs []plugins.PluginConfig) []string {
-	types := make([]string, len(inputs))
-	for i, input := range inputs {
-		types[i] = input.Type
-	}
-	return types
-}

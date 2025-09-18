@@ -248,9 +248,6 @@ func (cfg *Config) GetRetryDelay() time.Duration {
 	return time.Duration(cfg.Receiver.RetryDelaySec) * time.Second
 }
 
-func (cfg *Config) GetBatchTimeout() time.Duration {
-	return time.Duration(cfg.UDP.BatchTimeoutSeconds) * time.Second
-}
 
 // TenantInfo represents tenant configuration details
 type TenantInfo struct {
@@ -434,6 +431,73 @@ func validateIdentifiers(cfg *Config) error {
 				return fmt.Errorf("UDP listener %d: %w", i, err)
 			}
 		}
+	}
+
+	// Validate plugin inputs for duplicate dataset names within same tenant
+	if err := validatePluginInputs(cfg); err != nil {
+		return fmt.Errorf("plugin input validation failed: %w", err)
+	}
+
+	return nil
+}
+
+// validatePluginInputs validates plugin inputs for duplicate dataset names and other conflicts
+func validatePluginInputs(cfg *Config) error {
+	if len(cfg.Inputs) == 0 {
+		return nil // No plugin inputs to validate
+	}
+
+	// Track tenant-dataset combinations to detect duplicates
+	tenantDatasetMap := make(map[string]map[string]string) // tenantID -> datasetID -> pluginType
+	
+	for i, input := range cfg.Inputs {
+		// Get effective tenant ID
+		var effectiveTenantID string
+		if tenantIDValue, exists := input.Config["tenant_id"]; exists {
+			if tenantIDStr, ok := tenantIDValue.(string); ok && tenantIDStr != "" {
+				effectiveTenantID = tenantIDStr
+			}
+		}
+		if effectiveTenantID == "" {
+			effectiveTenantID = cfg.TenantID // Fallback to global tenant
+		}
+
+		// Get dataset ID
+		var datasetID string
+		if datasetIDValue, exists := input.Config["dataset_id"]; exists {
+			if datasetIDStr, ok := datasetIDValue.(string); ok && datasetIDStr != "" {
+				datasetID = datasetIDStr
+			}
+		}
+
+		if datasetID == "" {
+			return fmt.Errorf("plugin input %d (%s): dataset_id is required", i, input.Type)
+		}
+
+		// Validate identifiers
+		if err := ValidateTenantID(effectiveTenantID); err != nil {
+			return fmt.Errorf("plugin input %d (%s) tenant_id: %w", i, input.Type, err)
+		}
+		if err := ValidateDatasetID(datasetID); err != nil {
+			return fmt.Errorf("plugin input %d (%s) dataset_id: %w", i, input.Type, err)
+		}
+		if err := ValidateIdentifierPair(effectiveTenantID, datasetID); err != nil {
+			return fmt.Errorf("plugin input %d (%s): %w", i, input.Type, err)
+		}
+
+		// Initialize tenant map if needed
+		if tenantDatasetMap[effectiveTenantID] == nil {
+			tenantDatasetMap[effectiveTenantID] = make(map[string]string)
+		}
+
+		// Check for duplicate dataset within same tenant
+		if existingType, exists := tenantDatasetMap[effectiveTenantID][datasetID]; exists {
+			return fmt.Errorf("plugin input %d (%s): dataset_id '%s' for tenant '%s' is already configured with plugin type '%s'. Each dataset must be unique within a tenant to prevent data mixing and cross-injection",
+				i, input.Type, datasetID, effectiveTenantID, existingType)
+		}
+
+		// Record this tenant-dataset combination
+		tenantDatasetMap[effectiveTenantID][datasetID] = input.Type
 	}
 
 	return nil

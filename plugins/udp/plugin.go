@@ -341,9 +341,3 @@ func (p *Plugin) processMessage(msg *udpMessage) {
 	}
 }
 
-// GetMetrics returns current plugin metrics
-func (p *Plugin) GetMetrics() PluginMetrics {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.metrics
-}

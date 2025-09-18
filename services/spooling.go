@@ -161,7 +161,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 
 	rawDir := filepath.Join(s.directory, tenantID, datasetID, "raw")
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
-	metaDir := filepath.Join(s.directory, tenantID, "meta")
+	metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
 
 	// Create queue and meta directories
 	if err := os.MkdirAll(queueDir, 0750); err != nil {
@@ -293,7 +293,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 
 	// Create directories
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
-	metaDir := filepath.Join(s.directory, tenantID, "meta")
+	metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
 
 	if err := os.MkdirAll(queueDir, 0750); err != nil {
 		return fmt.Errorf("failed to create queue directory: %w", err)
@@ -495,47 +495,58 @@ func (s *SpoolingService) getTenants() ([]string, error) {
 	return tenants, nil
 }
 
-// getTenantMetadataFiles returns metadata files for a specific tenant
+// getTenantMetadataFiles returns metadata files for all datasets in a tenant
 func (s *SpoolingService) getTenantMetadataFiles(tenantID string) ([]SpooledFile, error) {
-	metaDir := filepath.Join(s.directory, tenantID, "meta")
-
-	entries, err := os.ReadDir(metaDir)
+	var allFiles []SpooledFile
+	
+	// Get all datasets for this tenant
+	datasets, err := s.getTenantDatasets(tenantID)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // No metadata directory
-		}
-		return nil, fmt.Errorf("failed to read meta directory: %w", err)
+		return nil, fmt.Errorf("failed to get datasets for tenant %s: %w", tenantID, err)
 	}
-
-	var files []SpooledFile
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".meta") {
-			continue
-		}
-
-		metaPath := filepath.Join(metaDir, entry.Name())
-		// #nosec G304 - metaPath is constructed from controlled metaDir and validated entry.Name()
-		data, err := os.ReadFile(metaPath)
+	
+	// Collect metadata from all datasets
+	for _, datasetID := range datasets {
+		metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
+		
+		entries, err := os.ReadDir(metaDir)
 		if err != nil {
-			log.Warnf("Failed to read metadata file %s: %v", metaPath, err)
+			if os.IsNotExist(err) {
+				continue // No metadata directory for this dataset
+			}
+			log.Warnf("Failed to read meta directory %s: %v", metaDir, err)
 			continue
 		}
 
-		var file SpooledFile
-		if err := json.Unmarshal(data, &file); err != nil {
-			log.Warnf("Failed to unmarshal metadata file %s: %v", metaPath, err)
-			continue
-		}
+		for _, entry := range entries {
+			if !strings.HasSuffix(entry.Name(), ".meta") {
+				continue
+			}
 
-		files = append(files, file)
+			metaPath := filepath.Join(metaDir, entry.Name())
+			// #nosec G304 - metaPath is constructed from controlled metaDir and validated entry.Name()
+			data, err := os.ReadFile(metaPath)
+			if err != nil {
+				log.Warnf("Failed to read metadata file %s: %v", metaPath, err)
+				continue
+			}
+
+			var file SpooledFile
+			if err := json.Unmarshal(data, &file); err != nil {
+				log.Warnf("Failed to unmarshal metadata file %s: %v", metaPath, err)
+				continue
+			}
+
+			allFiles = append(allFiles, file)
+		}
 	}
 
-	return files, nil
+	return allFiles, nil
 }
 
-// removeMetadataFile removes a metadata file for a tenant
-func (s *SpoolingService) removeMetadataFile(tenantID, fileID string) error {
-	metaPath := filepath.Join(s.directory, tenantID, "meta", fmt.Sprintf("%s.meta", fileID))
+// removeMetadataFile removes a metadata file for a tenant/dataset
+func (s *SpoolingService) removeMetadataFile(tenantID, datasetID, fileID string) error {
+	metaPath := filepath.Join(s.directory, tenantID, datasetID, "meta", fmt.Sprintf("%s.meta", fileID))
 	if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove metadata file: %w", err)
 	}
@@ -556,7 +567,7 @@ func (s *SpoolingService) updateTenantRetryMetadata(tenantID string, file Spoole
 		return
 	}
 
-	metaPath := filepath.Join(s.directory, tenantID, "meta", fmt.Sprintf("%s.meta", file.ID))
+	metaPath := filepath.Join(s.directory, tenantID, file.DatasetID, "meta", fmt.Sprintf("%s.meta", file.ID))
 	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		log.Errorf("Failed to write updated metadata for %s: %v", file.ID, err)
 	}
@@ -570,17 +581,17 @@ func (s *SpoolingService) removeSuccessfulFile(tenantID string, file SpooledFile
 	}
 
 	// Remove the metadata file
-	if err := s.removeMetadataFile(tenantID, file.ID); err != nil {
+	if err := s.removeMetadataFile(tenantID, file.DatasetID, file.ID); err != nil {
 		log.Warnf("Failed to remove metadata for %s: %v", file.ID, err)
 	}
 
 	log.Debugf("Successfully removed files for %s", file.ID)
 }
 
-// moveToNewDLQ moves failed files to tenant/dlq/dataset/ structure
+// moveToNewDLQ moves failed files to tenant/dataset/dlq/ structure
 func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
-	// Create DLQ directory: tenant/dlq/dataset/
-	dlqDir := filepath.Join(s.directory, file.TenantID, "dlq", file.DatasetID)
+	// Create DLQ directory: tenant/dataset/dlq/
+	dlqDir := filepath.Join(s.directory, file.TenantID, file.DatasetID, "dlq")
 	if err := os.MkdirAll(dlqDir, 0750); err != nil {
 		return fmt.Errorf("failed to create DLQ directory: %w", err)
 	}
@@ -689,7 +700,7 @@ func (s *SpoolingService) processRetries() {
 			if err != nil {
 				if os.IsNotExist(err) {
 					log.Warnf("Queue file %s missing, removing orphaned metadata %s", file.Filename, file.ID)
-					s.removeMetadataFile(tenantID, file.ID)
+					s.removeMetadataFile(tenantID, file.DatasetID, file.ID)
 				} else {
 					log.Errorf("Failed to read queue file %s: %v", file.Filename, err)
 				}
@@ -1738,7 +1749,7 @@ func (s *SpoolingService) GetDLQStats() (*DLQStats, error) {
 			}
 
 			// Count DLQ files
-			dlqDir := filepath.Join(s.directory, tenantID, "dlq", datasetID)
+			dlqDir := filepath.Join(s.directory, tenantID, datasetID, "dlq")
 			dlqFiles, dlqBytes, dlqOldest := s.countFilesInDirectory(dlqDir, ".ndjson.gz")
 			datasetStats.DLQFiles = dlqFiles
 			datasetStats.DLQBytes = dlqBytes
@@ -1877,9 +1888,9 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 		}
 
 		for _, dataset := range datasets {
-			dlqDir := filepath.Join(s.directory, tenant, "dlq", dataset)
+			dlqDir := filepath.Join(s.directory, tenant, dataset, "dlq")
 			queueDir := filepath.Join(s.directory, tenant, dataset, "queue")
-			metaDir := filepath.Join(s.directory, tenant, "meta")
+			metaDir := filepath.Join(s.directory, tenant, dataset, "meta")
 
 			// Create queue and meta directories if they don't exist
 			if err := os.MkdirAll(queueDir, 0750); err != nil {
@@ -1985,4 +1996,105 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 	}
 
 	return result, nil
+}
+
+// ListDLQFiles returns a list of all files in the DLQ, optionally filtered by tenant and dataset
+func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFile, error) {
+	if !s.config.Spooling.Enabled {
+		return nil, fmt.Errorf("spooling is disabled")
+	}
+
+	var dlqFiles []SpooledFile
+
+	tenants := []string{}
+	if tenantID != "" {
+		tenants = append(tenants, tenantID)
+	} else {
+		// Get all tenants
+		allTenants, err := s.getTenants()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get tenants: %w", err)
+		}
+		tenants = allTenants
+	}
+
+	for _, tenant := range tenants {
+		datasets := []string{}
+		if datasetID != "" {
+			datasets = append(datasets, datasetID)
+		} else {
+			// Get all datasets for this tenant
+			allDatasets, err := s.getTenantDatasets(tenant)
+			if err != nil {
+				log.Debugf("Failed to get datasets for tenant %s: %v", tenant, err)
+				continue
+			}
+			datasets = allDatasets
+		}
+
+		for _, dataset := range datasets {
+			// Get DLQ directory path for this tenant/dataset
+			dlqDir := filepath.Join(s.directory, tenant, dataset, "dlq")
+			
+			if _, err := os.Stat(dlqDir); os.IsNotExist(err) {
+				continue // DLQ directory doesn't exist for this tenant/dataset
+			}
+
+			// Read DLQ directory
+			entries, err := os.ReadDir(dlqDir)
+			if err != nil {
+				log.Debugf("Failed to read DLQ directory %s: %v", dlqDir, err)
+				continue
+			}
+
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+
+				// Only process .meta files
+				if !strings.HasSuffix(entry.Name(), ".meta") {
+					continue
+				}
+
+				// Validate filename to prevent directory traversal
+				if strings.Contains(entry.Name(), "..") || strings.Contains(entry.Name(), "/") || strings.Contains(entry.Name(), "\\") {
+					log.Warnf("Suspicious filename detected, skipping: %s", entry.Name())
+					continue
+				}
+
+				metaPath := filepath.Join(dlqDir, entry.Name())
+				
+				// Additional security check: ensure the resolved path is still within dlqDir
+				cleanPath := filepath.Clean(metaPath)
+				if !strings.HasPrefix(cleanPath, filepath.Clean(dlqDir)+string(filepath.Separator)) &&
+					cleanPath != filepath.Clean(dlqDir) {
+					log.Warnf("Path traversal attempt detected, skipping: %s", entry.Name())
+					continue
+				}
+
+				metaData, err := os.ReadFile(cleanPath)
+				if err != nil {
+					log.Debugf("Failed to read metadata file %s: %v", metaPath, err)
+					continue
+				}
+
+				var spooledFile SpooledFile
+				if err := json.Unmarshal(metaData, &spooledFile); err != nil {
+					log.Debugf("Failed to unmarshal metadata file %s: %v", metaPath, err)
+					continue
+				}
+
+				// Verify the file still exists
+				if _, err := os.Stat(spooledFile.Filename); os.IsNotExist(err) {
+					log.Debugf("DLQ file %s does not exist, skipping", spooledFile.Filename)
+					continue
+				}
+
+				dlqFiles = append(dlqFiles, spooledFile)
+			}
+		}
+	}
+
+	return dlqFiles, nil
 }

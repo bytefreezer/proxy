@@ -59,6 +59,7 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 
 	// DLQ management endpoints
 	service.Get("/api/v2/dlq/stats", api.GetDLQStats())
+	service.Get("/api/v2/dlq/files", api.ListDLQFiles())
 	service.Post("/api/v2/dlq/retry", api.RetryDLQFiles())
 
 	// API documentation

@@ -292,6 +292,68 @@ echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
     reconnect_wait: 2            # Reconnect wait (seconds)
 ```
 
+### Multi-Tenant & Per-Plugin Authentication
+
+ByteFreezer Proxy supports **per-plugin tenant isolation** and **per-plugin authentication**, allowing you to:
+- **Route different plugins to different tenants**
+- **Use different authentication tokens per plugin/port**
+- **Isolate data streams by customer/environment**
+
+#### Multi-Tenant Example
+
+```yaml
+# Global fallback configuration
+tenant_id: "default-tenant"
+bearer_token: "default-token"
+
+inputs:
+  # Customer A - eBPF data on port 2056
+  - type: "udp"
+    name: "customer-a-ebpf"
+    config:
+      port: 2056
+      tenant_id: "customer-a"           # Dedicated tenant
+      bearer_token: "token-customer-a"  # Dedicated auth
+      dataset_id: "ebpf-data"
+      
+  # Customer B - Syslog data on port 2057  
+  - type: "udp"
+    name: "customer-b-syslog"
+    config:
+      port: 2057
+      tenant_id: "customer-b"           # Different tenant
+      bearer_token: "token-customer-b"  # Different auth
+      dataset_id: "syslog-data"
+      protocol: "syslog"
+      
+  # Production environment - HTTP webhook on port 8081
+  - type: "http"
+    name: "prod-webhook"
+    config:
+      port: 8081
+      tenant_id: "production"           # Production tenant
+      bearer_token: "prod-token"        # Production auth
+      dataset_id: "webhook-data"
+      
+  # Staging environment - HTTP webhook on port 8082
+  - type: "http" 
+    name: "staging-webhook"
+    config:
+      port: 8082
+      tenant_id: "staging"              # Staging tenant
+      bearer_token: "staging-token"     # Staging auth
+      dataset_id: "webhook-data"
+```
+
+**Result**: Each plugin routes to isolated tenant directories:
+```
+/spool/
+├── customer-a/ebpf-data/
+├── customer-b/syslog-data/
+├── production/webhook-data/
+└── staging/webhook-data/
+```
+
 ### Spooling Configuration
 
 For reliable data delivery during network issues:

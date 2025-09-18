@@ -1,10 +1,8 @@
-spooling rework
+- please verify that SOC message is generated if upload fails N times in the row. do not resend message every attempt perhaps backoff sending ?
+- please verify configuration for duplicate dataset names under same tenant and prevent duplicate configuration or any configuration that can either duplicate data in place or cross inject i.e. sflow and ebpf to same destination
+- please add api points that lists all un-uploaded files in dlq
+- please add way to reset, and move unuploaded files to queuee from dlq for re-processing support tenant/dataset or tenant/* 
 
-- all plugins should spool locally first before attempting to send file out
-- there should be size limit of such file, as is now on receive
-- the files from spool directory should be asyncronously be sent to receiver
-- the file should be attempted to send data N times to receiver, if N reached we should send message to SOC alerter
-- the file should be moved to local DLQ and not attempted to be resent
 
 
 

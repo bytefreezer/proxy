@@ -301,78 +301,6 @@ func TestValidateIdentifierPair(t *testing.T) {
 	}
 }
 
-func TestSanitizeIdentifier(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "valid input unchanged",
-			input:    "customer1",
-			expected: "customer1",
-		},
-		{
-			name:     "spaces replaced",
-			input:    "customer 1",
-			expected: "customer_1",
-		},
-		{
-			name:     "special chars replaced",
-			input:    "customer@1.test",
-			expected: "customer_1_test",
-		},
-		{
-			name:     "leading hyphen removed",
-			input:    "-customer",
-			expected: "customer",
-		},
-		{
-			name:     "trailing underscore fixed",
-			input:    "customer_",
-			expected: "customer",
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: "default",
-		},
-		{
-			name:     "only special chars",
-			input:    "@#$%",
-			expected: "default",
-		},
-		{
-			name:     "too long",
-			input:    strings.Repeat("a", 70),
-			expected: strings.Repeat("a", 64),
-		},
-		{
-			name:     "reserved name",
-			input:    "admin",
-			expected: "admin1",
-		},
-		{
-			name:     "complex case",
-			input:    "_customer@domain.com_",
-			expected: "customer_domain_com",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeIdentifier(tt.input)
-			if result != tt.expected {
-				t.Errorf("SanitizeIdentifier(%s) = %s, expected %s", tt.input, result, tt.expected)
-			}
-
-			// Verify the result is valid
-			if err := ValidateTenantID(result); err != nil {
-				t.Errorf("Sanitized result '%s' is not valid: %v", result, err)
-			}
-		})
-	}
-}
 
 func TestReservedNames(t *testing.T) {
 	reservedNames := []string{
@@ -431,10 +359,3 @@ func BenchmarkValidateTenantID(b *testing.B) {
 	}
 }
 
-func BenchmarkSanitizeIdentifier(b *testing.B) {
-	input := "customer@domain.com with spaces"
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = SanitizeIdentifier(input)
-	}
-}

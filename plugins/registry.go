@@ -59,10 +59,6 @@ func (r *Registry) List() []string {
 	return names
 }
 
-// GetPluginNames returns all available plugin names for logging/debugging
-func (r *Registry) GetPluginNames() []string {
-	return r.List()
-}
 
 // Global registry instance
 var GlobalRegistry = NewRegistry()

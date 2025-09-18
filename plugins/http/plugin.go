@@ -356,9 +356,3 @@ func (p *Plugin) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 }
 
-// GetMetrics returns current plugin metrics
-func (p *Plugin) GetMetrics() PluginMetrics {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.metrics
-}

@@ -37,7 +37,7 @@ func TestAPI_GetDLQStats(t *testing.T) {
 	testStructure := map[string]string{
 		"tenant1/dataset1/queue/batch1.ndjson.gz": "test data 1",
 		"tenant1/dataset1/queue/batch2.ndjson.gz": "test data 2",
-		"tenant1/dlq/dataset1/failed1.ndjson.gz":  "failed data 1",
+		"tenant1/dataset1/dlq/failed1.ndjson.gz":  "failed data 1",
 		"tenant2/dataset2/queue/batch3.ndjson.gz": "test data 3",
 	}
 
@@ -167,7 +167,7 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 	// Need to create the tenant directory first so getTenantDatasets can find it
 	tenantDir := filepath.Join(tempDir, "test-tenant")
 	testDatasetDir := filepath.Join(tenantDir, "test-dataset")
-	dlqDir := filepath.Join(tenantDir, "dlq", "test-dataset")
+	dlqDir := filepath.Join(testDatasetDir, "dlq")
 
 	// Create all necessary directories
 	if err := os.MkdirAll(testDatasetDir, 0750); err != nil {
@@ -289,7 +289,7 @@ func TestAPI_RetryDLQFiles_SpecificTenant(t *testing.T) {
 		for _, dataset := range datasets {
 			// Create tenant/dataset structure so getTenantDatasets can discover them
 			datasetDir := filepath.Join(tempDir, tenant, dataset)
-			dlqDir := filepath.Join(tempDir, tenant, "dlq", dataset)
+			dlqDir := filepath.Join(datasetDir, "dlq")
 
 			if err := os.MkdirAll(datasetDir, 0750); err != nil {
 				t.Fatalf("Failed to create dataset directory: %v", err)
@@ -379,7 +379,7 @@ func TestAPI_RetryDLQFiles_SpecificTenantAndDataset(t *testing.T) {
 
 	// Create DLQ files for specific tenant and dataset
 	datasetDir := filepath.Join(tempDir, "specific-tenant", "specific-dataset")
-	dlqDir := filepath.Join(tempDir, "specific-tenant", "dlq", "specific-dataset")
+	dlqDir := filepath.Join(datasetDir, "dlq")
 
 	if err := os.MkdirAll(datasetDir, 0750); err != nil {
 		t.Fatalf("Failed to create dataset directory: %v", err)
