@@ -62,8 +62,16 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Handle config validation
+	// Always validate configuration during startup
+	if err := config.ValidateConfig(&cfg); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
+	// Handle config validation flag
 	if *validateConfig {
+		if err := config.ValidateConfig(&cfg); err != nil {
+			log.Fatalf("Configuration validation failed: %v", err)
+		}
 		fmt.Printf("Configuration validation successful: %s\n", *configFile)
 		os.Exit(0)
 	}

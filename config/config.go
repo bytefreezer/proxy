@@ -401,44 +401,46 @@ func validateIdentifiers(cfg *Config) error {
 		return fmt.Errorf("global tenant_id: %w", err)
 	}
 
-	// Skip UDP validation if UDP is disabled (plugin system doesn't use UDP listeners)
-	if !cfg.UDP.Enabled {
-		return nil
-	}
-
-	// Validate UDP listener identifiers
-	for i, listener := range cfg.UDP.Listeners {
-		if listener.DatasetID == "" {
-			continue // Skip validation for inactive listeners
-		}
-
-		// Validate dataset ID
-		if err := ValidateDatasetID(listener.DatasetID); err != nil {
-			return fmt.Errorf("UDP listener %d dataset_id: %w", i, err)
-		}
-
-		// Validate listener-specific tenant ID if present
-		if listener.TenantID != "" {
-			if err := ValidateTenantID(listener.TenantID); err != nil {
-				return fmt.Errorf("UDP listener %d tenant_id: %w", i, err)
+	// Validate legacy UDP listener identifiers if UDP is enabled
+	if cfg.UDP.Enabled {
+		for i, listener := range cfg.UDP.Listeners {
+			if listener.DatasetID == "" {
+				continue // Skip validation for inactive listeners
 			}
-		}
 
-		// Get effective tenant ID and validate the pair
-		effectiveTenantID := cfg.GetEffectiveTenantID(listener)
-		if effectiveTenantID != "" {
-			if err := ValidateIdentifierPair(effectiveTenantID, listener.DatasetID); err != nil {
-				return fmt.Errorf("UDP listener %d: %w", i, err)
+			// Validate dataset ID
+			if err := ValidateDatasetID(listener.DatasetID); err != nil {
+				return fmt.Errorf("UDP listener %d dataset_id: %w", i, err)
+			}
+
+			// Validate listener-specific tenant ID if present
+			if listener.TenantID != "" {
+				if err := ValidateTenantID(listener.TenantID); err != nil {
+					return fmt.Errorf("UDP listener %d tenant_id: %w", i, err)
+				}
+			}
+
+			// Get effective tenant ID and validate the pair
+			effectiveTenantID := cfg.GetEffectiveTenantID(listener)
+			if effectiveTenantID != "" {
+				if err := ValidateIdentifierPair(effectiveTenantID, listener.DatasetID); err != nil {
+					return fmt.Errorf("UDP listener %d: %w", i, err)
+				}
 			}
 		}
 	}
 
-	// Validate plugin inputs for duplicate dataset names within same tenant
+	// Always validate plugin inputs for duplicate dataset names and port conflicts
 	if err := validatePluginInputs(cfg); err != nil {
 		return fmt.Errorf("plugin input validation failed: %w", err)
 	}
 
 	return nil
+}
+
+// ValidateConfig validates the entire configuration including plugin inputs and port conflicts
+func ValidateConfig(cfg *Config) error {
+	return validateIdentifiers(cfg)
 }
 
 // validatePluginInputs validates plugin inputs for duplicate dataset names and other conflicts
@@ -449,6 +451,9 @@ func validatePluginInputs(cfg *Config) error {
 
 	// Track tenant-dataset combinations to detect duplicates
 	tenantDatasetMap := make(map[string]map[string]string) // tenantID -> datasetID -> pluginType
+	
+	// Track port usage to prevent conflicts
+	portMap := make(map[int]string) // port -> "pluginType[pluginName] for dataset_id"
 	
 	for i, input := range cfg.Inputs {
 		// Get effective tenant ID
@@ -483,6 +488,31 @@ func validatePluginInputs(cfg *Config) error {
 		}
 		if err := ValidateIdentifierPair(effectiveTenantID, datasetID); err != nil {
 			return fmt.Errorf("plugin input %d (%s): %w", i, input.Type, err)
+		}
+
+		// Check for port conflicts (only for plugins that use ports)
+		if portValue, exists := input.Config["port"]; exists {
+			var port int
+			switch p := portValue.(type) {
+			case int:
+				port = p
+			case float64:
+				port = int(p)
+			default:
+				return fmt.Errorf("plugin input %d (%s): port must be a number", i, input.Type)
+			}
+
+			if port <= 0 || port > 65535 {
+				return fmt.Errorf("plugin input %d (%s): port %d is invalid (must be between 1-65535)", i, input.Type, port)
+			}
+
+			if existingUser, exists := portMap[port]; exists {
+				return fmt.Errorf("plugin input %d (%s): port %d is already in use by %s. Each port can only be used once to prevent conflicts",
+					i, input.Type, port, existingUser)
+			}
+
+			// Record this port usage
+			portMap[port] = fmt.Sprintf("%s[%s] for dataset_id=%s", input.Type, input.Name, datasetID)
 		}
 
 		// Initialize tenant map if needed

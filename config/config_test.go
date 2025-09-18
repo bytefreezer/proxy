@@ -189,6 +189,91 @@ func TestValidatePluginInputs(t *testing.T) {
 			t.Errorf("Error should mention missing dataset_id, got: %v", err)
 		}
 	})
+
+	t.Run("port conflicts between different datasets", func(t *testing.T) {
+		cfg := &Config{
+			TenantID: "test-tenant",
+			Inputs: []plugins.PluginConfig{
+				{
+					Type: "udp",
+					Name: "udp-listener-1",
+					Config: map[string]interface{}{
+						"dataset_id": "dataset-1",
+						"port":       8080,
+					},
+				},
+				{
+					Type: "http",
+					Name: "http-webhook",
+					Config: map[string]interface{}{
+						"dataset_id": "dataset-2",
+						"port":       8080, // Same port as UDP listener
+					},
+				},
+			},
+		}
+
+		err := validatePluginInputs(cfg)
+		if err == nil {
+			t.Error("Expected error for port conflict")
+		}
+		if err != nil && !stringContains(err.Error(), "port 8080 is already in use") {
+			t.Errorf("Error should mention port conflict, got: %v", err)
+		}
+	})
+
+	t.Run("different ports are allowed", func(t *testing.T) {
+		cfg := &Config{
+			TenantID: "test-tenant",
+			Inputs: []plugins.PluginConfig{
+				{
+					Type: "udp",
+					Name: "udp-listener",
+					Config: map[string]interface{}{
+						"dataset_id": "dataset-1",
+						"port":       8080,
+					},
+				},
+				{
+					Type: "http",
+					Name: "http-webhook",
+					Config: map[string]interface{}{
+						"dataset_id": "dataset-2",
+						"port":       8081, // Different port
+					},
+				},
+			},
+		}
+
+		err := validatePluginInputs(cfg)
+		if err != nil {
+			t.Errorf("Unexpected error with different ports: %v", err)
+		}
+	})
+
+	t.Run("invalid port range", func(t *testing.T) {
+		cfg := &Config{
+			TenantID: "test-tenant",
+			Inputs: []plugins.PluginConfig{
+				{
+					Type: "udp",
+					Name: "udp-listener",
+					Config: map[string]interface{}{
+						"dataset_id": "dataset-1",
+						"port":       70000, // Invalid port
+					},
+				},
+			},
+		}
+
+		err := validatePluginInputs(cfg)
+		if err == nil {
+			t.Error("Expected error for invalid port range")
+		}
+		if err != nil && !stringContains(err.Error(), "port 70000 is invalid") {
+			t.Errorf("Error should mention invalid port, got: %v", err)
+		}
+	})
 }
 
 func stringContains(s, substr string) bool {

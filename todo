@@ -1,8 +1,12 @@
-- please verify that SOC message is generated if upload fails N times in the row. do not resend message every attempt perhaps backoff sending ?
-- please verify configuration for duplicate dataset names under same tenant and prevent duplicate configuration or any configuration that can either duplicate data in place or cross inject i.e. sflow and ebpf to same destination
-- please add api points that lists all un-uploaded files in dlq
-- please add way to reset, and move unuploaded files to queuee from dlq for re-processing support tenant/dataset or tenant/* 
+ok now it looks good. lets test its.
+please create configuration like so:
 
+tenant: customer-1
+ebpf-data 2056 udp
+
+
+tenant: customer-2
+ebpf-data 2056 udp
 
 
 
