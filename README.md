@@ -13,7 +13,7 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 - **📦 Smart Batching**: Efficient line-based batching with gzip compression
 - **🔄 Reliable Delivery**: HTTP forwarding with retry logic and local spooling
 - **🏢 Multi-Tenant Architecture**: Isolated data streams with per-tenant authentication
-- **📊 Protocol Intelligence**: Optional lightweight parsing for structured protocols
+- **🔀 Pure Pass-Through**: No data modification, parsing, or transformation
 - **🛡️ Enterprise-Ready**: Health monitoring, metrics, and operational APIs
 
 ### **Supported Input Plugins**
@@ -25,14 +25,17 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 | **NATS** | NATS messaging | Pub/sub patterns, microservice communication |
 
 ### **Supported Data Formats**
+ByteFreezer Proxy is a **pure pass-through service** that forwards any line-based data without modification:
+
 | Format | Processing | Use Cases |
 |--------|------------|-----------|
 | **JSON Logs** | Pass-through | Application logs, structured events |
-| **Plain Text** | Metadata wrapping | Legacy logs, free-form messages |
+| **Plain Text** | Pass-through | Legacy logs, free-form messages |
 | **CSV/TSV** | Pass-through | Metrics, tabular data exports |
-| **Syslog** | Structure extraction | System logs, network device logs |
-| **NetFlow/IPFIX** | Binary parsing | Network monitoring, traffic analysis |
-| **sFlow** | Binary parsing | Network sampling, performance monitoring |
+| **Syslog** | Pass-through | System logs, network device logs |
+| **Any Line-Based Data** | Pass-through | Custom formats, proprietary logs |
+
+**Note**: The proxy forwards data exactly as received - no parsing, extraction, or modification occurs.
 
 ## Quick Start
 
@@ -65,7 +68,6 @@ inputs:
       host: "0.0.0.0"
       port: 2056
       dataset_id: "syslog-data"
-      protocol: "syslog"
       
   # HTTP Plugin - Webhook endpoints
   - type: "http"
@@ -205,15 +207,13 @@ inputs:
     dataset_id: "syslog-data"    # Dataset identifier
     tenant_id: "custom-tenant"   # Optional: override global
     bearer_token: "token"        # Optional: override global
-    protocol: "syslog"           # udp, syslog, netflow, sflow
-    syslog_mode: "rfc3164"       # rfc3164, rfc5424
     read_buffer_size: 65536      # Buffer size in bytes
     worker_count: 4              # Number of worker goroutines
 ```
 
 **⚠️ Important: UDP Buffer Size Requirements**
 
-UDP plugins handle all UDP-based protocols including **raw UDP**, **syslog**, **netflow**, and **sflow** data streams. For these plugins to handle high-throughput data without packet drops, the `read_buffer_size` setting must match your system's UDP receive buffer configuration:
+UDP plugins handle all UDP-based data streams as pass-through without parsing. For these plugins to handle high-throughput data without packet drops, the `read_buffer_size` setting must match your system's UDP receive buffer configuration:
 
 ```bash
 # Check current system UDP buffer settings
@@ -221,7 +221,7 @@ sysctl net.core.rmem_max
 sysctl net.core.rmem_default
 
 # Set UDP buffer size to match your plugin configuration
-# (This setting applies globally to ALL UDP-based plugins: syslog, netflow, sflow, etc.)
+# (This setting applies globally to ALL UDP-based plugins)
 sysctl -w net.core.rmem_max=65536
 sysctl -w net.core.rmem_default=65536
 
@@ -231,12 +231,11 @@ echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
 ```
 
 **Buffer Size Guidelines:**
-- **Production (eBPF/Syslog/Netflow/Sflow)**: 64KB (`65536`) - **Recommended**
+- **Production (High-volume UDP streams)**: 64KB (`65536`) - **Recommended**
 - **Development/Testing**: 8KB-32KB (`8192`-`32768`)
 - **Low-volume/Lab**: 4KB (`4096`)
 
 **Important Notes:**
-- **Syslog**, **netflow**, and **sflow** are all UDP-based protocols that benefit from larger buffers
 - All UDP-based plugins share the same system buffer settings
 - Mismatched buffer sizes will cause kernel-level packet drops that cannot be recovered
 
@@ -324,7 +323,6 @@ inputs:
       tenant_id: "customer-b"           # Different tenant
       bearer_token: "token-customer-b"  # Different auth
       dataset_id: "syslog-data"
-      protocol: "syslog"
       
   # Production environment - HTTP webhook on port 8081
   - type: "http"
@@ -507,14 +505,14 @@ cd integration-tests
 #### UDP Plugin
 
 ```bash
-# Test syslog (RFC3164)
+# Test UDP with syslog format
 echo "<134>$(date '+%b %d %H:%M:%S') myhost myapp: Test syslog message" | nc -u localhost 2056
-
-# Test NetFlow (requires NetFlow generator)
-# Test sFlow (requires sFlow generator)
 
 # Test plain UDP
 echo "Plain text log message" | nc -u localhost 2056
+
+# Test JSON over UDP
+echo '{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"Test"}' | nc -u localhost 2056
 ```
 
 #### HTTP Plugin
