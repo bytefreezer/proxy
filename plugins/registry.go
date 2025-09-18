@@ -59,7 +59,6 @@ func (r *Registry) List() []string {
 	return names
 }
 
-
 // Global registry instance
 var GlobalRegistry = NewRegistry()
 

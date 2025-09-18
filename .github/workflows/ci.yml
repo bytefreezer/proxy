@@ -247,10 +247,10 @@ jobs:
       run: test -f README.md
 
     - name: Check build documentation exists
-      run: test -f BUILD.md
+      run: test -f docs/BUILD.md
 
     - name: Check AWX guide exists
-      run: test -f AWX_DEPLOYMENT_GUIDE.md
+      run: test -f docs/AWX_DEPLOYMENT_GUIDE.md
 
     - name: Check configuration documentation
       run: |

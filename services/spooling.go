@@ -498,17 +498,17 @@ func (s *SpoolingService) getTenants() ([]string, error) {
 // getTenantMetadataFiles returns metadata files for all datasets in a tenant
 func (s *SpoolingService) getTenantMetadataFiles(tenantID string) ([]SpooledFile, error) {
 	var allFiles []SpooledFile
-	
+
 	// Get all datasets for this tenant
 	datasets, err := s.getTenantDatasets(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get datasets for tenant %s: %w", tenantID, err)
 	}
-	
+
 	// Collect metadata from all datasets
 	for _, datasetID := range datasets {
 		metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
-		
+
 		entries, err := os.ReadDir(metaDir)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -680,14 +680,14 @@ func (s *SpoolingService) processRetries() {
 			if file.RetryCount >= 4 {
 				// Move to DLQ
 				log.Warnf("File %s exceeded retry limit (4), moving to DLQ", file.ID)
-				
+
 				// Send SOC alert for data delivery failure
 				if s.config.SOCAlertClient != nil {
 					s.config.SOCAlertClient.SendAlert("high", "Data Delivery Failed",
 						fmt.Sprintf("File %s failed to deliver after 4 attempts, moved to DLQ", file.ID),
 						fmt.Sprintf("Tenant: %s, Dataset: %s, File: %s", file.TenantID, file.DatasetID, file.Filename))
 				}
-				
+
 				if dlqErr := s.moveToNewDLQ(file); dlqErr != nil {
 					log.Errorf("Failed to move file %s to DLQ: %v", file.ID, dlqErr)
 				}
@@ -2035,7 +2035,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 		for _, dataset := range datasets {
 			// Get DLQ directory path for this tenant/dataset
 			dlqDir := filepath.Join(s.directory, tenant, dataset, "dlq")
-			
+
 			if _, err := os.Stat(dlqDir); os.IsNotExist(err) {
 				continue // DLQ directory doesn't exist for this tenant/dataset
 			}
@@ -2064,7 +2064,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 				}
 
 				metaPath := filepath.Join(dlqDir, entry.Name())
-				
+
 				// Additional security check: ensure the resolved path is still within dlqDir
 				cleanPath := filepath.Clean(metaPath)
 				if !strings.HasPrefix(cleanPath, filepath.Clean(dlqDir)+string(filepath.Separator)) &&

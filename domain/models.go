@@ -40,4 +40,3 @@ type ProxyStats struct {
 	LastActivity        time.Time
 	UptimeSeconds       int64
 }
-

@@ -301,7 +301,6 @@ func TestValidateIdentifierPair(t *testing.T) {
 	}
 }
 
-
 func TestReservedNames(t *testing.T) {
 	reservedNames := []string{
 		"admin", "root", "system", "proxy", "api",
@@ -358,4 +357,3 @@ func BenchmarkValidateTenantID(b *testing.B) {
 		_ = ValidateTenantID(tenantID)
 	}
 }
-

@@ -162,7 +162,7 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	if cfg.UDP.BatchTimeoutSeconds == 0 {
 		cfg.UDP.BatchTimeoutSeconds = 30
 	}
-	
+
 	// Batching defaults
 	if cfg.Batching.TimeoutSeconds == 0 {
 		cfg.Batching.TimeoutSeconds = 30
@@ -179,7 +179,7 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	if cfg.Batching.CompressionLevel == 0 {
 		cfg.Batching.CompressionLevel = 6
 	}
-	
+
 	if cfg.Receiver.TimeoutSec == 0 {
 		cfg.Receiver.TimeoutSec = 30
 	}
@@ -247,7 +247,6 @@ func (cfg *Config) GetReceiverTimeout() time.Duration {
 func (cfg *Config) GetRetryDelay() time.Duration {
 	return time.Duration(cfg.Receiver.RetryDelaySec) * time.Second
 }
-
 
 // TenantInfo represents tenant configuration details
 type TenantInfo struct {
@@ -451,10 +450,10 @@ func validatePluginInputs(cfg *Config) error {
 
 	// Track tenant-dataset combinations to detect duplicates
 	tenantDatasetMap := make(map[string]map[string]string) // tenantID -> datasetID -> pluginType
-	
+
 	// Track port usage to prevent conflicts
 	portMap := make(map[int]string) // port -> "pluginType[pluginName] for dataset_id"
-	
+
 	for i, input := range cfg.Inputs {
 		// Get effective tenant ID
 		var effectiveTenantID string

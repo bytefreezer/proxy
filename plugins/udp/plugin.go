@@ -340,4 +340,3 @@ func (p *Plugin) processMessage(msg *udpMessage) {
 		log.Warnf("Output channel full, dropping message from %s", msg.From)
 	}
 }
-
