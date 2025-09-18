@@ -68,6 +68,9 @@ inputs:
       host: "0.0.0.0"
       port: 2056
       dataset_id: "syslog-data"
+      #will overwrite global for this specific dataset
+      #tenant_id: "other-company"  
+      #bearer_token: "other-bearer-token"
       
   # HTTP Plugin - Webhook endpoints
   - type: "http"
