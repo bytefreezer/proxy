@@ -453,9 +453,12 @@ jobs:
           
           ### 📚 Documentation
           
-          - [Build Guide](BUILD.md)
-          - [AWX Deployment Guide](AWX_DEPLOYMENT_GUIDE.md)
-          - [GitHub Actions Troubleshooting](GITHUB_ACTIONS_TROUBLESHOOTING.md)
+          - [Build Guide](docs/BUILD.md)
+          - [AWX Deployment Guide](docs/AWX_DEPLOYMENT_GUIDE.md)
+          - [Multi-Tenant Setup](docs/MULTI_TENANT_SETUP.md)
+          - [Testing Guide](docs/TESTING.md)
+          - [Monitoring Setup](docs/MONITORING_SETUP.md)
+          - [K3s Install Guide](docs/K3S_INSTALL_GUIDE.md)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

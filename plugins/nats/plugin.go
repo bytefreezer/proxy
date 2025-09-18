@@ -307,4 +307,3 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 		p.mu.Unlock()
 	}
 }
-

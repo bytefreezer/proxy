@@ -347,4 +347,3 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 		p.metrics.MessagesDropped++
 	}
 }
-

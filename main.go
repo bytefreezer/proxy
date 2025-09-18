@@ -201,7 +201,6 @@ func main() {
 		}()
 	}
 
-
 	// Stop API server
 	go func() {
 		apiServer.Stop()
@@ -236,4 +235,3 @@ func setLogLevel(levelStr string) {
 		log.SetMinLogLevel(log.MinLevelError)
 	}
 }
-

@@ -29,16 +29,16 @@ type Plugin struct {
 
 // Config represents HTTP plugin configuration
 type Config struct {
-	Host                string `mapstructure:"host"`
-	Port                int    `mapstructure:"port"`
-	Path                string `mapstructure:"path"`
-	TenantID            string `mapstructure:"tenant_id"`
-	DatasetID           string `mapstructure:"dataset_id"`
-	BearerToken         string `mapstructure:"bearer_token,omitempty"`
-	MaxPayloadSize      int64  `mapstructure:"max_payload_size,omitempty"`      // bytes
-	MaxLinesPerRequest  int    `mapstructure:"max_lines_per_request,omitempty"` // lines limit
-	ReadTimeout         int    `mapstructure:"read_timeout,omitempty"`          // seconds
-	WriteTimeout        int    `mapstructure:"write_timeout,omitempty"`         // seconds
+	Host                 string `mapstructure:"host"`
+	Port                 int    `mapstructure:"port"`
+	Path                 string `mapstructure:"path"`
+	TenantID             string `mapstructure:"tenant_id"`
+	DatasetID            string `mapstructure:"dataset_id"`
+	BearerToken          string `mapstructure:"bearer_token,omitempty"`
+	MaxPayloadSize       int64  `mapstructure:"max_payload_size,omitempty"`      // bytes
+	MaxLinesPerRequest   int    `mapstructure:"max_lines_per_request,omitempty"` // lines limit
+	ReadTimeout          int    `mapstructure:"read_timeout,omitempty"`          // seconds
+	WriteTimeout         int    `mapstructure:"write_timeout,omitempty"`         // seconds
 	EnableAuthentication bool   `mapstructure:"enable_authentication,omitempty"`
 }
 
@@ -156,7 +156,7 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		
+
 		log.Infof("HTTP webhook server starting on %s", p.server.Addr)
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("HTTP server error: %v", err)
@@ -188,7 +188,7 @@ func (p *Plugin) Stop() error {
 	if p.server != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		if err := p.server.Shutdown(shutdownCtx); err != nil {
 			log.Errorf("Error shutting down HTTP server: %v", err)
 		}
@@ -274,7 +274,7 @@ func (p *Plugin) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 && body[len(body)-1] != '\n' {
 		// Count lines properly if data doesn't end with newline
 	}
-	
+
 	if lineCount > p.config.MaxLinesPerRequest {
 		http.Error(w, fmt.Sprintf("Too many lines (max %d)", p.config.MaxLinesPerRequest), http.StatusRequestEntityTooLarge)
 		p.mu.Lock()
@@ -342,7 +342,7 @@ func (p *Plugin) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
+
 	response := fmt.Sprintf(`{
 		"status": "%s",
 		"message": "%s", 
@@ -350,9 +350,8 @@ func (p *Plugin) healthHandler(w http.ResponseWriter, r *http.Request) {
 		"bytes_received": %d,
 		"requests_rejected": %d,
 		"last_updated": "%s"
-	}`, health.Status, health.Message, metrics.RequestsReceived, 
+	}`, health.Status, health.Message, metrics.RequestsReceived,
 		metrics.BytesReceived, metrics.RequestsRejected, health.LastUpdated.Format(time.RFC3339))
-	
+
 	w.Write([]byte(response))
 }
-

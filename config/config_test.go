@@ -39,7 +39,7 @@ func TestValidateIdentifiers(t *testing.T) {
 			config := &Config{
 				TenantID: tt.tenantID,
 			}
-			
+
 			err := validateIdentifiers(config)
 
 			if tt.expectErr && err == nil {

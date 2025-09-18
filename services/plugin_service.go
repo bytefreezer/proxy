@@ -208,14 +208,14 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 	if ps.spoolingService == nil {
 		return fmt.Errorf("spooling service not available")
 	}
-	
+
 	// Use the already compressed data from the batch
 	return ps.spoolingService.StoreBatchToQueue(
 		batch.TenantID,
-		batch.DatasetID, 
+		batch.DatasetID,
 		batch.BearerToken,
 		batch.Data, // Already compressed data
-		"", // No failure reason - this is initial spooling
+		"",         // No failure reason - this is initial spooling
 	)
 }
 

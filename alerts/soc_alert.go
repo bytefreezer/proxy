@@ -63,7 +63,6 @@ func (client *SOCAlertClient) SendAlert(severity, title, message, details string
 	return client.sendAlert(severity, title, message, details)
 }
 
-
 func (client *SOCAlertClient) SendReceiverForwardingFailureAlert(url string, err error) error {
 	return client.SendWarningAlert(
 		"Receiver Forwarding Failure",

@@ -81,7 +81,6 @@ func isReservedName(name string) bool {
 	return false
 }
 
-
 // ValidateIdentifierPair validates both tenant and dataset IDs together
 func ValidateIdentifierPair(tenantID, datasetID string) error {
 	if err := ValidateTenantID(tenantID); err != nil {

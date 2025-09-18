@@ -54,24 +54,24 @@ func NewManagerWithGlobals(configs []PluginConfig, output chan<- *DataMessage, r
 	enrichedConfigs := make([]PluginConfig, len(configs))
 	for i, config := range configs {
 		enrichedConfigs[i] = config
-		
+
 		// Copy the config map to avoid modifying the original
 		enrichedConfigs[i].Config = make(map[string]interface{})
 		for k, v := range config.Config {
 			enrichedConfigs[i].Config[k] = v
 		}
-		
+
 		// Add global tenant_id if not present
 		if _, exists := enrichedConfigs[i].Config["tenant_id"]; !exists && globalTenantID != "" {
 			enrichedConfigs[i].Config["tenant_id"] = globalTenantID
 		}
-		
+
 		// Add global bearer_token if not present
 		if _, exists := enrichedConfigs[i].Config["bearer_token"]; !exists && globalBearerToken != "" {
 			enrichedConfigs[i].Config["bearer_token"] = globalBearerToken
 		}
 	}
-	
+
 	return NewManager(enrichedConfigs, output, registry)
 }
 

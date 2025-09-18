@@ -176,4 +176,3 @@ func setupMetrics(ctx context.Context, cfg *config.Config, res *resource.Resourc
 		}
 	}, nil
 }
-
