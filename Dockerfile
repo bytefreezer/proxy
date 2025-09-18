@@ -73,14 +73,16 @@ USER bytefreezer
 ENV CONFIG_FILE=/etc/bytefreezer-proxy/config.yaml
 
 # Expose ports
-# 8088: API/Health endpoint  
-# 2056-2065: UDP listeners (up to 10 datasets supported)
-# Only configured ports will be active, but all are exposed for flexibility
-EXPOSE 8088/tcp 2056/udp 2057/udp 2058/udp 2059/udp 2060/udp 2061/udp 2062/udp 2063/udp 2064/udp 2065/udp
+# 8088: API/Health endpoint
+# 9090: Metrics endpoint (OTEL/Prometheus)  
+# 2056-2065: UDP plugin ports (configurable)
+# 8081-8090: HTTP plugin ports (configurable)
+# Only configured plugin ports will be active, but common ones are exposed for flexibility
+EXPOSE 8088/tcp 9090/tcp 2056/udp 2057/udp 2058/udp 2059/udp 2060/udp 2061/udp 2062/udp 2063/udp 2064/udp 2065/udp 8081/tcp 8082/tcp 8083/tcp 8084/tcp 8085/tcp
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8088/health || exit 1
+    CMD curl -f http://localhost:8088/api/v2/health || exit 1
 
 # Set working directory
 WORKDIR /
@@ -93,7 +95,7 @@ ARG VERSION=unknown
 ARG BUILD_TIME=unknown
 LABEL maintainer="ByteFreezer Team" \
       org.opencontainers.image.title="ByteFreezer Proxy" \
-      org.opencontainers.image.description="High-performance UDP log proxy for ByteFreezer platform" \
+      org.opencontainers.image.description="High-performance multi-protocol data streaming proxy with plugin architecture supporting UDP, HTTP, Kafka, NATS and custom plugins" \
       org.opencontainers.image.vendor="ByteFreezer" \
       org.opencontainers.image.source="https://github.com/n0needt0/bytefreezer-proxy" \
       org.opencontainers.image.documentation="https://github.com/n0needt0/bytefreezer-proxy/blob/main/README.md" \

@@ -1,0 +1,124 @@
+# ByteFreezer Proxy - ZMQ Plugin Configuration Examples
+
+app:
+  name: bytefreezer-proxy
+  version: 0.0.2
+
+logging:
+  level: info
+  encoding: console
+
+server:
+  api_port: 8088
+
+# Global tenant configuration
+tenant_id: "zmq-tenant"
+bearer_token: "zmq-bearer-token"
+
+# ZMQ Plugin configurations
+inputs:
+  # Example 1: PULL Socket for Load Balancing
+  - type: "zmq"
+    name: "zmq-pull-worker"
+    config:
+      tenant_id: "logs-tenant"
+      dataset_id: "worker-logs"
+      socket_type: "PULL"
+      endpoints: ["tcp://localhost:5555"]
+      bind: false                    # Connect to PUSH sockets
+      worker_count: 2
+      high_water_mark: 10000
+      receive_timeout_ms: 1000
+
+  # Example 2: SUB Socket for Pub/Sub with Topic Filtering
+  - type: "zmq"
+    name: "zmq-event-subscriber"
+    config:
+      tenant_id: "events-tenant"
+      dataset_id: "filtered-events"
+      socket_type: "SUB"
+      endpoints: 
+        - "tcp://publisher1:5556"
+        - "tcp://publisher2:5556"
+      bind: false
+      subscribe_topics: 
+        - "events.user."
+        - "events.system."
+        - "alerts."
+      worker_count: 1
+      high_water_mark: 50000
+      receive_timeout_ms: 500
+
+  # Example 3: DEALER Socket for Request/Response
+  - type: "zmq"
+    name: "zmq-rpc-client"
+    config:
+      tenant_id: "rpc-tenant"
+      dataset_id: "rpc-responses"
+      socket_type: "DEALER"
+      endpoints: ["tcp://rpc-server:5557"]
+      bind: false
+      worker_count: 4
+      connect_timeout_ms: 5000
+      receive_timeout_ms: 2000
+      max_reconnect_attempts: 10
+      reconnect_interval_ms: 2000
+
+  # Example 4: High-Performance PULL with Optimized Settings
+  - type: "zmq"
+    name: "zmq-high-throughput"
+    config:
+      tenant_id: "metrics-tenant"
+      dataset_id: "high-volume-metrics"
+      socket_type: "PULL"
+      endpoints: ["tcp://*:5558"]
+      bind: true                     # Bind and accept connections
+      worker_count: 8
+      high_water_mark: 100000
+      receive_buffer_size: 131072    # 128KB
+      send_buffer_size: 131072       # 128KB
+      message_queue_size: 10000
+      receive_timeout_ms: 100
+
+  # Example 5: SUB Socket with CURVE Encryption
+  - type: "zmq"
+    name: "zmq-secure-subscriber"
+    config:
+      tenant_id: "secure-tenant"
+      dataset_id: "encrypted-data"
+      socket_type: "SUB"
+      endpoints: ["tcp://secure-publisher:5559"]
+      bind: false
+      subscribe_topics: ["secure."]
+      curve_enabled: true
+      curve_server_key: "rq:rM>}U?@Lns47E1%kR.o@n%FcmmsL/@{H8]yf7"
+      curve_public_key: "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"
+      curve_secret_key: "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
+      worker_count: 1
+
+# Receiver configuration
+receiver:
+  base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+  timeout_seconds: 30
+  retry_count: 3
+  retry_delay_seconds: 1
+
+# Enable OTEL metrics to monitor ZMQ performance
+otel:
+  enabled: true
+  service_name: "bytefreezer-proxy-zmq"
+  prometheus_mode: true
+  metrics_port: 9090
+  metrics_host: "0.0.0.0"
+
+# Spooling for reliability
+spooling:
+  enabled: true
+  directory: "/var/spool/bytefreezer-proxy"
+  max_size_bytes: 1073741824  # 1GB
+  retry_attempts: 5
+  retry_interval_seconds: 60
+
+# SOC alerting (optional)
+soc:
+  enabled: false

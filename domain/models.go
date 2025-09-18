@@ -6,11 +6,12 @@ import (
 
 // UDPMessage represents a single UDP message received
 type UDPMessage struct {
-	Data      []byte
-	From      string
-	Timestamp time.Time
-	TenantID  string
-	DatasetID string
+	Data        []byte
+	From        string
+	Timestamp   time.Time
+	TenantID    string
+	DatasetID   string
+	BearerToken string // Authentication token for this message's tenant
 }
 
 // DataBatch represents a batch of UDP messages ready for forwarding
@@ -18,6 +19,7 @@ type DataBatch struct {
 	ID           string
 	TenantID     string
 	DatasetID    string
+	BearerToken  string // Authentication token for this tenant
 	Messages     []UDPMessage
 	LineCount    int
 	TotalBytes   int64
@@ -39,22 +41,3 @@ type ProxyStats struct {
 	UptimeSeconds       int64
 }
 
-// ReceiverConfig represents configuration for forwarding to bytefreezer-receiver
-type ReceiverConfig struct {
-	BaseURL    string
-	TenantID   string
-	DatasetID  string
-	Timeout    time.Duration
-	RetryCount int
-}
-
-// UDPConfig represents UDP listener configuration
-type UDPConfig struct {
-	Host              string
-	ReadBufferSize    int
-	MaxBatchLines     int
-	MaxBatchBytes     int64
-	BatchTimeoutSec   int
-	CompressionLevel  int
-	EnableCompression bool
-}

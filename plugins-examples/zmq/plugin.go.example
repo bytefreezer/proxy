@@ -1,0 +1,494 @@
+package zmq
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
+	"github.com/n0needt0/go-goodies/log"
+	"github.com/pebbe/zmq4"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// Plugin implements the ZeroMQ input plugin
+type Plugin struct {
+	config  Config
+	socket  *zmq4.Socket
+	context *zmq4.Context
+	health  plugins.PluginHealth
+	mu      sync.RWMutex
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	metrics ZMQMetrics
+}
+
+// Config represents ZMQ plugin configuration
+type Config struct {
+	TenantID             string   `mapstructure:"tenant_id"`
+	DatasetID            string   `mapstructure:"dataset_id"`
+	SocketType           string   `mapstructure:"socket_type"`
+	Endpoints            []string `mapstructure:"endpoints"`
+	Bind                 bool     `mapstructure:"bind"`
+	SubscribeTopics      []string `mapstructure:"subscribe_topics"`
+	ConnectTimeoutMs     int      `mapstructure:"connect_timeout_ms"`
+	ReceiveTimeoutMs     int      `mapstructure:"receive_timeout_ms"`
+	ReconnectIntervalMs  int      `mapstructure:"reconnect_interval_ms"`
+	MaxReconnectAttempts int      `mapstructure:"max_reconnect_attempts"`
+	HighWaterMark        int      `mapstructure:"high_water_mark"`
+	ReceiveBufferSize    int      `mapstructure:"receive_buffer_size"`
+	SendBufferSize       int      `mapstructure:"send_buffer_size"`
+	WorkerCount          int      `mapstructure:"worker_count"`
+	MessageQueueSize     int      `mapstructure:"message_queue_size"`
+	CurveEnabled         bool     `mapstructure:"curve_enabled"`
+	CurveServerKey       string   `mapstructure:"curve_server_key"`
+	CurvePublicKey       string   `mapstructure:"curve_public_key"`
+	CurveSecretKey       string   `mapstructure:"curve_secret_key"`
+}
+
+// ZMQMetrics tracks ZMQ plugin metrics
+type ZMQMetrics struct {
+	MessagesReceived   prometheus.Counter
+	BytesReceived      prometheus.Counter
+	MessagesDropped    prometheus.Counter
+	ConnectionErrors   prometheus.Counter
+	ReconnectAttempts  prometheus.Counter
+	ProcessingDuration prometheus.Histogram
+}
+
+// NewPlugin creates a new ZMQ plugin instance
+func NewPlugin() plugins.InputPlugin {
+	return &Plugin{
+		health: plugins.PluginHealth{
+			Status:      plugins.HealthStatusStopped,
+			Message:     "Plugin created but not started",
+			LastUpdated: time.Now(),
+		},
+		metrics: ZMQMetrics{
+			MessagesReceived: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "zmq_messages_received_total",
+				Help: "Total messages received from ZMQ socket",
+			}),
+			BytesReceived: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "zmq_bytes_received_total",
+				Help: "Total bytes received from ZMQ socket",
+			}),
+			MessagesDropped: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "zmq_messages_dropped_total",
+				Help: "Total messages dropped due to full queue",
+			}),
+			ConnectionErrors: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "zmq_connection_errors_total",
+				Help: "Total ZMQ connection errors",
+			}),
+			ReconnectAttempts: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "zmq_reconnect_attempts_total",
+				Help: "Total ZMQ reconnection attempts",
+			}),
+			ProcessingDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+				Name:    "zmq_message_processing_duration_seconds",
+				Help:    "ZMQ message processing duration",
+				Buckets: prometheus.DefBuckets,
+			}),
+		},
+	}
+}
+
+// Name returns the plugin name
+func (p *Plugin) Name() string {
+	return "zmq"
+}
+
+// Configure initializes the plugin with configuration
+func (p *Plugin) Configure(config map[string]interface{}) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Decode configuration
+	if err := mapstructure.Decode(config, &p.config); err != nil {
+		return fmt.Errorf("failed to decode ZMQ plugin config: %w", err)
+	}
+
+	// Validate required fields
+	if p.config.TenantID == "" {
+		return fmt.Errorf("tenant_id is required for ZMQ plugin")
+	}
+	if p.config.DatasetID == "" {
+		return fmt.Errorf("dataset_id is required for ZMQ plugin")
+	}
+	if len(p.config.Endpoints) == 0 {
+		return fmt.Errorf("endpoints are required for ZMQ plugin")
+	}
+
+	// Set defaults
+	if p.config.SocketType == "" {
+		p.config.SocketType = "PULL"
+	}
+	if p.config.ConnectTimeoutMs == 0 {
+		p.config.ConnectTimeoutMs = 5000
+	}
+	if p.config.ReceiveTimeoutMs == 0 {
+		p.config.ReceiveTimeoutMs = 1000
+	}
+	if p.config.ReconnectIntervalMs == 0 {
+		p.config.ReconnectIntervalMs = 1000
+	}
+	if p.config.MaxReconnectAttempts == 0 {
+		p.config.MaxReconnectAttempts = -1 // Unlimited
+	}
+	if p.config.HighWaterMark == 0 {
+		p.config.HighWaterMark = 1000
+	}
+	if p.config.ReceiveBufferSize == 0 {
+		p.config.ReceiveBufferSize = 65536
+	}
+	if p.config.SendBufferSize == 0 {
+		p.config.SendBufferSize = 65536
+	}
+	if p.config.WorkerCount == 0 {
+		p.config.WorkerCount = 1
+	}
+	if p.config.MessageQueueSize == 0 {
+		p.config.MessageQueueSize = 1000
+	}
+
+	// Validate socket type
+	socketType := strings.ToUpper(p.config.SocketType)
+	if socketType != "PULL" && socketType != "SUB" && socketType != "DEALER" {
+		return fmt.Errorf("unsupported socket type: %s (supported: PULL, SUB, DEALER)", p.config.SocketType)
+	}
+
+	// For SUB sockets, set default subscription if none provided
+	if socketType == "SUB" && len(p.config.SubscribeTopics) == 0 {
+		p.config.SubscribeTopics = []string{""} // Subscribe to all messages
+	}
+
+	// Register metrics
+	prometheus.MustRegister(
+		p.metrics.MessagesReceived,
+		p.metrics.BytesReceived,
+		p.metrics.MessagesDropped,
+		p.metrics.ConnectionErrors,
+		p.metrics.ReconnectAttempts,
+		p.metrics.ProcessingDuration,
+	)
+
+	p.updateHealth(plugins.HealthStatusStopped, "Plugin configured successfully", "")
+	log.Infof("ZMQ plugin configured: %s socket on %v -> %s/%s",
+		p.config.SocketType, p.config.Endpoints, p.config.TenantID, p.config.DatasetID)
+
+	return nil
+}
+
+// Start begins the ZMQ message consumption
+func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.cancel != nil {
+		return fmt.Errorf("plugin is already started")
+	}
+
+	// Create context with cancellation
+	pluginCtx, cancel := context.WithCancel(ctx)
+	p.cancel = cancel
+
+	p.updateHealth(plugins.HealthStatusStarting, "Starting ZMQ plugin", "")
+
+	// Create ZMQ socket
+	if err := p.createSocket(); err != nil {
+		return fmt.Errorf("failed to create ZMQ socket: %w", err)
+	}
+
+	// Connect/bind to endpoints
+	if err := p.connectSocket(); err != nil {
+		return fmt.Errorf("failed to connect ZMQ socket: %w", err)
+	}
+
+	// Start worker goroutines
+	for i := 0; i < p.config.WorkerCount; i++ {
+		p.wg.Add(1)
+		go p.processMessages(pluginCtx, output)
+	}
+
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("ZMQ plugin active on %v", p.config.Endpoints), "")
+	log.Infof("ZMQ plugin started with %d workers on %v", p.config.WorkerCount, p.config.Endpoints)
+
+	return nil
+}
+
+// Stop gracefully shuts down the ZMQ plugin
+func (p *Plugin) Stop() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.cancel == nil {
+		return nil // Already stopped
+	}
+
+	p.updateHealth(plugins.HealthStatusStopping, "Shutting down ZMQ plugin", "")
+
+	// Cancel context to stop workers
+	p.cancel()
+
+	// Wait for workers to finish
+	p.wg.Wait()
+
+	// Close ZMQ socket and context
+	if p.socket != nil {
+		p.socket.Close()
+		p.socket = nil
+	}
+	if p.context != nil {
+		p.context.Term()
+		p.context = nil
+	}
+
+	p.cancel = nil
+	p.updateHealth(plugins.HealthStatusStopped, "ZMQ plugin stopped", "")
+	log.Infof("ZMQ plugin stopped")
+
+	return nil
+}
+
+// Health returns the current plugin health status
+func (p *Plugin) Health() plugins.PluginHealth {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.health
+}
+
+// createSocket creates a new ZMQ socket with configuration
+func (p *Plugin) createSocket() error {
+	var err error
+
+	// Create ZMQ context
+	p.context, err = zmq4.NewContext()
+	if err != nil {
+		return fmt.Errorf("failed to create ZMQ context: %w", err)
+	}
+
+	// Create socket based on type
+	var socketType zmq4.Type
+	switch strings.ToUpper(p.config.SocketType) {
+	case "PULL":
+		socketType = zmq4.PULL
+	case "SUB":
+		socketType = zmq4.SUB
+	case "DEALER":
+		socketType = zmq4.DEALER
+	default:
+		return fmt.Errorf("unsupported socket type: %s", p.config.SocketType)
+	}
+
+	p.socket, err = p.context.NewSocket(socketType)
+	if err != nil {
+		return fmt.Errorf("failed to create ZMQ socket: %w", err)
+	}
+
+	// Configure socket options
+	p.socket.SetRcvhwm(p.config.HighWaterMark)
+	p.socket.SetSndhwm(p.config.HighWaterMark)
+	p.socket.SetRcvbuf(p.config.ReceiveBufferSize)
+	p.socket.SetSndbuf(p.config.SendBufferSize)
+	p.socket.SetRcvtimeo(time.Duration(p.config.ReceiveTimeoutMs) * time.Millisecond)
+
+	// Configure CURVE encryption if enabled
+	if p.config.CurveEnabled {
+		if err := p.configureCurve(); err != nil {
+			return fmt.Errorf("failed to configure CURVE encryption: %w", err)
+		}
+	}
+
+	// Configure SUB socket subscriptions
+	if strings.ToUpper(p.config.SocketType) == "SUB" {
+		for _, topic := range p.config.SubscribeTopics {
+			if err := p.socket.SetSubscribe(topic); err != nil {
+				return fmt.Errorf("failed to subscribe to topic '%s': %w", topic, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// configureCurve sets up CURVE encryption
+func (p *Plugin) configureCurve() error {
+	if p.config.CurveServerKey != "" {
+		if err := p.socket.ClientAuthCurve(p.config.CurveServerKey, p.config.CurvePublicKey, p.config.CurveSecretKey); err != nil {
+			return fmt.Errorf("failed to set CURVE client auth: %w", err)
+		}
+	}
+	return nil
+}
+
+// connectSocket connects or binds the socket to endpoints
+func (p *Plugin) connectSocket() error {
+	for _, endpoint := range p.config.Endpoints {
+		var err error
+		if p.config.Bind {
+			err = p.socket.Bind(endpoint)
+			log.Infof("ZMQ socket bound to %s", endpoint)
+		} else {
+			err = p.socket.Connect(endpoint)
+			log.Infof("ZMQ socket connected to %s", endpoint)
+		}
+
+		if err != nil {
+			p.metrics.ConnectionErrors.Inc()
+			return fmt.Errorf("failed to %s ZMQ socket to %s: %w",
+				map[bool]string{true: "bind", false: "connect"}[p.config.Bind], endpoint, err)
+		}
+	}
+
+	return nil
+}
+
+// processMessages handles message processing in worker goroutines
+func (p *Plugin) processMessages(ctx context.Context, output chan<- *plugins.DataMessage) {
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Receive message from ZMQ socket
+			startTime := time.Now()
+			msg, err := p.receiveMessage()
+			
+			if err != nil {
+				if err == zmq4.EAGAIN {
+					continue // Timeout, try again
+				}
+				p.handleError(err)
+				continue
+			}
+
+			// Process and send message
+			if err := p.sendDataMessage(msg, output); err != nil {
+				log.Warnf("Failed to send ZMQ message: %v", err)
+				p.metrics.MessagesDropped.Inc()
+			} else {
+				p.metrics.MessagesReceived.Inc()
+				p.metrics.BytesReceived.Add(float64(len(msg)))
+				p.metrics.ProcessingDuration.Observe(time.Since(startTime).Seconds())
+			}
+		}
+	}
+}
+
+// receiveMessage receives a message from the ZMQ socket
+func (p *Plugin) receiveMessage() ([]byte, error) {
+	if strings.ToUpper(p.config.SocketType) == "SUB" {
+		// For SUB sockets, receive multipart message (topic + content)
+		parts, err := p.socket.RecvMessageBytes(0)
+		if err != nil {
+			return nil, err
+		}
+		
+		// If we have topic + content, return content
+		if len(parts) >= 2 {
+			return parts[1], nil
+		} else if len(parts) == 1 {
+			return parts[0], nil
+		}
+		
+		return nil, fmt.Errorf("invalid multipart message")
+	} else {
+		// For PULL and DEALER sockets, receive single message
+		return p.socket.RecvBytes(0)
+	}
+}
+
+// sendDataMessage creates and sends a DataMessage to the output channel
+func (p *Plugin) sendDataMessage(data []byte, output chan<- *plugins.DataMessage) error {
+	dataMsg := &plugins.DataMessage{
+		Data:      data,
+		TenantID:  p.config.TenantID,
+		DatasetID: p.config.DatasetID,
+		Timestamp: time.Now(),
+		Metadata: map[string]string{
+			"plugin":      "zmq",
+			"socket_type": p.config.SocketType,
+			"source":      "zmq-socket",
+		},
+	}
+
+	select {
+	case output <- dataMsg:
+		return nil
+	default:
+		return fmt.Errorf("output channel full")
+	}
+}
+
+// handleError handles ZMQ errors and updates health status
+func (p *Plugin) handleError(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.metrics.ConnectionErrors.Inc()
+	p.updateHealth(plugins.HealthStatusUnhealthy, "ZMQ error", err.Error())
+	log.Errorf("ZMQ plugin error: %v", err)
+
+	// Attempt reconnection for connection errors
+	if p.config.MaxReconnectAttempts != 0 {
+		go p.attemptReconnect()
+	}
+}
+
+// attemptReconnect attempts to reconnect the ZMQ socket
+func (p *Plugin) attemptReconnect() {
+	attempts := 0
+	
+	for {
+		if p.config.MaxReconnectAttempts > 0 && attempts >= p.config.MaxReconnectAttempts {
+			p.mu.Lock()
+			p.updateHealth(plugins.HealthStatusUnhealthy, "Max reconnect attempts exceeded", "")
+			p.mu.Unlock()
+			return
+		}
+
+		time.Sleep(time.Duration(p.config.ReconnectIntervalMs) * time.Millisecond)
+		attempts++
+		p.metrics.ReconnectAttempts.Inc()
+
+		// Try to recreate and reconnect socket
+		p.mu.Lock()
+		if p.socket != nil {
+			p.socket.Close()
+		}
+		
+		if err := p.createSocket(); err != nil {
+			p.updateHealth(plugins.HealthStatusUnhealthy, "Failed to recreate socket", err.Error())
+			p.mu.Unlock()
+			continue
+		}
+		
+		if err := p.connectSocket(); err != nil {
+			p.updateHealth(plugins.HealthStatusUnhealthy, "Failed to reconnect socket", err.Error())
+			p.mu.Unlock()
+			continue
+		}
+		
+		p.updateHealth(plugins.HealthStatusHealthy, "Reconnected successfully", "")
+		p.mu.Unlock()
+		
+		log.Infof("ZMQ plugin reconnected after %d attempts", attempts)
+		return
+	}
+}
+
+// updateHealth updates the plugin health status
+func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError string) {
+	p.health = plugins.PluginHealth{
+		Status:      status,
+		Message:     message,
+		LastError:   lastError,
+		LastUpdated: time.Now(),
+	}
+}

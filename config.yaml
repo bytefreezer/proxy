@@ -1,77 +1,30 @@
 app:
   name: bytefreezer-proxy
-  version: 0.0.1
+  version: 0.0.2
 
 # Logging configuration   
 logging:
-  level: debug
+  level: info
   encoding: console
 
 # API server configuration
 server:
   api_port: 8088
 
-# UDP listener configuration
-udp:
-  enabled: true
-  host: "0.0.0.0"
-  read_buffer_size_bytes: 134217728  # 128MB
-  max_batch_lines: 1000000          # Primary limit - batches sent when line count reached  
-  max_batch_bytes: 268435456        # 256MB - Additional constraint, whichever limit hit first
-  batch_timeout_seconds: 30
-  compression_level: 6
-  enable_compression: true
-  
-  # Port configuration with dataset mapping (up to 10 datasets supported)
-  # Only ports with dataset_id configured will be activated
-  # Ports 2056-2065 are pre-allocated for dataset use
-  # Each port can be configured for different protocols: "udp" (default) or "syslog"
-  listeners:
-    # Syslog RFC3164 (traditional syslog format)
-    - port: 2056
-      dataset_id: "syslog-data"
-      protocol: "syslog"
-      syslog_mode: "rfc3164"
-      # tenant_id: "custom-tenant"  # Optional: overrides global tenant
-    
-    # Plain UDP data (JSON, NDJSON, etc.)
-    - port: 2057  
+# Plugin-based input configuration
+inputs:
+  # UDP Plugin for eBPF data on port 2056
+  - type: "udp"
+    name: "ebpf-udp-listener"
+    config:
+      host: "0.0.0.0"
+      port: 2056
       dataset_id: "ebpf-data"
       protocol: "udp"
-    
-    # Syslog RFC5424 (modern syslog format)
-    - port: 2058
-      dataset_id: "application-logs"
-      protocol: "syslog"
-      syslog_mode: "rfc5424"
-    
-    # Additional dataset slots (uncomment and configure as needed):
-    # - port: 2059
-    #   dataset_id: "security-logs" 
-    #   protocol: "syslog"
-    #   syslog_mode: "rfc3164"
-    # - port: 2060
-    #   dataset_id: "network-data"
-    #   protocol: "udp"
-    # - port: 2061
-    #   dataset_id: "performance-metrics"
-    #   protocol: "udp"
-    # - port: 2062
-    #   dataset_id: "audit-logs"
-    #   protocol: "syslog"
-    #   syslog_mode: "rfc5424"
-    # - port: 2063
-    #   dataset_id: "container-logs"
-    #   protocol: "udp"
-    # - port: 2064
-    #   dataset_id: "database-logs"
-    #   protocol: "syslog"
-    #   syslog_mode: "rfc3164"
-    # - port: 2065
-    #   dataset_id: "custom-dataset"
-    #   protocol: "udp"
+      read_buffer_size: 65536
+      worker_count: 4
 
-# Global tenant configuration
+# Global tenant configuration (used as fallback for plugins)
 tenant_id: "customer-1"
 bearer_token: "bearer-token-customer-1-dev"
 
@@ -82,22 +35,26 @@ receiver:
   retry_count: 3
   retry_delay_seconds: 1
 
+# Batch processing configuration
+batching:
+  enabled: true
+  max_lines: 1000
+  max_bytes: 1048576  # 1MB
+  timeout_seconds: 30
+  compression_enabled: true
+  compression_level: 6
+
 # SOC alerting configuration
 soc:
   enabled: false
   endpoint: ""
   timeout: 30
 
-# OpenTelemetry configuration
+# OpenTelemetry configuration (disabled by default)
 otel:
-  enabled: true
+  enabled: false
   service_name: "bytefreezer-proxy"
   scrapeIntervalseconds: 15
-  # Prometheus mode - expose metrics on HTTP endpoint for scraping
-  prometheus_mode: true
-  metrics_port: 9090
-  # Bind to all interfaces for external scraping
-  metrics_host: "0.0.0.0"
 
 # Housekeeping configuration
 housekeeping:

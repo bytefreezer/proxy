@@ -13,9 +13,15 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/api"
 	"github.com/n0needt0/bytefreezer-proxy/config"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
-	"github.com/n0needt0/bytefreezer-proxy/udp"
 	"github.com/n0needt0/go-goodies/log"
+
+	// Import plugin packages to register them
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/http"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kafka"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/nats"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/udp"
 )
 
 var (
@@ -56,8 +62,16 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Handle config validation
+	// Always validate configuration during startup
+	if err := config.ValidateConfig(&cfg); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
+	// Handle config validation flag
 	if *validateConfig {
+		if err := config.ValidateConfig(&cfg); err != nil {
+			log.Fatalf("Configuration validation failed: %v", err)
+		}
 		fmt.Printf("Configuration validation successful: %s\n", *configFile)
 		os.Exit(0)
 	}
@@ -119,28 +133,42 @@ func main() {
 		apiServer.Serve(address, router)
 	}()
 
-	// Create and start UDP listener if enabled
-	var udpListener *udp.Listener
-	if cfg.UDP.Enabled {
-		udpListener = udp.NewListener(svcs, &cfg)
+	// Use plugin system for input processing
+	var pluginService *services.PluginService
+
+	if len(cfg.Inputs) > 0 {
+		log.Infof("Starting plugin system with %d input plugins", len(cfg.Inputs))
+
+		// Create HTTP forwarder
+		forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
+
+		// Create plugin service with spooling support
+		var err error
+		pluginService, err = services.NewPluginService(&cfg, forwarder, svcs.SpoolingService)
+		if err != nil {
+			log.Fatalf("Failed to create plugin service: %v", err)
+		}
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := udpListener.Start(); err != nil {
-				log.Errorf("UDP listener failed: %v", err)
-
+			if err := pluginService.Start(); err != nil {
+				log.Errorf("Plugin service failed: %v", err)
 				// Send SOC alert
 				if cfg.SOCAlertClient != nil {
-					cfg.SOCAlertClient.SendUDPListenerFailureAlert(err)
+					cfg.SOCAlertClient.SendAlert("high", "Plugin Service Failed",
+						"Input plugin system failed to start", err.Error())
 				}
 			}
 		}()
 
-		log.Info("UDP listener enabled on " + cfg.UDP.Host + " with " +
-			fmt.Sprintf("%d", len(cfg.UDP.Listeners)) + " listeners")
+		pluginTypes := make([]string, len(cfg.Inputs))
+		for i, input := range cfg.Inputs {
+			pluginTypes[i] = input.Type
+		}
+		log.Infof("Plugin system started with input types: %v", pluginTypes)
 	} else {
-		log.Info("UDP listener is disabled")
+		log.Info("No input plugins configured. Please configure inputs in the configuration file.")
 	}
 
 	// Setup signal handling
@@ -164,14 +192,15 @@ func main() {
 		}
 	}()
 
-	// Stop UDP listener
-	if udpListener != nil {
+	// Stop input systems
+	if pluginService != nil {
 		go func() {
-			if err := udpListener.Stop(); err != nil {
-				log.Errorf("Error stopping UDP listener: %v", err)
+			if err := pluginService.Stop(); err != nil {
+				log.Errorf("Error stopping plugin service: %v", err)
 			}
 		}()
 	}
+
 
 	// Stop API server
 	go func() {
@@ -207,3 +236,4 @@ func setLogLevel(levelStr string) {
 		log.SetMinLogLevel(log.MinLevelError)
 	}
 }
+
