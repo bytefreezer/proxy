@@ -78,7 +78,7 @@ config:
   bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
 
   receiver:
-    base_url: "http://192.168.86.102:8082/data/{tenantid}/{datasetid}"
+    base_url: "http://192.168.86.102:8082/{tenantid}/{datasetid}"
     timeout_seconds: 30
     retry_count: 3
     retry_delay_seconds: 1
