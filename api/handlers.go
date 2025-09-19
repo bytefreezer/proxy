@@ -284,6 +284,10 @@ func (api *API) HealthCheck() usecase.Interactor {
 					tenantID = tenantStr
 				}
 			}
+			// Use global tenant as fallback if plugin doesn't specify its own
+			if tenantID == "" {
+				tenantID = cfg.TenantID
+			}
 
 			pluginDetails = append(pluginDetails, PluginHealthDetail{
 				Name:      input.Name,
