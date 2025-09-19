@@ -633,7 +633,7 @@ func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 	return nil
 }
 
-// processRetries attempts to retry failed uploads
+// processRetries attempts to retry failed uploads from both queue/ and retry/ directories
 func (s *SpoolingService) processRetries() {
 	// Ensure spool directory exists before processing retries
 	if err := s.ensureSpoolDirectoryExists(); err != nil {
@@ -641,7 +641,7 @@ func (s *SpoolingService) processRetries() {
 		return
 	}
 
-	// Process each tenant's metadata directory
+	// Process each tenant's files
 	tenants, err := s.getTenants()
 	if err != nil {
 		log.Errorf("Failed to get tenants for retry processing: %v", err)
@@ -653,91 +653,21 @@ func (s *SpoolingService) processRetries() {
 	totalFailureCount := 0
 
 	for _, tenantID := range tenants {
-		files, err := s.getTenantMetadataFiles(tenantID)
-		if err != nil {
-			log.Errorf("Failed to get metadata files for tenant %s: %v", tenantID, err)
-			continue
-		}
+		// Process files in queue/ directory (existing legacy files)
+		queueSuccessCount, queueFailureCount := s.processQueueRetries(tenantID, forwarder)
 
-		if len(files) == 0 {
-			continue
-		}
+		// Process files in retry/ directory (new architecture)
+		retrySuccessCount, retryFailureCount := s.processRetryDirectoryFiles(tenantID, forwarder)
 
-		log.Debugf("Processing %d metadata files for tenant %s", len(files), tenantID)
-		successCount := 0
-		failureCount := 0
-
-		for _, file := range files {
-			// Skip files that are permanently failed (fallback case if DLQ move failed)
-			if file.Status == "failed" || file.Status == "dlq" {
-				continue
-			}
-
-			// Check if it's time to retry
-			if time.Since(file.LastRetry) < s.retryInterval {
-				continue
-			}
-
-			// Check retry limit (4 times as requested)
-			if file.RetryCount >= 4 {
-				// Move to DLQ
-				log.Warnf("File %s exceeded retry limit (4), moving to DLQ", file.ID)
-
-				// Send SOC alert for data delivery failure
-				if s.config.SOCAlertClient != nil {
-					s.config.SOCAlertClient.SendAlert("high", "Data Delivery Failed",
-						fmt.Sprintf("File %s failed to deliver after 4 attempts, moved to DLQ", file.ID),
-						fmt.Sprintf("Tenant: %s, Dataset: %s, File: %s", file.TenantID, file.DatasetID, file.Filename))
-				}
-
-				if dlqErr := s.moveToNewDLQ(file); dlqErr != nil {
-					log.Errorf("Failed to move file %s to DLQ: %v", file.ID, dlqErr)
-				}
-				failureCount++
-				continue
-			}
-
-			// Read .gz file data (file.Filename contains full path to .gz file)
-			data, err := os.ReadFile(file.Filename)
-			if err != nil {
-				if os.IsNotExist(err) {
-					log.Warnf("Queue file %s missing, removing orphaned metadata %s", file.Filename, file.ID)
-					s.removeMetadataFile(tenantID, file.DatasetID, file.ID)
-				} else {
-					log.Errorf("Failed to read queue file %s: %v", file.Filename, err)
-				}
-				continue
-			}
-
-			// Create batch for retry
-			batch := &domain.DataBatch{
-				ID:          file.ID,
-				TenantID:    file.TenantID,
-				DatasetID:   file.DatasetID,
-				BearerToken: file.BearerToken,
-				Data:        data,
-				CreatedAt:   file.CreatedAt,
-			}
-
-			// Attempt upload
-			if err := forwarder.ForwardBatch(batch); err != nil {
-				// Update retry count and last retry time
-				s.updateTenantRetryMetadata(tenantID, file, err.Error())
-				failureCount++
-				log.Debugf("Retry failed for %s: %v", file.ID, err)
-			} else {
-				// Success - remove both .gz file and metadata
-				s.removeSuccessfulFile(tenantID, file)
-				successCount++
-				log.Debugf("Retry succeeded for %s", file.ID)
-			}
-		}
+		successCount := queueSuccessCount + retrySuccessCount
+		failureCount := queueFailureCount + retryFailureCount
 
 		totalSuccessCount += successCount
 		totalFailureCount += failureCount
 
 		if successCount > 0 || failureCount > 0 {
-			log.Infof("Tenant %s retry results: %d succeeded, %d failed", tenantID, successCount, failureCount)
+			log.Infof("Tenant %s retry results: %d succeeded, %d failed (queue: %d/%d, retry: %d/%d)",
+				tenantID, successCount, failureCount, queueSuccessCount, queueFailureCount, retrySuccessCount, retryFailureCount)
 		}
 	}
 
@@ -2106,4 +2036,358 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 	}
 
 	return dlqFiles, nil
+}
+
+// MoveQueueToRetry moves a file from queue directory to retry directory with failure reason
+func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failureReason string) error {
+	if !s.config.Spooling.Enabled {
+		return nil
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Create retry directory
+	retryDir := filepath.Join(s.directory, tenantID, datasetID, "retry")
+	if err := os.MkdirAll(retryDir, 0750); err != nil {
+		return fmt.Errorf("failed to create retry directory: %w", err)
+	}
+
+	// Source paths in queue
+	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
+	metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
+
+	// Find the batch file (could be .gz or .ndjson)
+	var srcDataFile string
+	possibleExts := []string{".ndjson.gz", ".ndjson"}
+	for _, ext := range possibleExts {
+		candidate := filepath.Join(queueDir, batchID+ext)
+		if _, err := os.Stat(candidate); err == nil {
+			srcDataFile = candidate
+			break
+		}
+	}
+
+	if srcDataFile == "" {
+		return fmt.Errorf("batch file %s not found in queue", batchID)
+	}
+
+	srcMetaFile := filepath.Join(metaDir, batchID+".meta")
+
+	// Destination paths in retry
+	dstDataFile := filepath.Join(retryDir, filepath.Base(srcDataFile))
+	dstMetaFile := filepath.Join(retryDir, batchID+".meta")
+
+	// Move data file
+	if err := os.Rename(srcDataFile, dstDataFile); err != nil {
+		return fmt.Errorf("failed to move data file to retry: %w", err)
+	}
+
+	// Read, update, and move metadata
+	if _, err := os.Stat(srcMetaFile); err == nil {
+		// #nosec G304 - srcMetaFile is constructed from controlled metaDir and validated batchID
+		metaData, err := os.ReadFile(srcMetaFile)
+		if err == nil {
+			var spooledFile SpooledFile
+			if err := json.Unmarshal(metaData, &spooledFile); err == nil {
+				// Update metadata for retry
+				spooledFile.Status = "retry"
+				spooledFile.FailureReason = failureReason
+				spooledFile.LastRetry = time.Now()
+				spooledFile.Filename = dstDataFile
+
+				// Write updated metadata to retry directory
+				updatedMetaData, err := json.Marshal(spooledFile)
+				if err == nil {
+					if err := os.WriteFile(dstMetaFile, updatedMetaData, 0600); err == nil {
+						os.Remove(srcMetaFile) // Remove old metadata
+					}
+				}
+			}
+		}
+	}
+
+	log.Infof("Moved batch %s to retry due to: %s", batchID, failureReason)
+	return nil
+}
+
+// RemoveFromQueue removes a successfully uploaded batch from the queue directory
+func (s *SpoolingService) RemoveFromQueue(tenantID, datasetID, batchID string) error {
+	if !s.config.Spooling.Enabled {
+		return nil
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Remove data file from queue
+	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
+	possibleExts := []string{".ndjson.gz", ".ndjson"}
+
+	var dataFileRemoved bool
+	for _, ext := range possibleExts {
+		dataFile := filepath.Join(queueDir, batchID+ext)
+		if err := os.Remove(dataFile); err == nil {
+			dataFileRemoved = true
+			break
+		}
+	}
+
+	if !dataFileRemoved {
+		log.Warnf("No data file found for batch %s in queue", batchID)
+	}
+
+	// Remove metadata file
+	metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
+	metaFile := filepath.Join(metaDir, batchID+".meta")
+	if err := os.Remove(metaFile); err != nil && !os.IsNotExist(err) {
+		log.Warnf("Failed to remove metadata file for batch %s: %v", batchID, err)
+	}
+
+	log.Debugf("Removed batch %s from queue after successful upload", batchID)
+	return nil
+}
+
+// processQueueRetries processes files in the legacy queue/ directory (existing behavior)
+func (s *SpoolingService) processQueueRetries(tenantID string, forwarder *HTTPForwarder) (int, int) {
+	files, err := s.getTenantMetadataFiles(tenantID)
+	if err != nil {
+		log.Errorf("Failed to get metadata files for tenant %s: %v", tenantID, err)
+		return 0, 0
+	}
+
+	if len(files) == 0 {
+		return 0, 0
+	}
+
+	successCount := 0
+	failureCount := 0
+
+	for _, file := range files {
+		// Skip files that are permanently failed or already in DLQ
+		if file.Status == "failed" || file.Status == "dlq" || file.Status == "retry" {
+			continue
+		}
+
+		// Check if it's time to retry
+		if time.Since(file.LastRetry) < s.retryInterval {
+			continue
+		}
+
+		// Check retry limit
+		if file.RetryCount >= 4 {
+			// Move to DLQ
+			log.Warnf("File %s exceeded retry limit (4), moving to DLQ", file.ID)
+
+			if s.config.SOCAlertClient != nil {
+				s.config.SOCAlertClient.SendAlert("high", "Data Delivery Failed",
+					fmt.Sprintf("File %s failed to deliver after 4 attempts, moved to DLQ", file.ID),
+					fmt.Sprintf("Tenant: %s, Dataset: %s, File: %s", file.TenantID, file.DatasetID, file.Filename))
+			}
+
+			if dlqErr := s.moveToNewDLQ(file); dlqErr != nil {
+				log.Errorf("Failed to move file %s to DLQ: %v", file.ID, dlqErr)
+			}
+			failureCount++
+			continue
+		}
+
+		// Read file data
+		data, err := os.ReadFile(file.Filename)
+		if err != nil {
+			if os.IsNotExist(err) {
+				log.Warnf("Queue file %s missing, removing orphaned metadata %s", file.Filename, file.ID)
+				s.removeMetadataFile(tenantID, file.DatasetID, file.ID)
+			} else {
+				log.Errorf("Failed to read queue file %s: %v", file.Filename, err)
+			}
+			continue
+		}
+
+		// Create batch for retry
+		batch := &domain.DataBatch{
+			ID:          file.ID,
+			TenantID:    file.TenantID,
+			DatasetID:   file.DatasetID,
+			BearerToken: file.BearerToken,
+			Data:        data,
+			CreatedAt:   file.CreatedAt,
+		}
+
+		// Attempt upload
+		if err := forwarder.ForwardBatch(batch); err != nil {
+			s.updateTenantRetryMetadata(tenantID, file, err.Error())
+			failureCount++
+			log.Debugf("Queue retry failed for %s: %v", file.ID, err)
+		} else {
+			s.removeSuccessfulFile(tenantID, file)
+			successCount++
+			log.Debugf("Queue retry succeeded for %s", file.ID)
+		}
+	}
+
+	return successCount, failureCount
+}
+
+// processRetryDirectoryFiles processes files in the new retry/ directories
+func (s *SpoolingService) processRetryDirectoryFiles(tenantID string, forwarder *HTTPForwarder) (int, int) {
+	// Get all datasets for this tenant
+	datasets, err := s.getTenantDatasets(tenantID)
+	if err != nil {
+		log.Errorf("Failed to get datasets for tenant %s: %v", tenantID, err)
+		return 0, 0
+	}
+
+	successCount := 0
+	failureCount := 0
+
+	for _, datasetID := range datasets {
+		retryDir := filepath.Join(s.directory, tenantID, datasetID, "retry")
+
+		// Check if retry directory exists
+		if _, err := os.Stat(retryDir); os.IsNotExist(err) {
+			continue
+		}
+
+		// Read retry directory
+		entries, err := os.ReadDir(retryDir)
+		if err != nil {
+			log.Warnf("Failed to read retry directory %s: %v", retryDir, err)
+			continue
+		}
+
+		for _, entry := range entries {
+			if !strings.HasSuffix(entry.Name(), ".meta") {
+				continue
+			}
+
+			metaPath := filepath.Join(retryDir, entry.Name())
+			// #nosec G304 - metaPath is constructed from controlled retryDir and validated entry.Name()
+			metaData, err := os.ReadFile(metaPath)
+			if err != nil {
+				log.Warnf("Failed to read retry metadata file %s: %v", metaPath, err)
+				continue
+			}
+
+			var file SpooledFile
+			if err := json.Unmarshal(metaData, &file); err != nil {
+				log.Warnf("Failed to unmarshal retry metadata file %s: %v", metaPath, err)
+				continue
+			}
+
+			// Check if it's time to retry
+			if time.Since(file.LastRetry) < s.retryInterval {
+				continue
+			}
+
+			// Check retry limit
+			if file.RetryCount >= 4 {
+				// Move to DLQ
+				log.Warnf("Retry file %s exceeded retry limit (4), moving to DLQ", file.ID)
+
+				if s.config.SOCAlertClient != nil {
+					s.config.SOCAlertClient.SendAlert("high", "Data Delivery Failed",
+						fmt.Sprintf("Retry file %s failed to deliver after 4 attempts, moved to DLQ", file.ID),
+						fmt.Sprintf("Tenant: %s, Dataset: %s, File: %s", file.TenantID, file.DatasetID, file.Filename))
+				}
+
+				if dlqErr := s.moveRetryToDLQ(file, retryDir); dlqErr != nil {
+					log.Errorf("Failed to move retry file %s to DLQ: %v", file.ID, dlqErr)
+				}
+				failureCount++
+				continue
+			}
+
+			// Read file data
+			data, err := os.ReadFile(file.Filename)
+			if err != nil {
+				if os.IsNotExist(err) {
+					log.Warnf("Retry file %s missing, removing orphaned metadata %s", file.Filename, file.ID)
+					os.Remove(metaPath)
+				} else {
+					log.Errorf("Failed to read retry file %s: %v", file.Filename, err)
+				}
+				continue
+			}
+
+			// Create batch for retry
+			batch := &domain.DataBatch{
+				ID:          file.ID,
+				TenantID:    file.TenantID,
+				DatasetID:   file.DatasetID,
+				BearerToken: file.BearerToken,
+				Data:        data,
+				CreatedAt:   file.CreatedAt,
+			}
+
+			// Attempt upload
+			if err := forwarder.ForwardBatch(batch); err != nil {
+				// Update retry count and last retry time
+				file.RetryCount++
+				file.LastRetry = time.Now()
+				file.FailureReason = err.Error()
+
+				// Write updated metadata back to retry directory
+				updatedMetaData, err := json.Marshal(file)
+				if err == nil {
+					os.WriteFile(metaPath, updatedMetaData, 0600)
+				}
+
+				failureCount++
+				log.Debugf("Retry directory retry failed for %s: %v", file.ID, err)
+			} else {
+				// Success - remove both data file and metadata from retry directory
+				os.Remove(file.Filename) // Remove data file
+				os.Remove(metaPath)      // Remove metadata file
+				successCount++
+				log.Debugf("Retry directory retry succeeded for %s", file.ID)
+			}
+		}
+	}
+
+	return successCount, failureCount
+}
+
+// moveRetryToDLQ moves a file from retry/ directory to dlq/ directory
+func (s *SpoolingService) moveRetryToDLQ(file SpooledFile, retryDir string) error {
+	// Create DLQ directory
+	dlqDir := filepath.Join(s.directory, file.TenantID, file.DatasetID, "dlq")
+	if err := os.MkdirAll(dlqDir, 0750); err != nil {
+		return fmt.Errorf("failed to create DLQ directory: %w", err)
+	}
+
+	// Move data file to DLQ
+	dlqFilePath := filepath.Join(dlqDir, filepath.Base(file.Filename))
+	if err := os.Rename(file.Filename, dlqFilePath); err != nil {
+		if copyErr := s.copyFile(file.Filename, dlqFilePath); copyErr != nil {
+			return fmt.Errorf("failed to move data file to DLQ: %w", err)
+		}
+		os.Remove(file.Filename) // Best effort cleanup
+	}
+
+	// Update metadata and move to DLQ
+	file.Status = "dlq"
+	file.FailureReason = "Moved to DLQ after exceeding maximum retry attempts (4)"
+	file.LastRetry = time.Now()
+	file.Filename = dlqFilePath
+
+	metaData, err := json.Marshal(file)
+	if err != nil {
+		return fmt.Errorf("failed to marshal DLQ metadata: %w", err)
+	}
+
+	// Write metadata to DLQ directory
+	dlqMetaPath := filepath.Join(dlqDir, fmt.Sprintf("%s.meta", file.ID))
+	if err := os.WriteFile(dlqMetaPath, metaData, 0600); err != nil {
+		return fmt.Errorf("failed to write DLQ metadata: %w", err)
+	}
+
+	// Remove original metadata file from retry directory
+	retryMetaPath := filepath.Join(retryDir, fmt.Sprintf("%s.meta", file.ID))
+	if err := os.Remove(retryMetaPath); err != nil && !os.IsNotExist(err) {
+		log.Warnf("Failed to remove retry metadata file %s: %v", retryMetaPath, err)
+	}
+
+	log.Warnf("Moved retry file %s to DLQ: %s", file.ID, dlqFilePath)
+	return nil
 }

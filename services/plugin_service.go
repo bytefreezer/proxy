@@ -25,6 +25,7 @@ type PluginService struct {
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
 	inputChannel    chan *plugins.DataMessage
+	uploadChannel   chan *domain.DataBatch // Channel for immediate upload notifications
 	batchingEnabled bool
 }
 
@@ -39,6 +40,9 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 
 	// Create input channel for plugin messages
 	inputChannel := make(chan *plugins.DataMessage, 10000)
+
+	// Create upload channel for immediate upload notifications
+	uploadChannel := make(chan *domain.DataBatch, 1000)
 
 	// Create plugin manager with global configuration support
 	pluginManager := plugins.NewManagerWithGlobals(cfg.Inputs, inputChannel, plugins.GlobalRegistry, cfg.TenantID, cfg.BearerToken)
@@ -55,6 +59,7 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 		ctx:             ctx,
 		cancel:          cancel,
 		inputChannel:    inputChannel,
+		uploadChannel:   uploadChannel,
 		batchingEnabled: true,
 	}, nil
 }
@@ -81,6 +86,10 @@ func (ps *PluginService) Start() error {
 	ps.wg.Add(1)
 	go ps.processBatches()
 
+	// Start immediate uploader
+	ps.wg.Add(1)
+	go ps.processImmediateUploads()
+
 	log.Infof("Plugin service started with %d plugins", ps.pluginManager.GetPluginCount())
 	return nil
 }
@@ -104,6 +113,9 @@ func (ps *PluginService) Stop() error {
 
 	// Close input channel
 	close(ps.inputChannel)
+
+	// Close upload channel
+	close(ps.uploadChannel)
 
 	// Wait for all goroutines to finish
 	ps.wg.Wait()
@@ -187,9 +199,26 @@ func (ps *PluginService) processBatches() {
 	}
 }
 
-// forwardBatch spools batch data immediately (spool-first architecture)
+// processImmediateUploads handles immediate upload attempts from the upload channel
+func (ps *PluginService) processImmediateUploads() {
+	defer ps.wg.Done()
+
+	for {
+		select {
+		case <-ps.ctx.Done():
+			return
+		case batch, ok := <-ps.uploadChannel:
+			if !ok {
+				return // Channel closed
+			}
+			ps.attemptImmediateUpload(batch)
+		}
+	}
+}
+
+// forwardBatch spools data first for safety, then notifies uploader for immediate attempt
 func (ps *PluginService) forwardBatch(batch *domain.DataBatch) {
-	// SPOOL FIRST - all data goes to spool before any transmission attempts
+	// SPOOL FIRST - preserve data safety
 	if err := ps.spoolBatch(batch); err != nil {
 		log.Errorf("CRITICAL: Failed to spool batch %s - DATA LOSS: %v", batch.ID, err)
 		// Send SOC alert for spooling failure
@@ -197,9 +226,46 @@ func (ps *PluginService) forwardBatch(batch *domain.DataBatch) {
 			ps.config.SOCAlertClient.SendAlert("critical", "Data Spooling Failed",
 				fmt.Sprintf("Failed to spool batch %s", batch.ID), err.Error())
 		}
-	} else {
-		log.Debugf("Spooled batch %s (%d bytes, %d lines) for async transmission",
-			batch.ID, batch.TotalBytes, batch.LineCount)
+		return
+	}
+
+	log.Debugf("Spooled batch %s (%d bytes, %d lines), notifying uploader for immediate attempt",
+		batch.ID, batch.TotalBytes, batch.LineCount)
+
+	// NOTIFY UPLOADER - trigger immediate upload attempt via buffered channel
+	select {
+	case ps.uploadChannel <- batch:
+		log.Debugf("Batch %s queued for immediate upload", batch.ID)
+	default:
+		log.Warnf("Upload channel at capacity, moving batch %s to retry queue", batch.ID)
+		// If channel is at capacity, move file to retry directory
+		if err := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, "channel_capacity_exceeded"); err != nil {
+			log.Errorf("Failed to move batch %s to retry: %v", batch.ID, err)
+		}
+	}
+}
+
+// attemptImmediateUpload attempts to upload a batch immediately from the spooled file
+func (ps *PluginService) attemptImmediateUpload(batch *domain.DataBatch) {
+	log.Debugf("Attempting immediate upload for batch %s", batch.ID)
+
+	// Try to upload the spooled file
+	err := ps.forwarder.ForwardBatch(batch)
+	if err != nil {
+		log.Warnf("Immediate upload failed for batch %s: %v - moving to retry", batch.ID, err)
+		// Move file from queue to retry directory for background processing
+		if retryErr := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, err.Error()); retryErr != nil {
+			log.Errorf("Failed to move batch %s to retry after upload failure: %v", batch.ID, retryErr)
+		}
+		return
+	}
+
+	log.Infof("✅ Immediate upload successful for batch %s (%d bytes, %d lines)",
+		batch.ID, batch.TotalBytes, batch.LineCount)
+
+	// Remove file from queue directory on successful upload
+	if cleanupErr := ps.spoolingService.RemoveFromQueue(batch.TenantID, batch.DatasetID, batch.ID); cleanupErr != nil {
+		log.Errorf("Failed to cleanup successful batch %s from queue: %v", batch.ID, cleanupErr)
 	}
 }
 
