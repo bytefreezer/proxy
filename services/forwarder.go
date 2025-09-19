@@ -96,6 +96,7 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 		resp, err := f.httpClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("HTTP request failed: %w", err)
+			log.Warnf("Batch %s upload attempt %d failed - network error: %v", batch.ID, attempt+1, err)
 			continue
 		}
 
@@ -110,7 +111,14 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 			return nil
 		}
 
-		lastErr = fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+		// Log detailed error from receiver
+		bodyStr := string(body)
+		if bodyStr == "" {
+			bodyStr = "(empty response body)"
+		}
+		lastErr = fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr)
+		log.Warnf("Batch %s upload attempt %d failed - receiver returned %d: %s",
+			batch.ID, attempt+1, resp.StatusCode, bodyStr)
 
 		// Don't retry on client errors (4xx)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {

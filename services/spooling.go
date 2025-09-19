@@ -623,9 +623,11 @@ func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 		return fmt.Errorf("failed to write DLQ metadata: %w", err)
 	}
 
-	// Remove original metadata file from tenant/meta/
-	originalMetaPath := filepath.Join(s.directory, file.TenantID, "meta", fmt.Sprintf("%s.meta", file.ID))
-	os.Remove(originalMetaPath) // Best effort cleanup
+	// Remove original metadata file from tenant/dataset/meta/
+	originalMetaPath := filepath.Join(s.directory, file.TenantID, file.DatasetID, "meta", fmt.Sprintf("%s.meta", file.ID))
+	if err := os.Remove(originalMetaPath); err != nil && !os.IsNotExist(err) {
+		log.Warnf("Failed to remove original metadata file %s: %v", originalMetaPath, err)
+	}
 
 	log.Warnf("Moved file %s to DLQ: %s", file.ID, dlqFilePath)
 	return nil

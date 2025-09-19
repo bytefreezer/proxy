@@ -26,11 +26,11 @@ inputs:
 
 # Global tenant configuration (used as fallback for plugins)
 tenant_id: "customer-1"
-bearer_token: "bearer-token-customer-1-dev"
+bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
 
 # Bytefreezer-receiver configuration
 receiver:
-  base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+  base_url: "http://localhost:8081/{tenantid}/{datasetid}"
   timeout_seconds: 30
   retry_count: 3
   retry_delay_seconds: 1

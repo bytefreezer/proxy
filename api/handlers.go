@@ -657,3 +657,126 @@ func convertRetryDetails(serviceDetails []services.DLQRetryDetail) []DLQRetryDet
 	}
 	return apiDetails
 }
+
+// ConnectivityTestRequest represents a request to test connectivity
+type ConnectivityTestRequest struct {
+	TenantID  string `json:"tenant_id,omitempty"`
+	DatasetID string `json:"dataset_id,omitempty"`
+}
+
+// ConnectivityTestResponse represents the response from connectivity tests
+type ConnectivityTestResponse struct {
+	Message string                         `json:"message"`
+	Results []ConnectivityTestResultAPI   `json:"results"`
+	Summary ConnectivityTestSummary       `json:"summary"`
+}
+
+// ConnectivityTestResultAPI represents a single connectivity test result
+type ConnectivityTestResultAPI struct {
+	TenantID     string `json:"tenant_id"`
+	DatasetID    string `json:"dataset_id"`
+	PluginName   string `json:"plugin_name"`
+	PluginType   string `json:"plugin_type"`
+	BearerToken  string `json:"bearer_token,omitempty"`
+	ReceiverURL  string `json:"receiver_url"`
+	Status       string `json:"status"`
+	StatusCode   int    `json:"status_code,omitempty"`
+	ResponseTime string `json:"response_time"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	ResponseBody string `json:"response_body,omitempty"`
+}
+
+// ConnectivityTestSummary represents a summary of connectivity test results
+type ConnectivityTestSummary struct {
+	TotalTests    int `json:"total_tests"`
+	SuccessCount  int `json:"success_count"`
+	FailureCount  int `json:"failure_count"`
+	ErrorCount    int `json:"error_count"`
+	SuccessRate   int `json:"success_rate_percent"`
+}
+
+// TestConnectivity tests connectivity to receiver for all configured plugins/tenants
+func (api *API) TestConnectivity() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input *ConnectivityTestRequest, output *ConnectivityTestResponse) error {
+		log.Info("Starting connectivity tests to bytefreezer-receiver")
+
+		// Create connectivity test service
+		connectivityService := services.NewConnectivityTestService(api.Config)
+
+		var results []services.ConnectivityTestResult
+		var err error
+
+		// Test specific connection or all connections
+		if input.TenantID != "" || input.DatasetID != "" {
+			// Test specific tenant/dataset
+			result, testErr := connectivityService.TestSpecificConnection(input.TenantID, input.DatasetID)
+			if testErr != nil {
+				log.Errorf("Failed to test specific connectivity: %v", testErr)
+				return fmt.Errorf("failed to test connectivity: %w", testErr)
+			}
+			results = []services.ConnectivityTestResult{*result}
+		} else {
+			// Test all configured connections
+			results, err = connectivityService.TestAllConnections()
+			if err != nil {
+				log.Errorf("Failed to test all connectivity: %v", err)
+				return fmt.Errorf("failed to test connectivity: %w", err)
+			}
+		}
+
+		// Convert results to API format
+		output.Results = make([]ConnectivityTestResultAPI, len(results))
+		for i, result := range results {
+			output.Results[i] = ConnectivityTestResultAPI{
+				TenantID:     result.TenantID,
+				DatasetID:    result.DatasetID,
+				PluginName:   result.PluginName,
+				PluginType:   result.PluginType,
+				BearerToken:  result.BearerToken,
+				ReceiverURL:  result.ReceiverURL,
+				Status:       result.Status,
+				StatusCode:   result.StatusCode,
+				ResponseTime: result.ResponseTime,
+				ErrorMessage: result.ErrorMessage,
+				ResponseBody: result.ResponseBody,
+			}
+		}
+
+		// Calculate summary
+		summary := ConnectivityTestSummary{
+			TotalTests: len(results),
+		}
+		for _, result := range results {
+			switch result.Status {
+			case "success":
+				summary.SuccessCount++
+			case "failed":
+				summary.FailureCount++
+			case "error":
+				summary.ErrorCount++
+			}
+		}
+		if summary.TotalTests > 0 {
+			summary.SuccessRate = (summary.SuccessCount * 100) / summary.TotalTests
+		}
+		output.Summary = summary
+
+		// Generate message
+		if input.TenantID != "" || input.DatasetID != "" {
+			output.Message = fmt.Sprintf("Connectivity test completed for %s/%s", input.TenantID, input.DatasetID)
+		} else {
+			output.Message = fmt.Sprintf("Connectivity tests completed for all %d configured plugins", summary.TotalTests)
+		}
+
+		log.Infof("Connectivity tests completed: %d total, %d success, %d failed, %d errors (%d%% success rate)",
+			summary.TotalTests, summary.SuccessCount, summary.FailureCount, summary.ErrorCount, summary.SuccessRate)
+
+		return nil
+	})
+
+	u.SetTitle("Test Connectivity to Receiver")
+	u.SetDescription("Tests connectivity to bytefreezer-receiver for all configured plugins/tenants or a specific tenant/dataset")
+	u.SetTags("Connectivity")
+
+	return u
+}

@@ -62,6 +62,9 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 	service.Get("/api/v2/dlq/files", api.ListDLQFiles())
 	service.Post("/api/v2/dlq/retry", api.RetryDLQFiles())
 
+	// Connectivity test endpoints
+	service.Post("/api/v2/test/connectivity", api.TestConnectivity())
+
 	// API documentation
 	service.Docs("/v2/docs", swgui.New)
 
