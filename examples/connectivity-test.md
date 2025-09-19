@@ -1,8 +1,8 @@
 # Connectivity Testing Examples
 
-## Test All Configured Plugins/Tenants
+## Auto-Test All Configured Plugins/Tenants/Datasets
 
-Test connectivity for all configured input plugins:
+Automatically tests connectivity for ALL configured input plugins with their respective tenants, datasets, and bearer tokens:
 
 ```bash
 curl -X POST http://localhost:8088/api/v2/test/connectivity \
@@ -10,18 +10,10 @@ curl -X POST http://localhost:8088/api/v2/test/connectivity \
   -d '{}'
 ```
 
-## Test Specific Tenant/Dataset
-
-Test connectivity for a specific tenant and dataset:
-
-```bash
-curl -X POST http://localhost:8088/api/v2/test/connectivity \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenant_id": "customer-1",
-    "dataset_id": "ebpf-data"
-  }'
-```
+**Note**: No manual input required! The API automatically discovers and tests:
+- All configured input plugins from `config.yaml`
+- Each plugin's specific tenant_id, dataset_id, and bearer_token
+- The receiver destination for each configuration
 
 ## Sample Response
 

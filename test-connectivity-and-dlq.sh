@@ -21,18 +21,11 @@ echo "=== Configuration ==="
 curl -s http://localhost:8088/api/v2/config | jq '.'
 
 echo ""
-echo "=== Testing Connectivity to Receiver ==="
-echo "Testing all configured plugins/tenants/tokens..."
+echo "=== Auto-Testing Connectivity to Receiver ==="
+echo "Automatically testing ALL configured plugins/tenants/datasets..."
 curl -s -X POST http://localhost:8088/api/v2/test/connectivity \
   -H "Content-Type: application/json" \
   -d '{}' | jq '.'
-
-echo ""
-echo "=== Testing Specific Connectivity ==="
-echo "Testing specific tenant/dataset: customer-1/ebpf-data"
-curl -s -X POST http://localhost:8088/api/v2/test/connectivity \
-  -H "Content-Type: application/json" \
-  -d '{"tenant_id": "customer-1", "dataset_id": "ebpf-data"}' | jq '.'
 
 echo ""
 echo "=== DLQ Stats ==="

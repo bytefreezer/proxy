@@ -45,13 +45,26 @@ func NewConnectivityTestService(cfg *config.Config) *ConnectivityTestService {
 	}
 }
 
-// TestAllConnections tests connectivity to receiver for all configured plugins/tenants
+// TestAllConnections tests connectivity to receiver for all configured plugins/tenants/datasets
 func (c *ConnectivityTestService) TestAllConnections() ([]ConnectivityTestResult, error) {
 	var results []ConnectivityTestResult
 
-	// Test each input plugin configuration
+	// Test each input plugin configuration with its specific tenant/dataset/destination
 	for _, input := range c.config.Inputs {
 		result := c.testPluginConnectivity(input)
+		results = append(results, result)
+	}
+
+	// If no plugins configured, test global configuration
+	if len(c.config.Inputs) == 0 {
+		log.Warn("No input plugins configured, testing global configuration")
+		result := c.testConnection(
+			c.config.TenantID,
+			"unknown",
+			"global",
+			"unknown",
+			c.config.BearerToken,
+		)
 		results = append(results, result)
 	}
 

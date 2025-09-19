@@ -660,8 +660,7 @@ func convertRetryDetails(serviceDetails []services.DLQRetryDetail) []DLQRetryDet
 
 // ConnectivityTestRequest represents a request to test connectivity
 type ConnectivityTestRequest struct {
-	TenantID  string `json:"tenant_id,omitempty"`
-	DatasetID string `json:"dataset_id,omitempty"`
+	// No fields needed - auto-discovers all configurations
 }
 
 // ConnectivityTestResponse represents the response from connectivity tests
@@ -698,30 +697,16 @@ type ConnectivityTestSummary struct {
 // TestConnectivity tests connectivity to receiver for all configured plugins/tenants
 func (api *API) TestConnectivity() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input *ConnectivityTestRequest, output *ConnectivityTestResponse) error {
-		log.Info("Starting connectivity tests to bytefreezer-receiver")
+		log.Info("Starting automatic connectivity tests for all configured plugins/tenants/datasets")
 
 		// Create connectivity test service
 		connectivityService := services.NewConnectivityTestService(api.Config)
 
-		var results []services.ConnectivityTestResult
-		var err error
-
-		// Test specific connection or all connections
-		if input.TenantID != "" || input.DatasetID != "" {
-			// Test specific tenant/dataset
-			result, testErr := connectivityService.TestSpecificConnection(input.TenantID, input.DatasetID)
-			if testErr != nil {
-				log.Errorf("Failed to test specific connectivity: %v", testErr)
-				return fmt.Errorf("failed to test connectivity: %w", testErr)
-			}
-			results = []services.ConnectivityTestResult{*result}
-		} else {
-			// Test all configured connections
-			results, err = connectivityService.TestAllConnections()
-			if err != nil {
-				log.Errorf("Failed to test all connectivity: %v", err)
-				return fmt.Errorf("failed to test connectivity: %w", err)
-			}
+		// Test all configured connections automatically
+		results, err := connectivityService.TestAllConnections()
+		if err != nil {
+			log.Errorf("Failed to test connectivity: %v", err)
+			return fmt.Errorf("failed to test connectivity: %w", err)
 		}
 
 		// Convert results to API format
@@ -762,11 +747,7 @@ func (api *API) TestConnectivity() usecase.Interactor {
 		output.Summary = summary
 
 		// Generate message
-		if input.TenantID != "" || input.DatasetID != "" {
-			output.Message = fmt.Sprintf("Connectivity test completed for %s/%s", input.TenantID, input.DatasetID)
-		} else {
-			output.Message = fmt.Sprintf("Connectivity tests completed for all %d configured plugins", summary.TotalTests)
-		}
+		output.Message = fmt.Sprintf("Connectivity tests completed for all %d configured plugins/tenants/datasets", summary.TotalTests)
 
 		log.Infof("Connectivity tests completed: %d total, %d success, %d failed, %d errors (%d%% success rate)",
 			summary.TotalTests, summary.SuccessCount, summary.FailureCount, summary.ErrorCount, summary.SuccessRate)
@@ -775,7 +756,7 @@ func (api *API) TestConnectivity() usecase.Interactor {
 	})
 
 	u.SetTitle("Test Connectivity to Receiver")
-	u.SetDescription("Tests connectivity to bytefreezer-receiver for all configured plugins/tenants or a specific tenant/dataset")
+	u.SetDescription("Automatically tests connectivity to bytefreezer-receiver for all configured plugins/tenants/datasets")
 	u.SetTags("Connectivity")
 
 	return u

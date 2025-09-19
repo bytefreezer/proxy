@@ -9,19 +9,21 @@
 - **Network vs HTTP error distinction**: Clear differentiation between connection issues and receiver errors
 - **Retry attempt tracking**: Each retry attempt is numbered for better debugging
 - **Response body capture**: Full receiver error responses are logged (handles empty responses gracefully)
+- **URL context**: All error messages now include the destination URL for easier debugging
+- **HTTP status codes**: Clear display of HTTP response codes from receiver
 
 Example log output:
 ```
-WARN: Batch batch123 upload attempt 2 failed - receiver returned 401: {"error":"invalid bearer token"}
-WARN: Batch batch456 upload attempt 1 failed - network error: dial tcp 127.0.0.1:8081: connect: connection refused
+WARN: Batch batch123 upload attempt 2 failed - http://localhost:8081/customer-1/ebpf-data returned HTTP 401: {"error":"invalid bearer token"}
+WARN: Batch batch456 upload attempt 1 failed - network error to http://localhost:8081/customer-2/web-data: dial tcp 127.0.0.1:8081: connect: connection refused
 ```
 
 ### New Connectivity Testing API
 
 #### Comprehensive Receiver Connectivity Testing
-- **New endpoint**: `POST /api/v2/test/connectivity` - Test receiver connectivity for all plugins/tenants/tokens
-- **Plugin-aware testing**: Automatically tests each configured input plugin with its specific configuration
-- **Specific testing**: Test individual tenant/dataset combinations
+- **New endpoint**: `POST /api/v2/test/connectivity` - Automatically tests ALL configured plugins/tenants/datasets
+- **Zero-configuration testing**: No manual input required - auto-discovers all configurations from config.yaml
+- **Plugin-aware testing**: Automatically tests each configured input plugin with its specific tenant_id, dataset_id, and bearer_token
 - **Real payload testing**: Sends actual compressed NDJSON data to verify end-to-end connectivity
 - **Security-conscious**: Bearer tokens are masked in API responses (e.g., "eb4b***2cf")
 - **Performance metrics**: Response time measurement for each test
@@ -29,13 +31,11 @@ WARN: Batch batch456 upload attempt 1 failed - network error: dial tcp 127.0.0.1
 
 #### API Examples
 ```bash
-# Test all configured plugins
+# Automatically test ALL configured plugins/tenants/datasets
 curl -X POST http://localhost:8088/api/v2/test/connectivity -d '{}'
-
-# Test specific tenant/dataset
-curl -X POST http://localhost:8088/api/v2/test/connectivity \
-  -d '{"tenant_id": "customer-1", "dataset_id": "ebpf-data"}'
 ```
+
+**Note**: No manual tenant/dataset input needed! The API automatically discovers and tests all configurations from your config.yaml file.
 
 #### Response Format
 ```json
