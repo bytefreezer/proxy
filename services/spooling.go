@@ -2093,7 +2093,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 				}
 
 				dlqFiles = append(dlqFiles, spooledFile)
-				
+
 				// Limit to prevent DoS attacks
 				if len(dlqFiles) >= maxFiles {
 					log.Debugf("DLQ file list truncated to %d files (limit reached)", maxFiles)
