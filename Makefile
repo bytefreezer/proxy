@@ -73,7 +73,7 @@ lint: fmt vet staticcheck gosec ## Run all linting checks
 
 build: ## Build the binary
 	@echo "$(BLUE)Building $(BINARY_NAME)...$(NC)"
-	@$(GOBUILD) -ldflags="-s -w -X main.version=dev -X main.buildTime=$$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o $(BINARY_NAME) .
+	@$(GOBUILD) -ldflags="-s -w -X main.version=dev -X main.buildTime=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" -o $(BINARY_NAME) .
 	@echo "$(GREEN)✓ Build completed: $(BINARY_NAME)$(NC)"
 
 clean: ## Clean build artifacts
@@ -98,5 +98,5 @@ test-integration: build ## Run integration tests with real binary
 # Docker build test
 docker-build-test: ## Test Docker build locally
 	@echo "$(BLUE)Testing Docker build...$(NC)"
-	@docker build --build-arg VERSION=test --build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t $(BINARY_NAME):test .
+	@docker build --build-arg VERSION=test --build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) --build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -t $(BINARY_NAME):test .
 	@echo "$(GREEN)✓ Docker build test passed$(NC)"

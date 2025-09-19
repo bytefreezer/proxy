@@ -72,8 +72,9 @@ type ConfigResponse struct {
 }
 
 type AppConfig struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	GitCommit string `json:"git_commit"`
 }
 
 type ServerConfig struct {
@@ -354,8 +355,9 @@ func (api *API) GetConfig() usecase.Interactor {
 
 		// Basic app configuration
 		output.App = AppConfig{
-			Name:    cfg.App.Name,
-			Version: cfg.App.Version,
+			Name:      cfg.App.Name,
+			Version:   cfg.App.Version,
+			GitCommit: cfg.App.GitCommit,
 		}
 
 		// Server configuration

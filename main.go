@@ -27,6 +27,7 @@ import (
 var (
 	version   = "dev"
 	buildTime = "unknown"
+	gitCommit = "unknown"
 )
 
 func main() {
@@ -43,7 +44,7 @@ func main() {
 
 	// Handle version flag
 	if *showVersion {
-		fmt.Printf("bytefreezer-proxy version %s (built %s)\n", version, buildTime)
+		fmt.Printf("bytefreezer-proxy version %s (built %s, commit %s)\n", version, buildTime, gitCommit)
 		os.Exit(0)
 	}
 
@@ -61,6 +62,9 @@ func main() {
 	if err := config.LoadConfig(*configFile, "BYTEFREEZER_PROXY_", &cfg); err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	// Set runtime build info
+	cfg.App.GitCommit = gitCommit
 
 	// Always validate configuration during startup
 	if err := config.ValidateConfig(&cfg); err != nil {

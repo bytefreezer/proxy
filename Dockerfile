@@ -18,8 +18,9 @@ COPY . .
 # Disable CGO for a fully static binary
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
+ARG GIT_COMMIT=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
     -o /app .
 
 # Debug: Check what we built
@@ -93,6 +94,7 @@ CMD ["/app", "--config", "/etc/bytefreezer-proxy/config.yaml"]
 # Metadata labels following OCI standards
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
+ARG GIT_COMMIT=unknown
 LABEL maintainer="ByteFreezer Team" \
       org.opencontainers.image.title="ByteFreezer Proxy" \
       org.opencontainers.image.description="High-performance multi-protocol data streaming proxy with plugin architecture supporting UDP, HTTP, Kafka, NATS and custom plugins" \
@@ -100,4 +102,5 @@ LABEL maintainer="ByteFreezer Team" \
       org.opencontainers.image.source="https://github.com/n0needt0/bytefreezer-proxy" \
       org.opencontainers.image.documentation="https://github.com/n0needt0/bytefreezer-proxy/blob/main/README.md" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.created="${BUILD_TIME}"
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}"

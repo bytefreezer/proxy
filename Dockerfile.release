@@ -11,10 +11,12 @@ ENTRYPOINT ["/bytefreezer-proxy"]
 # Metadata labels
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
+ARG GIT_COMMIT=unknown
 LABEL maintainer="ByteFreezer Team" \
       org.opencontainers.image.title="ByteFreezer Proxy (Minimal)" \
       org.opencontainers.image.description="Minimal distribution of ByteFreezer Proxy binary for extraction and deployment" \
       org.opencontainers.image.vendor="ByteFreezer" \
       org.opencontainers.image.source="https://github.com/n0needt0/bytefreezer-proxy" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.created="${BUILD_TIME}"
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}"

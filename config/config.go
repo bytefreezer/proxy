@@ -39,8 +39,9 @@ type Config struct {
 }
 
 type App struct {
-	Name    string `mapstructure:"name"`
-	Version string `mapstructure:"version"`
+	Name      string `mapstructure:"name"`
+	Version   string `mapstructure:"version"`
+	GitCommit string `mapstructure:"-"` // Not loaded from config, set at runtime
 }
 
 type LoggingConfig struct {
