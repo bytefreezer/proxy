@@ -2004,6 +2004,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 		return nil, fmt.Errorf("spooling is disabled")
 	}
 
+	const maxFiles = 100 // Limit to prevent DoS attacks
 	var dlqFiles []SpooledFile
 
 	tenants := []string{}
@@ -2092,6 +2093,12 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 				}
 
 				dlqFiles = append(dlqFiles, spooledFile)
+				
+				// Limit to prevent DoS attacks
+				if len(dlqFiles) >= maxFiles {
+					log.Debugf("DLQ file list truncated to %d files (limit reached)", maxFiles)
+					return dlqFiles, nil
+				}
 			}
 		}
 	}

@@ -18,20 +18,24 @@ type HealthResponse struct {
 	Version     string               `json:"version"`
 	ServiceName string               `json:"service_name"`
 	Timestamp   string               `json:"timestamp"`
-	UDP         UDPHealthStatus      `json:"udp"`
+	Plugins     PluginsHealthStatus  `json:"plugins"`
 	Receiver    ReceiverHealthStatus `json:"receiver"`
 	Stats       ProxyStatsResponse   `json:"stats"`
 }
 
-type UDPHealthStatus struct {
-	Enabled   bool          `json:"enabled"`
-	Host      string        `json:"host"`
-	Listeners []UDPListener `json:"listeners"`
-	Status    string        `json:"status"`
+type PluginsHealthStatus struct {
+	TotalPlugins   int                  `json:"total_plugins"`
+	ActivePlugins  int                  `json:"active_plugins"`
+	PluginsByType  map[string]int       `json:"plugins_by_type"`
+	PluginDetails  []PluginHealthDetail `json:"plugin_details"`
+	Status         string               `json:"status"`
 }
 
-type UDPListener struct {
-	Port      int    `json:"port"`
+type PluginHealthDetail struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	Port      int    `json:"port,omitempty"`
 	DatasetID string `json:"dataset_id"`
 	TenantID  string `json:"tenant_id,omitempty"`
 }
@@ -57,7 +61,7 @@ type ProxyStatsResponse struct {
 type ConfigResponse struct {
 	App          AppConfig            `json:"app"`
 	Server       ServerConfig         `json:"server"`
-	UDP          UDPConfig            `json:"udp"`
+	Plugins      PluginsConfig        `json:"plugins"`
 	Receiver     ReceiverConfigMasked `json:"receiver"`
 	TenantID     string               `json:"tenant_id"`    // This will be masked
 	BearerToken  string               `json:"bearer_token"` // This will be masked
@@ -76,16 +80,15 @@ type ServerConfig struct {
 	ApiPort int `json:"api_port"`
 }
 
-type UDPConfig struct {
-	Enabled             bool          `json:"enabled"`
-	Host                string        `json:"host"`
-	Listeners           []UDPListener `json:"listeners"`
-	ReadBufferSizeBytes int           `json:"read_buffer_size_bytes"`
-	MaxBatchLines       int           `json:"max_batch_lines"`
-	MaxBatchBytes       int64         `json:"max_batch_bytes"`
-	BatchTimeoutSeconds int           `json:"batch_timeout_seconds"`
-	CompressionLevel    int           `json:"compression_level"`
-	// Compression is always enabled for raw data
+type PluginsConfig struct {
+	TotalPlugins  int                  `json:"total_plugins"`
+	PluginDetails []PluginConfigDetail `json:"plugin_details"`
+}
+
+type PluginConfigDetail struct {
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`
+	Config    map[string]interface{} `json:"config"`
 }
 
 type ReceiverConfigMasked struct {
@@ -247,18 +250,61 @@ func (api *API) HealthCheck() usecase.Interactor {
 		output.ServiceName = cfg.App.Name
 		output.Timestamp = time.Now().UTC().Format(time.RFC3339)
 
-		// UDP status
-		udpStatus := "disabled"
-		if cfg.UDP.Enabled {
-			udpStatus = "enabled"
-			// TODO: Add actual UDP listener health check
+		// Plugin status
+		pluginStatus := "no_plugins"
+		pluginsByType := make(map[string]int)
+		var pluginDetails []PluginHealthDetail
+		
+		totalPlugins := len(cfg.Inputs)
+		activePlugins := 0
+		
+		for _, input := range cfg.Inputs {
+			pluginsByType[input.Type]++
+			activePlugins++ // For now, assume all configured plugins are active
+			
+			// Extract port from config if available
+			port := 0
+			if portVal, ok := input.Config["port"]; ok {
+				if portInt, ok := portVal.(int); ok {
+					port = portInt
+				}
+			}
+			
+			// Extract dataset_id and tenant_id from config
+			datasetID := ""
+			if datasetVal, ok := input.Config["dataset_id"]; ok {
+				if datasetStr, ok := datasetVal.(string); ok {
+					datasetID = datasetStr
+				}
+			}
+			
+			tenantID := ""
+			if tenantVal, ok := input.Config["tenant_id"]; ok {
+				if tenantStr, ok := tenantVal.(string); ok {
+					tenantID = tenantStr
+				}
+			}
+			
+			pluginDetails = append(pluginDetails, PluginHealthDetail{
+				Name:      input.Name,
+				Type:      input.Type,
+				Status:    "active", // TODO: Get actual plugin health status
+				Port:      port,
+				DatasetID: datasetID,
+				TenantID:  tenantID,
+			})
+		}
+		
+		if totalPlugins > 0 {
+			pluginStatus = "active"
 		}
 
-		output.UDP = UDPHealthStatus{
-			Enabled:   cfg.UDP.Enabled,
-			Host:      cfg.UDP.Host,
-			Listeners: convertListeners(cfg.UDP.Listeners),
-			Status:    udpStatus,
+		output.Plugins = PluginsHealthStatus{
+			TotalPlugins:  totalPlugins,
+			ActivePlugins: activePlugins,
+			PluginsByType: pluginsByType,
+			PluginDetails: pluginDetails,
+			Status:        pluginStatus,
 		}
 
 		// Receiver status
@@ -313,17 +359,30 @@ func (api *API) GetConfig() usecase.Interactor {
 			ApiPort: cfg.Server.ApiPort,
 		}
 
-		// UDP configuration
-		output.UDP = UDPConfig{
-			Enabled:             cfg.UDP.Enabled,
-			Host:                cfg.UDP.Host,
-			Listeners:           convertListeners(cfg.UDP.Listeners),
-			ReadBufferSizeBytes: cfg.UDP.ReadBufferSizeBytes,
-			MaxBatchLines:       cfg.UDP.MaxBatchLines,
-			MaxBatchBytes:       cfg.UDP.MaxBatchBytes,
-			BatchTimeoutSeconds: cfg.UDP.BatchTimeoutSeconds,
-			CompressionLevel:    cfg.UDP.CompressionLevel,
-			// Compression is always enabled for raw data
+		// Plugin configuration
+		var pluginDetails []PluginConfigDetail
+		for _, input := range cfg.Inputs {
+			// Create a sanitized copy of the config (mask sensitive values)
+			sanitizedConfig := make(map[string]interface{})
+			for key, value := range input.Config {
+				// Mask sensitive fields
+				if key == "bearer_token" || key == "password" || key == "secret" || key == "token" {
+					sanitizedConfig[key] = "***MASKED***"
+				} else {
+					sanitizedConfig[key] = value
+				}
+			}
+			
+			pluginDetails = append(pluginDetails, PluginConfigDetail{
+				Name:   input.Name,
+				Type:   input.Type,
+				Config: sanitizedConfig,
+			})
+		}
+		
+		output.Plugins = PluginsConfig{
+			TotalPlugins:  len(cfg.Inputs),
+			PluginDetails: pluginDetails,
 		}
 
 		// Receiver configuration
@@ -373,18 +432,6 @@ func (api *API) GetConfig() usecase.Interactor {
 	return u
 }
 
-// convertListeners converts config UDP listeners to API response format
-func convertListeners(configListeners []config.UDPListener) []UDPListener {
-	listeners := make([]UDPListener, len(configListeners))
-	for i, l := range configListeners {
-		listeners[i] = UDPListener{
-			Port:      l.Port,
-			DatasetID: l.DatasetID,
-			TenantID:  l.TenantID,
-		}
-	}
-	return listeners
-}
 
 // GetDLQStats returns DLQ and spooling statistics
 func (api *API) GetDLQStats() usecase.Interactor {
