@@ -93,6 +93,10 @@ type Receiver struct {
 	UploadWorkerCount  int    `mapstructure:"upload_worker_count"`  // Number of upload workers (aligned with receiver)
 	MaxIdleConns       int    `mapstructure:"max_idle_conns"`       // HTTP connection pool size
 	MaxConnsPerHost    int    `mapstructure:"max_conns_per_host"`   // Max connections per host
+
+	// Dedicated retry HTTP client configuration (same defaults as upload client)
+	RetryMaxIdleConns    int `mapstructure:"retry_max_idle_conns"`    // HTTP connection pool size for retries
+	RetryMaxConnsPerHost int `mapstructure:"retry_max_conns_per_host"` // Max connections per host for retries
 }
 
 type SOCAlert struct {
@@ -271,6 +275,22 @@ func (cfg *Config) GetMaxConnsPerHost() int {
 		return 6 // Default to 6 connections per host
 	}
 	return cfg.Receiver.MaxConnsPerHost
+}
+
+// GetRetryMaxIdleConns returns the max idle connections for retry HTTP client
+func (cfg *Config) GetRetryMaxIdleConns() int {
+	if cfg.Receiver.RetryMaxIdleConns <= 0 {
+		return cfg.GetMaxIdleConns() // Default to same as upload client (10)
+	}
+	return cfg.Receiver.RetryMaxIdleConns
+}
+
+// GetRetryMaxConnsPerHost returns the max connections per host for retry HTTP client
+func (cfg *Config) GetRetryMaxConnsPerHost() int {
+	if cfg.Receiver.RetryMaxConnsPerHost <= 0 {
+		return cfg.GetMaxConnsPerHost() // Default to same as upload client (6)
+	}
+	return cfg.Receiver.RetryMaxConnsPerHost
 }
 
 // TenantInfo represents tenant configuration details

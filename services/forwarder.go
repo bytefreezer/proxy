@@ -74,6 +74,32 @@ func NewHTTPForwarderWithMetrics(cfg *config.Config, metricsService *MetricsServ
 	}
 }
 
+// NewRetryHTTPForwarder creates a new HTTP forwarder specifically for retry processing with dedicated connection pool
+func NewRetryHTTPForwarder(cfg *config.Config) *HTTPForwarder {
+	// Create custom transport with dedicated retry connection pooling
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        cfg.GetRetryMaxIdleConns(),    // Dedicated retry pool size
+		MaxIdleConnsPerHost: cfg.GetRetryMaxConnsPerHost(), // Dedicated retry connections per host
+		MaxConnsPerHost:     cfg.GetRetryMaxConnsPerHost(), // Dedicated retry connections per host
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableCompression:  false, // Enable gzip compression
+	}
+
+	return &HTTPForwarder{
+		config: cfg,
+		httpClient: &http.Client{
+			Timeout:   cfg.GetReceiverTimeout(),
+			Transport: transport,
+		},
+		metricsService: nil, // Retry forwarder doesn't need metrics
+	}
+}
+
 // ForwardBatch forwards a data batch to bytefreezer-receiver
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	// Replace placeholders in base URL with actual tenant and dataset IDs

@@ -27,6 +27,9 @@ type SpoolingService struct {
 	retryInterval   time.Duration
 	cleanupInterval time.Duration
 
+	// Dedicated HTTP client for retry processing
+	retryForwarder *HTTPForwarder
+
 	// Runtime state
 	currentSize int64
 	mutex       sync.RWMutex
@@ -64,6 +67,7 @@ func NewSpoolingService(cfg *config.Config) *SpoolingService {
 		retryAttempts:   cfg.Spooling.RetryAttempts,
 		retryInterval:   time.Duration(cfg.Spooling.RetryIntervalSec) * time.Second,
 		cleanupInterval: time.Duration(cfg.Spooling.CleanupIntervalSec) * time.Second,
+		retryForwarder:  NewRetryHTTPForwarder(cfg), // Dedicated HTTP client for retry processing
 		shutdown:        make(chan struct{}),
 	}
 }
@@ -741,15 +745,12 @@ func (s *SpoolingService) retryJobWorker(workerID int, jobChannel <-chan RetryJo
 }, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	// Create forwarder for this worker
-	forwarder := NewHTTPForwarder(s.config)
-
-	log.Debugf("Retry worker %d started", workerID)
+	log.Debugf("Retry worker %d started (using dedicated retry HTTP client)", workerID)
 
 	for job := range jobChannel {
 		log.Debugf("Worker %d processing retry job for batch %s", workerID, job.BatchID)
 
-		success := s.processRetryJob(job, forwarder)
+		success := s.processRetryJob(job, s.retryForwarder)
 
 		resultChannel <- struct {
 			success bool

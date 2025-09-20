@@ -38,6 +38,10 @@ receiver:
   max_idle_conns: 10        # HTTP connection pool size
   max_conns_per_host: 6     # Max connections per host
 
+  # Dedicated retry HTTP client configuration (defaults to same values as upload client)
+  # retry_max_idle_conns: 10      # HTTP connection pool size for retries (optional)
+  # retry_max_conns_per_host: 6   # Max connections per host for retries (optional)
+
 # Batch processing configuration
 batching:
   enabled: true
