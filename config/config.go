@@ -191,12 +191,8 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	if cfg.Receiver.TimeoutSec == 0 {
 		cfg.Receiver.TimeoutSec = 30
 	}
-	if cfg.Receiver.RetryCount == 0 {
-		cfg.Receiver.RetryCount = 3
-	}
-	if cfg.Receiver.RetryDelaySec == 0 {
-		cfg.Receiver.RetryDelaySec = 1
-	}
+	// RetryCount and RetryDelaySec are deprecated - file-level retry is used instead
+	// Keep RetryCount = 0 for single HTTP attempts only
 	if cfg.UDP.ReadBufferSizeBytes == 0 {
 		cfg.UDP.ReadBufferSizeBytes = 65536 // 64KB default
 	}
@@ -252,9 +248,7 @@ func (cfg *Config) GetReceiverTimeout() time.Duration {
 	return time.Duration(cfg.Receiver.TimeoutSec) * time.Second
 }
 
-func (cfg *Config) GetRetryDelay() time.Duration {
-	return time.Duration(cfg.Receiver.RetryDelaySec) * time.Second
-}
+// GetRetryDelay is deprecated - HTTP-level retries are disabled in favor of file-level retries
 
 func (cfg *Config) GetUploadWorkerCount() int {
 	if cfg.Receiver.UploadWorkerCount <= 0 {

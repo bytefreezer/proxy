@@ -2,7 +2,6 @@ package services
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net"
@@ -135,53 +134,30 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Original-Bytes", fmt.Sprintf("%d", batch.TotalBytes))
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
 
-	// Retry logic
-	var lastErr error
-	for attempt := 0; attempt <= f.config.Receiver.RetryCount; attempt++ {
-		if attempt > 0 {
-			log.Debugf("Retrying batch %s, attempt %d/%d", batch.ID, attempt, f.config.Receiver.RetryCount)
-
-			// Record retry attempt metric
-			if f.metricsService != nil {
-				ctx := context.Background()
-				f.metricsService.RecordHTTPRequest(ctx, batch.TenantID, batch.DatasetID, "retry")
-			}
-
-			time.Sleep(f.config.GetRetryDelay())
-		}
-
-		resp, err := f.httpClient.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("HTTP request failed: %w", err)
-			log.Warnf("Batch %s upload attempt %d failed - network error to %s: %v", batch.ID, attempt+1, url, err)
-			continue
-		}
-
-		// Read response body for debugging
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		// Check response status
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			log.Debugf("Successfully forwarded batch %s to %s (status: %d)",
-				batch.ID, url, resp.StatusCode)
-			return nil
-		}
-
-		// Log detailed error from receiver
-		bodyStr := string(body)
-		if bodyStr == "" {
-			bodyStr = "(empty response body)"
-		}
-		lastErr = fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr)
-		log.Warnf("Batch %s upload attempt %d failed - %s returned HTTP %d: %s",
-			batch.ID, attempt+1, url, resp.StatusCode, bodyStr)
-
-		// Don't retry on client errors (4xx)
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			break
-		}
+	// Single HTTP attempt only - file-level retry handles failures
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		log.Warnf("Batch %s upload failed - network error to %s: %v", batch.ID, url, err)
+		return fmt.Errorf("HTTP request failed: %w", err)
 	}
 
-	return fmt.Errorf("failed to forward batch to %s after %d attempts: %w", url, f.config.Receiver.RetryCount+1, lastErr)
+	// Read response body for debugging
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Debugf("Successfully forwarded batch %s to %s (status: %d)",
+			batch.ID, url, resp.StatusCode)
+		return nil
+	}
+
+	// Log detailed error from receiver
+	bodyStr := string(body)
+	if bodyStr == "" {
+		bodyStr = "(empty response body)"
+	}
+	log.Warnf("Batch %s upload failed - %s returned HTTP %d: %s",
+		batch.ID, url, resp.StatusCode, bodyStr)
+	return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr)
 }
