@@ -413,37 +413,14 @@ func TestSpoolingService_StoreBatchToQueue(t *testing.T) {
 		t.Errorf("Expected 1 file in queue, got %d", len(queueFiles))
 	}
 
-	// Verify metadata was created with correct failure reason
+	// Verify no metadata was created for queue files (new architecture)
 	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
-	metaFiles, err := os.ReadDir(metaDir)
-	if err != nil {
-		t.Fatalf("Failed to read meta directory: %v", err)
+	_, err = os.ReadDir(metaDir)
+	if !os.IsNotExist(err) {
+		t.Errorf("Meta directory should not exist for queue files, but got: %v", err)
 	}
 
-	if len(metaFiles) != 1 {
-		t.Errorf("Expected 1 metadata file, got %d", len(metaFiles))
-	}
-
-	if len(metaFiles) > 0 {
-		metaPath := filepath.Join(metaDir, metaFiles[0].Name())
-		metaContent, err := os.ReadFile(metaPath)
-		if err != nil {
-			t.Fatalf("Failed to read metadata file: %v", err)
-		}
-
-		var spooledFile SpooledFile
-		if err := json.Unmarshal(metaContent, &spooledFile); err != nil {
-			t.Fatalf("Failed to unmarshal metadata: %v", err)
-		}
-
-		if spooledFile.FailureReason != "Test failure reason" {
-			t.Errorf("Expected failure reason 'Test failure reason', got '%s'", spooledFile.FailureReason)
-		}
-
-		if spooledFile.Status != "pending" {
-			t.Errorf("Expected status 'pending', got '%s'", spooledFile.Status)
-		}
-	}
+	// Queue files are meant for immediate processing and don't need metadata tracking
 }
 
 func TestSpoolingService_CountFilesInDirectory(t *testing.T) {
