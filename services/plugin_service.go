@@ -282,6 +282,7 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		batch.BearerToken,
 		batch.Data, // Already compressed data
 		"",         // No failure reason - this is initial spooling
+		batch.ID,   // Use the existing batch ID
 	)
 }
 
