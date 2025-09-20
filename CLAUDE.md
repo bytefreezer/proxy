@@ -64,8 +64,8 @@ When working on ANY ByteFreezer project, always follow these steps:
 ## ByteFreezer Component Roles
 
 ### Data Ingestion Layer
-- **bytefreezer-proxy**: UDP data collection and forwarding to receiver
-- **bytefreezer-receiver**: HTTP webhook receiver that stores raw data to S3
+- **bytefreezer-proxy**: UDP data collection with concurrent upload worker pool and spool-first architecture (queue → retry → dlq)
+- **bytefreezer-receiver**: HTTP webhook receiver with spool-based architecture (queue → retry → dlq) that processes batches and uploads to S3
 
 ### Processing Layer
 - **bytefreezer-packer**: Data compression and packaging
@@ -145,8 +145,64 @@ When working on ANY ByteFreezer project, always follow these steps:
 - Consider the impact on the entire ByteFreezer ecosystem
 - Prioritize reliability and observability
 
+## Proxy Architecture
+
+### Concurrent Upload System
+The proxy implements a high-performance concurrent upload system aligned with the receiver patterns:
+
+#### Upload Worker Pool
+- **Worker Count**: Configurable via `upload_worker_count` (default: 5)
+- **Pattern**: Dedicated `UploadWorker` structs with `run()` method
+- **Channel**: Buffered upload channel (1000 capacity) shared by all workers
+- **Concurrency**: Multiple workers process uploads simultaneously
+
+#### Spool-First Architecture
+1. **Data Reception**: Plugin receives UDP/TCP/HTTP data
+2. **Batching**: BatchProcessor accumulates data into batches
+3. **Spooling**: Batch saved to `/queue` directory FIRST (data safety)
+4. **Notification**: Batch added to upload channel for immediate processing
+5. **Upload Attempt**: Worker attempts immediate upload to receiver
+6. **Success**: File removed from `/queue`
+7. **Failure**: File moved to `/retry` with metadata
+
+#### Directory Structure
+```
+/var/spool/bytefreezer-proxy/{tenant}/{dataset}/
+├── queue/    # New files ready for upload (data files only)
+├── retry/    # Failed uploads awaiting retry (data + .json metadata)
+└── dlq/      # Dead letter queue - permanently failed (data + .json metadata)
+```
+
+#### Retry Processing
+- **Concurrent Workers**: Same worker pool processes both immediate and retry uploads
+- **Batch Processing**: Retry jobs collected and distributed to workers
+- **Max Retries**: Configurable retry attempts before DLQ
+- **Exponential Backoff**: Built into retry scheduling
+
+#### Connection Pooling
+- **HTTP Transport**: Custom transport with connection pooling
+- **Persistent Connections**: 90-second idle timeout with keep-alive
+- **Pool Configuration**:
+  - `max_idle_conns: 10` (total pool size)
+  - `max_conns_per_host: 6` (per receiver host)
+
+#### Configuration
+```yaml
+receiver:
+  upload_worker_count: 5    # Number of concurrent upload workers
+  max_idle_conns: 10        # HTTP connection pool size
+  max_conns_per_host: 6     # Max connections per host
+```
+
+#### Performance Benefits
+- **Throughput**: ~5x upload concurrency vs sequential processing
+- **Efficiency**: Connection reuse reduces TCP handshake overhead
+- **Reliability**: Spool-first ensures zero data loss
+- **Alignment**: Identical patterns with receiver for consistency
+
 ## Current Focus (Update as needed)
 - Enhanced error handling and debugging capabilities
+- Concurrent upload performance optimization
 - API standardization across all components
 - Improved observability and monitoring
 - Documentation and examples

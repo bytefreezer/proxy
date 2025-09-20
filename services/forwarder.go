@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -21,23 +22,53 @@ type HTTPForwarder struct {
 	metricsService *MetricsService
 }
 
-// NewHTTPForwarder creates a new HTTP forwarder
+// NewHTTPForwarder creates a new HTTP forwarder with connection pooling
 func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
+	// Create custom transport with connection pooling
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        cfg.GetMaxIdleConns(),
+		MaxIdleConnsPerHost: cfg.GetMaxConnsPerHost(),
+		MaxConnsPerHost:     cfg.GetMaxConnsPerHost(),
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableCompression:  false, // Enable gzip compression
+	}
+
 	return &HTTPForwarder{
 		config: cfg,
 		httpClient: &http.Client{
-			Timeout: cfg.GetReceiverTimeout(),
+			Timeout:   cfg.GetReceiverTimeout(),
+			Transport: transport,
 		},
 		metricsService: nil, // Will be set if needed
 	}
 }
 
-// NewHTTPForwarderWithMetrics creates a new HTTP forwarder with metrics service
+// NewHTTPForwarderWithMetrics creates a new HTTP forwarder with metrics service and connection pooling
 func NewHTTPForwarderWithMetrics(cfg *config.Config, metricsService *MetricsService) *HTTPForwarder {
+	// Create custom transport with connection pooling
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        cfg.GetMaxIdleConns(),
+		MaxIdleConnsPerHost: cfg.GetMaxConnsPerHost(),
+		MaxConnsPerHost:     cfg.GetMaxConnsPerHost(),
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableCompression:  false, // Enable gzip compression
+	}
+
 	return &HTTPForwarder{
 		config: cfg,
 		httpClient: &http.Client{
-			Timeout: cfg.GetReceiverTimeout(),
+			Timeout:   cfg.GetReceiverTimeout(),
+			Transport: transport,
 		},
 		metricsService: metricsService,
 	}

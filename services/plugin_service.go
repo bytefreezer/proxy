@@ -14,6 +14,13 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
+// UploadWorker handles upload processing (aligned with receiver pattern)
+type UploadWorker struct {
+	id            int
+	pluginService *PluginService
+	uploadChannel <-chan *domain.DataBatch
+}
+
 // PluginService manages input plugins and data batching
 type PluginService struct {
 	config          *config.Config
@@ -27,6 +34,8 @@ type PluginService struct {
 	inputChannel    chan *plugins.DataMessage
 	uploadChannel   chan *domain.DataBatch // Channel for immediate upload notifications
 	batchingEnabled bool
+	uploadWorkers   []*UploadWorker // Upload worker instances (aligned with receiver)
+	workerCount     int             // Number of upload workers
 }
 
 // NewPluginService creates a new plugin service
@@ -50,7 +59,19 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 	// Create batch processor (reuse existing batching logic)
 	batchProcessor := NewBatchProcessor(cfg)
 
-	return &PluginService{
+	workerCount := cfg.GetUploadWorkerCount()
+	uploadWorkers := make([]*UploadWorker, workerCount)
+
+	// Initialize upload workers (aligned with receiver pattern)
+	for i := 0; i < workerCount; i++ {
+		uploadWorkers[i] = &UploadWorker{
+			id:            i,
+			pluginService: nil, // Will be set after PluginService creation
+			uploadChannel: uploadChannel,
+		}
+	}
+
+	ps := &PluginService{
 		config:          cfg,
 		pluginManager:   pluginManager,
 		batchProcessor:  batchProcessor,
@@ -61,7 +82,16 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 		inputChannel:    inputChannel,
 		uploadChannel:   uploadChannel,
 		batchingEnabled: true,
-	}, nil
+		uploadWorkers:   uploadWorkers,
+		workerCount:     workerCount,
+	}
+
+	// Set back-reference to plugin service
+	for _, worker := range uploadWorkers {
+		worker.pluginService = ps
+	}
+
+	return ps, nil
 }
 
 // Start begins the plugin service
@@ -86,11 +116,14 @@ func (ps *PluginService) Start() error {
 	ps.wg.Add(1)
 	go ps.processBatches()
 
-	// Start immediate uploader
-	ps.wg.Add(1)
-	go ps.processImmediateUploads()
+	// Start upload workers (aligned with receiver pattern)
+	for i, worker := range ps.uploadWorkers {
+		ps.wg.Add(1)
+		go worker.run(ps.ctx, &ps.wg)
+		log.Debugf("Started upload worker %d", i)
+	}
 
-	log.Infof("Plugin service started with %d plugins", ps.pluginManager.GetPluginCount())
+	log.Infof("Plugin service started with %d plugins and %d upload workers", ps.pluginManager.GetPluginCount(), ps.workerCount)
 	return nil
 }
 
@@ -199,19 +232,24 @@ func (ps *PluginService) processBatches() {
 	}
 }
 
-// processImmediateUploads handles immediate upload attempts from the upload channel
-func (ps *PluginService) processImmediateUploads() {
-	defer ps.wg.Done()
+// run handles upload processing for a worker (aligned with receiver pattern)
+func (w *UploadWorker) run(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	log.Debugf("Upload worker %d started", w.id)
 
 	for {
 		select {
-		case <-ps.ctx.Done():
-			return
-		case batch, ok := <-ps.uploadChannel:
-			if !ok {
-				return // Channel closed
+		case batch := <-w.uploadChannel:
+			if batch == nil {
+				continue
 			}
-			ps.attemptImmediateUpload(batch)
+			log.Debugf("Worker %d processing batch %s", w.id, batch.ID)
+			w.pluginService.attemptImmediateUpload(batch)
+
+		case <-ctx.Done():
+			log.Debugf("Upload worker %d stopping", w.id)
+			return
 		}
 	}
 }

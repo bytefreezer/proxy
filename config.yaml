@@ -34,6 +34,9 @@ receiver:
   timeout_seconds: 30
   retry_count: 3
   retry_delay_seconds: 1
+  upload_worker_count: 5    # Number of upload workers (aligned with receiver)
+  max_idle_conns: 10        # HTTP connection pool size
+  max_conns_per_host: 6     # Max connections per host
 
 # Batch processing configuration
 batching:

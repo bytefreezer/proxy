@@ -86,10 +86,13 @@ type Batching struct {
 }
 
 type Receiver struct {
-	BaseURL       string `mapstructure:"base_url"`
-	TimeoutSec    int    `mapstructure:"timeout_seconds"`
-	RetryCount    int    `mapstructure:"retry_count"`
-	RetryDelaySec int    `mapstructure:"retry_delay_seconds"`
+	BaseURL            string `mapstructure:"base_url"`
+	TimeoutSec         int    `mapstructure:"timeout_seconds"`
+	RetryCount         int    `mapstructure:"retry_count"`
+	RetryDelaySec      int    `mapstructure:"retry_delay_seconds"`
+	UploadWorkerCount  int    `mapstructure:"upload_worker_count"`  // Number of upload workers (aligned with receiver)
+	MaxIdleConns       int    `mapstructure:"max_idle_conns"`       // HTTP connection pool size
+	MaxConnsPerHost    int    `mapstructure:"max_conns_per_host"`   // Max connections per host
 }
 
 type SOCAlert struct {
@@ -247,6 +250,27 @@ func (cfg *Config) GetReceiverTimeout() time.Duration {
 
 func (cfg *Config) GetRetryDelay() time.Duration {
 	return time.Duration(cfg.Receiver.RetryDelaySec) * time.Second
+}
+
+func (cfg *Config) GetUploadWorkerCount() int {
+	if cfg.Receiver.UploadWorkerCount <= 0 {
+		return 5 // Default to 5 upload workers (aligned with receiver)
+	}
+	return cfg.Receiver.UploadWorkerCount
+}
+
+func (cfg *Config) GetMaxIdleConns() int {
+	if cfg.Receiver.MaxIdleConns <= 0 {
+		return 10 // Default to 10 idle connections
+	}
+	return cfg.Receiver.MaxIdleConns
+}
+
+func (cfg *Config) GetMaxConnsPerHost() int {
+	if cfg.Receiver.MaxConnsPerHost <= 0 {
+		return 6 // Default to 6 connections per host
+	}
+	return cfg.Receiver.MaxConnsPerHost
 }
 
 // TenantInfo represents tenant configuration details

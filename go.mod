@@ -1,6 +1,8 @@
 module github.com/n0needt0/bytefreezer-proxy
 
-go 1.24.4
+go 1.23.0
+
+toolchain go1.24.2
 
 require (
 	github.com/IBM/sarama v1.43.3
