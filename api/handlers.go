@@ -578,12 +578,19 @@ func (api *API) ListDLQFiles() usecase.Interactor {
 				output.Message = "No files in DLQ"
 			}
 		} else {
+			// Check if we hit the limit (indicates there may be more files)
+			const maxFiles = 100 // Must match limit in spooling service
+			fileCountStr := fmt.Sprintf("%d", len(files))
+			if len(files) == maxFiles {
+				fileCountStr = fmt.Sprintf("%d+", maxFiles)
+			}
+
 			if input.TenantID != "" && input.DatasetID != "" {
-				output.Message = fmt.Sprintf("Found %d files in DLQ for tenant=%s dataset=%s", len(files), input.TenantID, input.DatasetID)
+				output.Message = fmt.Sprintf("Found %s files in DLQ for tenant=%s dataset=%s", fileCountStr, input.TenantID, input.DatasetID)
 			} else if input.TenantID != "" {
-				output.Message = fmt.Sprintf("Found %d files in DLQ for tenant=%s", len(files), input.TenantID)
+				output.Message = fmt.Sprintf("Found %s files in DLQ for tenant=%s", fileCountStr, input.TenantID)
 			} else {
-				output.Message = fmt.Sprintf("Found %d files in DLQ", len(files))
+				output.Message = fmt.Sprintf("Found %s files in DLQ", fileCountStr)
 			}
 		}
 
