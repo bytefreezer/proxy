@@ -170,14 +170,10 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 
 	rawDir := filepath.Join(s.directory, tenantID, datasetID, "raw")
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
-	metaDir := filepath.Join(s.directory, tenantID, datasetID, "meta")
 
-	// Create queue and meta directories
+	// Create queue directory only - metadata created when files move to retry/dlq
 	if err := os.MkdirAll(queueDir, 0750); err != nil {
 		return fmt.Errorf("failed to create queue directory: %w", err)
-	}
-	if err := os.MkdirAll(metaDir, 0750); err != nil {
-		return fmt.Errorf("failed to create meta directory: %w", err)
 	}
 
 	// Read all raw files
@@ -251,32 +247,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		return fmt.Errorf("failed to write compressed batch: %w", err)
 	}
 
-	// Create metadata
-	metadata := SpooledFile{
-		ID:            batchID,
-		TenantID:      tenantID,
-		DatasetID:     datasetID,
-		BearerToken:   bearerToken,
-		Filename:      batchFilePath, // Full path to the .gz file
-		Size:          int64(compressed.Len()),
-		LineCount:     s.countLines(ndjsonData.Bytes()),
-		CreatedAt:     now,
-		LastRetry:     time.Time{},
-		RetryCount:    0,
-		Status:        "pending",
-		FailureReason: "",
-	}
-
-	// Write metadata file
-	metaData, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	metaFilePath := filepath.Join(metaDir, fmt.Sprintf("%s.meta", batchID))
-	if err := os.WriteFile(metaFilePath, metaData, 0600); err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
-	}
+	// Note: Queue files don't need metadata - metadata is created only when files move to retry/dlq
 
 	// Remove processed raw files
 	for _, filePath := range processedFiles {

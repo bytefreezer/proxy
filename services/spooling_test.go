@@ -120,41 +120,11 @@ func TestSpoolingService_BatchRawFiles(t *testing.T) {
 		t.Errorf("Expected .gz file, got: %s", queueFiles[0].Name())
 	}
 
-	// Verify metadata was created
+	// Verify no metadata directory created for queue files (metadata only created when files move to retry/dlq)
 	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
-	metaFiles, err := os.ReadDir(metaDir)
-	if err != nil {
-		t.Fatalf("Failed to read meta directory: %v", err)
-	}
-
-	if len(metaFiles) != 1 {
-		t.Errorf("Expected 1 metadata file, got %d", len(metaFiles))
-	}
-
-	// Verify metadata content
-	if len(metaFiles) > 0 {
-		metaPath := filepath.Join(metaDir, metaFiles[0].Name())
-		metaContent, err := os.ReadFile(metaPath)
-		if err != nil {
-			t.Fatalf("Failed to read metadata file: %v", err)
-		}
-
-		var spooledFile SpooledFile
-		if err := json.Unmarshal(metaContent, &spooledFile); err != nil {
-			t.Fatalf("Failed to unmarshal metadata: %v", err)
-		}
-
-		if spooledFile.TenantID != "test-tenant" {
-			t.Errorf("Expected tenant_id 'test-tenant', got '%s'", spooledFile.TenantID)
-		}
-
-		if spooledFile.DatasetID != "test-dataset" {
-			t.Errorf("Expected dataset_id 'test-dataset', got '%s'", spooledFile.DatasetID)
-		}
-
-		if spooledFile.Status != "pending" {
-			t.Errorf("Expected status 'pending', got '%s'", spooledFile.Status)
-		}
+	_, err = os.ReadDir(metaDir)
+	if !os.IsNotExist(err) {
+		t.Errorf("Meta directory should not exist for queue files, but directory was found")
 	}
 
 	// Verify raw files were deleted
