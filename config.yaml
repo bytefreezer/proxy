@@ -32,7 +32,7 @@ bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
 receiver:
   base_url: "http://localhost:8081/{tenantid}/{datasetid}"
   timeout_seconds: 30
-  retry_count: 3
+  retry_count: 0           # Single HTTP attempt only - let file-level retry handle failures
   retry_delay_seconds: 1
   upload_worker_count: 5    # Number of upload workers (aligned with receiver)
   max_idle_conns: 10        # HTTP connection pool size
@@ -69,7 +69,7 @@ spooling:
   enabled: true
   directory: "/tmp/bytefreezer-proxy"
   max_size_bytes: 1073741824  # 1GB
-  retry_attempts: 5
+  retry_attempts: 3
   retry_interval_seconds: 60  # 1 minute
   cleanup_interval_seconds: 300  # 5 minutes
 
