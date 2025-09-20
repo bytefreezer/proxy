@@ -605,12 +605,15 @@ func (s *SpoolingService) processRetries() {
 
 	// Collect all retry jobs
 	var jobs []RetryJob
+	log.Debugf("Found %d tenants for retry processing: %v", len(tenants), tenants)
 	for _, tenantID := range tenants {
 		tenantJobs := s.collectRetryJobs(tenantID)
+		log.Debugf("Tenant %s: collected %d retry jobs", tenantID, len(tenantJobs))
 		jobs = append(jobs, tenantJobs...)
 	}
 
 	if len(jobs) == 0 {
+		log.Debugf("No retry jobs found for processing")
 		return // No jobs to process
 	}
 
@@ -702,6 +705,8 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 			continue
 		}
 
+		log.Debugf("Found %d entries in retry directory %s", len(entries), retryDir)
+
 		// Process each file
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -709,12 +714,12 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 			}
 
 			fileName := entry.Name()
-			if !strings.HasSuffix(fileName, ".json") {
-				continue // Only process .json metadata files
+			if !strings.HasSuffix(fileName, ".meta") {
+				continue // Only process .meta metadata files
 			}
 
-			// Extract batch ID from filename (remove .json extension)
-			batchID := strings.TrimSuffix(fileName, ".json")
+			// Extract batch ID from filename (remove .meta extension)
+			batchID := strings.TrimSuffix(fileName, ".meta")
 			dataFilePath := filepath.Join(retryDir, batchID)
 			metaFilePath := filepath.Join(retryDir, fileName)
 
@@ -2046,26 +2051,15 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 
 		for _, dataset := range datasets {
 			dlqDir := filepath.Join(s.directory, tenant, dataset, "dlq")
-			queueDir := filepath.Join(s.directory, tenant, dataset, "queue")
-			metaDir := filepath.Join(s.directory, tenant, dataset, "meta")
+			retryDir := filepath.Join(s.directory, tenant, dataset, "retry")
 
-			// Create queue and meta directories if they don't exist
-			if err := os.MkdirAll(queueDir, 0750); err != nil {
+			// Create retry directory if it doesn't exist
+			if err := os.MkdirAll(retryDir, 0750); err != nil {
 				detail := DLQRetryDetail{
 					TenantID:  tenant,
 					DatasetID: dataset,
 					Success:   false,
-					Error:     fmt.Sprintf("failed to create queue directory: %v", err),
-				}
-				result.Details = append(result.Details, detail)
-				continue
-			}
-			if err := os.MkdirAll(metaDir, 0750); err != nil {
-				detail := DLQRetryDetail{
-					TenantID:  tenant,
-					DatasetID: dataset,
-					Success:   false,
-					Error:     fmt.Sprintf("failed to create meta directory: %v", err),
+					Error:     fmt.Sprintf("failed to create retry directory: %v", err),
 				}
 				result.Details = append(result.Details, detail)
 				continue
@@ -2094,9 +2088,9 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 				baseName := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
 				baseName = strings.TrimSuffix(baseName, ".ndjson")
 
-				// Move data file
+				// Move data file from DLQ to retry
 				srcPath := filepath.Join(dlqDir, file.Name())
-				dstPath := filepath.Join(queueDir, file.Name())
+				dstPath := filepath.Join(retryDir, file.Name())
 				if err := os.Rename(srcPath, dstPath); err != nil {
 					detail := DLQRetryDetail{
 						FileID:    baseName,
@@ -2109,9 +2103,9 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 					continue
 				}
 
-				// Move metadata file
+				// Move and reset metadata file
 				srcMetaPath := filepath.Join(dlqDir, baseName+".meta")
-				dstMetaPath := filepath.Join(metaDir, baseName+".meta")
+				dstMetaPath := filepath.Join(retryDir, baseName+".meta")
 
 				if _, err := os.Stat(srcMetaPath); err == nil {
 					// Read and update metadata
@@ -2120,11 +2114,11 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 					if err == nil {
 						var spooledFile SpooledFile
 						if err := json.Unmarshal(metaData, &spooledFile); err == nil {
-							// Reset for retry
-							spooledFile.Status = "pending"
+							// Reset for retry - give files fresh retry attempts
+							spooledFile.Status = "retry"
 							spooledFile.RetryCount = 0
-							spooledFile.LastRetry = time.Time{}
-							spooledFile.FailureReason = ""
+							spooledFile.LastRetry = time.Now()
+							spooledFile.FailureReason = "Retrieved from DLQ for retry"
 							spooledFile.Filename = dstPath
 
 							// Write updated metadata

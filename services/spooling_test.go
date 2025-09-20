@@ -326,51 +326,41 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 		}
 	}
 
-	// Verify file was moved to queue
-	queueDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "queue")
-	queueFiles, err := os.ReadDir(queueDir)
+	// Verify file was moved to retry directory
+	retryDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "retry")
+	retryFiles, err := os.ReadDir(retryDir)
 	if err != nil {
-		t.Fatalf("Failed to read queue directory: %v", err)
+		t.Fatalf("Failed to read retry directory: %v", err)
 	}
 
-	if len(queueFiles) != 1 {
-		t.Errorf("Expected 1 file in queue, got %d", len(queueFiles))
+	// Should have both data file and metadata file
+	if len(retryFiles) != 2 {
+		t.Errorf("Expected 2 files in retry (data + meta), got %d", len(retryFiles))
 	}
 
-	// Verify metadata was moved and reset
-	metaDir := filepath.Join(tempDir, "test-tenant", "test-dataset", "meta")
-	metaFiles, err := os.ReadDir(metaDir)
+	// Verify metadata was moved to retry and reset
+	metaFilePath := filepath.Join(retryDir, "failed_batch.meta")
+	metaContent, err := os.ReadFile(metaFilePath)
 	if err != nil {
-		t.Fatalf("Failed to read meta directory: %v", err)
+		t.Fatalf("Failed to read metadata file: %v", err)
 	}
 
-	if len(metaFiles) != 1 {
-		t.Errorf("Expected 1 metadata file, got %d", len(metaFiles))
+	var spooledFile SpooledFile
+	if err := json.Unmarshal(metaContent, &spooledFile); err != nil {
+		t.Fatalf("Failed to unmarshal metadata: %v", err)
 	}
 
-	if len(metaFiles) > 0 {
-		metaPath := filepath.Join(metaDir, metaFiles[0].Name())
-		metaContent, err := os.ReadFile(metaPath)
-		if err != nil {
-			t.Fatalf("Failed to read metadata file: %v", err)
-		}
+	// Verify metadata was reset for retry
+	if spooledFile.Status != "retry" {
+		t.Errorf("Expected status 'retry' after DLQ retry, got '%s'", spooledFile.Status)
+	}
 
-		var spooledFile SpooledFile
-		if err := json.Unmarshal(metaContent, &spooledFile); err != nil {
-			t.Fatalf("Failed to unmarshal metadata: %v", err)
-		}
+	if spooledFile.RetryCount != 0 {
+		t.Errorf("Expected retry count 0 after DLQ retry, got %d", spooledFile.RetryCount)
+	}
 
-		if spooledFile.Status != "pending" {
-			t.Errorf("Expected status 'pending' after retry, got '%s'", spooledFile.Status)
-		}
-
-		if spooledFile.RetryCount != 0 {
-			t.Errorf("Expected retry count 0 after retry, got %d", spooledFile.RetryCount)
-		}
-
-		if spooledFile.FailureReason != "" {
-			t.Errorf("Expected empty failure reason after retry, got '%s'", spooledFile.FailureReason)
-		}
+	if spooledFile.FailureReason != "Retrieved from DLQ for retry" {
+		t.Errorf("Expected failure reason to be reset, got '%s'", spooledFile.FailureReason)
 	}
 
 	// Verify DLQ files were removed
