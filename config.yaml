@@ -43,9 +43,9 @@ receiver:
 # Batch processing configuration
 batching:
   enabled: true
-  max_lines: 1000
-  max_bytes: 1048576  # 1MB
-  timeout_seconds: 30
+  max_lines: 1000       # Max lines per batch (0 = disabled)
+  max_bytes: 10485760   # Max bytes per batch - 10MB (0 = disabled)
+  timeout_seconds: 30   # Timeout always takes priority
   compression_enabled: true
   compression_level: 6
 

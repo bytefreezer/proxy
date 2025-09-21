@@ -126,13 +126,13 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 
 // shouldFinalizeBatch determines if a batch should be finalized
 func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) bool {
-	// Check line count limit
-	if batch.LineCount >= int64(bp.config.Batching.MaxLines) {
+	// Check line count limit (only if > 0, 0 = disabled)
+	if bp.config.Batching.MaxLines > 0 && batch.LineCount >= int64(bp.config.Batching.MaxLines) {
 		return true
 	}
 
-	// Check byte size limit
-	if batch.TotalBytes >= bp.config.Batching.MaxBytes {
+	// Check byte size limit (only if > 0, 0 = disabled)
+	if bp.config.Batching.MaxBytes > 0 && batch.TotalBytes >= bp.config.Batching.MaxBytes {
 		return true
 	}
 
@@ -162,7 +162,7 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 
 	// Create domain batch
 	domainBatch := &domain.DataBatch{
-		ID:          generateBatchID(),
+		ID:          generateBatchID(batch.TenantID, batch.DatasetID),
 		TenantID:    batch.TenantID,
 		DatasetID:   batch.DatasetID,
 		Data:        compressedData,

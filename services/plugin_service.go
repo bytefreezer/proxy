@@ -202,7 +202,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 	}
 
 	return &domain.DataBatch{
-		ID:          generateBatchID(),
+		ID:          generateBatchID(msg.TenantID, msg.DatasetID),
 		TenantID:    msg.TenantID,
 		DatasetID:   msg.DatasetID,
 		Data:        compressedData,
@@ -367,7 +367,7 @@ func (ps *PluginService) GetActivePlugins() []string {
 	return ps.pluginManager.ListPlugins()
 }
 
-// generateBatchID generates a unique batch ID
-func generateBatchID() string {
-	return fmt.Sprintf("batch_%d", time.Now().UnixNano())
+// generateBatchID generates a unique batch ID with tenant and dataset info
+func generateBatchID(tenantID, datasetID string) string {
+	return fmt.Sprintf("%s_%s_%d", tenantID, datasetID, time.Now().UnixNano())
 }

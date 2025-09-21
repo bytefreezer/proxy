@@ -859,7 +859,12 @@ func (s *SpoolingService) removeSuccessfulRetryFile(metadata *SpooledFile) error
 
 // updateRetryMetadata updates metadata for a retry file
 func (s *SpoolingService) updateRetryMetadata(metadata *SpooledFile) error {
-	metaPath := metadata.Filename + ".json"
+	// Extract batch ID from data file path and construct metadata path
+	dataFile := filepath.Base(metadata.Filename)
+	batchID := strings.TrimSuffix(dataFile, filepath.Ext(dataFile))          // Remove .gz
+	batchID = strings.TrimSuffix(batchID, filepath.Ext(batchID))             // Remove .ndjson
+	retryDir := filepath.Dir(metadata.Filename)
+	metaPath := filepath.Join(retryDir, batchID+".meta")
 
 	metaData, err := json.Marshal(metadata)
 	if err != nil {
