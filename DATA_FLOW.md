@@ -36,8 +36,8 @@ UDP Packet → Plugin → Batching → Spooling → Receiver
 #### **Step 5: Batch Creation** (Time or Size Triggered)
 - **Location**: `services/batch_processor.go` (referenced)
 - **Triggers**:
-  - **Time**: `batching.timeout_seconds: 30` (default) → `trigger_reason: "timeout"`
-  - **Size**: `batching.max_lines: 1000` or `batching.max_bytes: 1MB` → `trigger_reason: "size_limit_reached"`
+  - **Time**: `batching.timeout_seconds: 60` (default) → `trigger_reason: "timeout"`
+  - **Size**: `batching.max_lines: 0` (disabled) or `batching.max_bytes: 20MB` → `trigger_reason: "size_limit_reached"`
   - **Shutdown**: Service stopping → `trigger_reason: "service_shutdown"`
 - **Action**: Creates compressed batch with trigger reason metadata
 

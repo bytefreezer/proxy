@@ -50,8 +50,8 @@ DataMessage → BatchProcessor → Batch Accumulation → Trigger Threshold → 
 ```
 
 **Batch Triggers** (with trigger reason tracking):
-- **Size**: 1000 lines OR 1MB bytes → `trigger_reason: "size_limit_reached"`
-- **Time**: 30 seconds since first message in batch → `trigger_reason: "timeout"`
+- **Size**: Lines disabled (0) OR 20MB bytes → `trigger_reason: "size_limit_reached"`
+- **Time**: 60 seconds since first message in batch → `trigger_reason: "timeout"`
 - **Force**: Manual flush or shutdown → `trigger_reason: "service_shutdown"`
 - **Single**: Batching disabled → `trigger_reason: "single_message"`
 

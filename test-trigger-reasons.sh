@@ -55,8 +55,8 @@ receiver:
 batching:
   enabled: true
   max_lines: 0          # Disabled - only size and timeout triggers
-  max_bytes: 1024       # Small size for testing size_limit_reached
-  timeout_seconds: 3    # Short timeout for testing timeout triggers
+  max_bytes: 1024       # Small size for testing size_limit_reached (kept small for testing)
+  timeout_seconds: 3    # Short timeout for testing timeout triggers (kept short for testing)
   compression_enabled: true
   compression_level: 6
 

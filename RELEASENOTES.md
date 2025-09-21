@@ -50,9 +50,14 @@ Spool metadata (`.meta` files) now include trigger information:
 batching:
   enabled: true
   max_lines: 0          # Disabled - only size and timeout matter
-  max_bytes: 10485760   # 10MB limit
-  timeout_seconds: 30   # Will show as "timeout" trigger reason
+  max_bytes: 20971520   # 20MB limit (optimized for S3 efficiency)
+  timeout_seconds: 60   # Will show as "timeout" trigger reason (2x longer for larger batches)
 ```
+
+**Configuration Optimization for S3**: Increased batch size from 10MB to 20MB and timeout from 30s to 60s for:
+- **2x fewer S3 requests** (better cost efficiency)
+- **Better S3 throughput** utilization
+- **Reduced API costs** while maintaining reasonable latency
 
 #### API Enhancements
 - **DLQ Statistics**: `/api/v2/dlq/stats` now shows trigger reason distribution
