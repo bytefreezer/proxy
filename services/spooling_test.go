@@ -357,7 +357,7 @@ func TestSpoolingService_StoreBatchToQueue(t *testing.T) {
 	service := NewSpoolingService(cfg)
 
 	testData := []byte(`{"message": "test message", "timestamp": "2024-01-15T10:30:45Z"}`)
-	err = service.StoreBatchToQueue("test-tenant", "test-dataset", "test-token", testData, "Test failure reason", "test-batch-123")
+	err = service.StoreBatchToQueue("test-tenant", "test-dataset", "test-token", testData, "Test failure reason", "test-batch-123", "timeout")
 	if err != nil {
 		t.Fatalf("Failed to store batch to queue: %v", err)
 	}
@@ -434,5 +434,97 @@ func TestSpoolingService_CountFilesInDirectory(t *testing.T) {
 
 	if oldestFile == nil {
 		t.Error("Expected oldest file to be found")
+	}
+}
+
+func TestSpoolingService_TriggerReasonMetadata(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "spooling_test_trigger_")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := &config.Config{
+		Spooling: config.Spooling{
+			Enabled:   true,
+			Directory: tempDir,
+		},
+	}
+
+	service := NewSpoolingService(cfg)
+
+	testCases := []struct {
+		name          string
+		triggerReason string
+		failureReason string
+	}{
+		{"timeout_trigger", "timeout", "batch timeout reached"},
+		{"size_trigger", "size_limit_reached", "batch size limit reached"},
+		{"shutdown_trigger", "service_shutdown", "service graceful shutdown"},
+		{"single_message", "single_message", "individual message processing"},
+		{"restart_recovery", "service_restart", "recovered from orphaned queue"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Test MoveQueueToRetry with trigger reason
+			batchID := "test-batch-" + tc.name
+			tenantID := "test-tenant"
+			datasetID := "test-dataset"
+
+			// First create a queue file
+			queueDir := filepath.Join(tempDir, tenantID, datasetID, "queue")
+			if err := os.MkdirAll(queueDir, 0750); err != nil {
+				t.Fatalf("Failed to create queue directory: %v", err)
+			}
+
+			queueFile := filepath.Join(queueDir, batchID+".ndjson.gz")
+			testData := []byte(`{"message": "test data", "trigger": "` + tc.triggerReason + `"}`)
+			if err := os.WriteFile(queueFile, testData, 0600); err != nil {
+				t.Fatalf("Failed to create queue file: %v", err)
+			}
+
+			// Move to retry with trigger reason
+			err := service.MoveQueueToRetry(tenantID, datasetID, batchID, tc.failureReason, tc.triggerReason)
+			if err != nil {
+				t.Fatalf("Failed to move queue to retry: %v", err)
+			}
+
+			// Verify metadata file was created with trigger reason
+			retryDir := filepath.Join(tempDir, tenantID, datasetID, "retry")
+			metaFile := filepath.Join(retryDir, batchID+".meta")
+
+			if _, err := os.Stat(metaFile); os.IsNotExist(err) {
+				t.Fatalf("Metadata file not created: %s", metaFile)
+			}
+
+			// Read and verify metadata content
+			metaContent, err := os.ReadFile(metaFile)
+			if err != nil {
+				t.Fatalf("Failed to read metadata file: %v", err)
+			}
+
+			var metadata SpooledFile
+			if err := json.Unmarshal(metaContent, &metadata); err != nil {
+				t.Fatalf("Failed to unmarshal metadata: %v", err)
+			}
+
+			// Verify trigger reason is correctly stored
+			if metadata.TriggerReason != tc.triggerReason {
+				t.Errorf("Expected trigger_reason %s, got %s", tc.triggerReason, metadata.TriggerReason)
+			}
+
+			if metadata.FailureReason != tc.failureReason {
+				t.Errorf("Expected failure_reason %s, got %s", tc.failureReason, metadata.FailureReason)
+			}
+
+			if metadata.Status != "retry" {
+				t.Errorf("Expected status 'retry', got %s", metadata.Status)
+			}
+
+			if metadata.RetryCount != 1 {
+				t.Errorf("Expected retry_count 1, got %d", metadata.RetryCount)
+			}
+		})
 	}
 }

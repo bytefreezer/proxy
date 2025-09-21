@@ -80,9 +80,19 @@ config:
   receiver:
     base_url: "http://192.168.86.102:8082/{tenantid}/{datasetid}"
     timeout_seconds: 30
-    retry_count: 3
-    retry_delay_seconds: 1
-  
+    upload_worker_count: 5    # Number of upload workers (aligned with receiver)
+    max_idle_conns: 10        # HTTP connection pool size
+    max_conns_per_host: 6     # Max connections per host
+
+  # Batch processing configuration
+  batching:
+    enabled: true
+    max_lines: 0          # Max lines per batch (0 = disabled)
+    max_bytes: 10485760   # Max bytes per batch - 10MB (0 = disabled)
+    timeout_seconds: 30   # Timeout always takes priority
+    compression_enabled: true
+    compression_level: 6
+
   soc:
     enabled: false
     endpoint: ""

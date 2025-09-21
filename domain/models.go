@@ -16,16 +16,17 @@ type UDPMessage struct {
 
 // DataBatch represents a batch of UDP messages ready for forwarding
 type DataBatch struct {
-	ID           string
-	TenantID     string
-	DatasetID    string
-	BearerToken  string // Authentication token for this tenant
-	Messages     []UDPMessage
-	LineCount    int
-	TotalBytes   int64
-	CreatedAt    time.Time
-	CompressedAt time.Time
-	Data         []byte // Compressed NDJSON data
+	ID            string
+	TenantID      string
+	DatasetID     string
+	BearerToken   string // Authentication token for this tenant
+	Messages      []UDPMessage
+	LineCount     int
+	TotalBytes    int64
+	CreatedAt     time.Time
+	CompressedAt  time.Time
+	Data          []byte // Compressed NDJSON data
+	TriggerReason string // Reason batch was finalized: "timeout", "size_limit_reached", "service_shutdown"
 }
 
 // ProxyStats represents proxy processing statistics

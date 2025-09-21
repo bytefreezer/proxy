@@ -207,6 +207,7 @@ type DLQFileInfo struct {
 	RetryCount    int       `json:"retry_count"`
 	Status        string    `json:"status"`
 	FailureReason string    `json:"failure_reason,omitempty"`
+	TriggerReason string    `json:"trigger_reason,omitempty"`
 }
 
 // API holds the API configuration and services
@@ -565,6 +566,7 @@ func (api *API) ListDLQFiles() usecase.Interactor {
 				RetryCount:    file.RetryCount,
 				Status:        file.Status,
 				FailureReason: file.FailureReason,
+				TriggerReason: file.TriggerReason,
 			}
 		}
 

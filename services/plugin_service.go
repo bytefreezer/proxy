@@ -202,14 +202,15 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 	}
 
 	return &domain.DataBatch{
-		ID:          generateBatchID(msg.TenantID, msg.DatasetID),
-		TenantID:    msg.TenantID,
-		DatasetID:   msg.DatasetID,
-		Data:        compressedData,
-		LineCount:   1, // Single message
-		TotalBytes:  int64(len(msg.Data)),
-		CreatedAt:   msg.Timestamp,
-		BearerToken: bearerToken,
+		ID:            generateBatchID(msg.TenantID, msg.DatasetID),
+		TenantID:      msg.TenantID,
+		DatasetID:     msg.DatasetID,
+		Data:          compressedData,
+		LineCount:     1, // Single message
+		TotalBytes:    int64(len(msg.Data)),
+		CreatedAt:     msg.Timestamp,
+		BearerToken:   bearerToken,
+		TriggerReason: "single_message", // Single message processing (not batched)
 	}
 }
 
@@ -277,7 +278,7 @@ func (ps *PluginService) forwardBatch(batch *domain.DataBatch) {
 	default:
 		log.Warnf("Upload channel at capacity, moving batch %s to retry queue", batch.ID)
 		// If channel is at capacity, move file to retry directory
-		if err := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, "channel_capacity_exceeded"); err != nil {
+		if err := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, "channel_capacity_exceeded", batch.TriggerReason); err != nil {
 			log.Errorf("Failed to move batch %s to retry: %v", batch.ID, err)
 		}
 	}
@@ -292,7 +293,7 @@ func (ps *PluginService) attemptImmediateUpload(batch *domain.DataBatch) {
 	if err != nil {
 		log.Warnf("Immediate upload failed for batch %s: %v - moving to retry", batch.ID, err)
 		// Move file from queue to retry directory for background processing
-		if retryErr := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, err.Error()); retryErr != nil {
+		if retryErr := ps.spoolingService.MoveQueueToRetry(batch.TenantID, batch.DatasetID, batch.ID, err.Error(), batch.TriggerReason); retryErr != nil {
 			log.Errorf("Failed to move batch %s to retry after upload failure: %v", batch.ID, retryErr)
 		}
 		return
@@ -318,9 +319,10 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		batch.TenantID,
 		batch.DatasetID,
 		batch.BearerToken,
-		batch.Data, // Already compressed data
-		"",         // No failure reason - this is initial spooling
-		batch.ID,   // Use the existing batch ID
+		batch.Data,          // Already compressed data
+		"",                  // No failure reason - this is initial spooling
+		batch.ID,            // Use the existing batch ID
+		batch.TriggerReason, // Pass the trigger reason from the batch
 	)
 }
 

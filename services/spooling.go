@@ -51,6 +51,7 @@ type SpooledFile struct {
 	RetryCount    int       `json:"retry_count"`
 	Status        string    `json:"status"` // "pending", "retrying", "failed", "success"
 	FailureReason string    `json:"failure_reason,omitempty"`
+	TriggerReason string    `json:"trigger_reason,omitempty"` // Reason batch was created: "timeout", "size_limit_reached", "service_shutdown"
 }
 
 // NewSpoolingService creates a new spooling service
@@ -263,7 +264,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 }
 
 // StoreBatchToQueue stores already-compressed batch data directly to the queue directory
-func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken string, data []byte, failureReason string, batchID string) error {
+func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken string, data []byte, failureReason string, batchID string, triggerReason string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
 	}
@@ -305,7 +306,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 }
 
 // SpoolData stores data locally when upload fails (maintained for API compatibility)
-func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, data []byte, failureReason string) error {
+func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, data []byte, failureReason string, triggerReason string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
 	}
@@ -383,6 +384,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 		RetryCount:    0,
 		Status:        "pending",
 		FailureReason: failureReason,
+		TriggerReason: triggerReason,
 	}
 
 	metaData, err := json.Marshal(metadata)
@@ -2249,7 +2251,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 }
 
 // MoveQueueToRetry moves a file from queue directory to retry directory with failure reason
-func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failureReason string) error {
+func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failureReason string, triggerReason string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
 	}
@@ -2310,6 +2312,7 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		RetryCount:    1, // First retry attempt
 		Status:        "retry",
 		FailureReason: failureReason,
+		TriggerReason: triggerReason,
 	}
 
 	if fileInfo != nil {
@@ -2489,6 +2492,7 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		RetryCount:    0, // Fresh start - gets full 4 retry attempts
 		Status:        "retry",
 		FailureReason: "Recovered from orphaned queue file on startup",
+		TriggerReason: "service_restart", // Special case for recovered files
 	}
 
 	if fileInfo != nil {

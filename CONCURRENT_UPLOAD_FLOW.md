@@ -49,10 +49,11 @@ UDP Packet → Plugin Manager → Input Channel → processPluginMessage()
 DataMessage → BatchProcessor → Batch Accumulation → Trigger Threshold → forwardBatch()
 ```
 
-**Batch Triggers**:
-- **Size**: 1000 lines OR 1MB bytes
-- **Time**: 30 seconds since first message in batch
-- **Force**: Manual flush or shutdown
+**Batch Triggers** (with trigger reason tracking):
+- **Size**: 1000 lines OR 1MB bytes → `trigger_reason: "size_limit_reached"`
+- **Time**: 30 seconds since first message in batch → `trigger_reason: "timeout"`
+- **Force**: Manual flush or shutdown → `trigger_reason: "service_shutdown"`
+- **Single**: Batching disabled → `trigger_reason: "single_message"`
 
 ### 3. Spool-First Architecture
 
@@ -112,7 +113,7 @@ func (w *UploadWorker) run(ctx context.Context, wg *sync.WaitGroup) {
 1. **Read Spooled File**: Load compressed data from `/queue/{batch_id}`
 2. **HTTP Forward**: `forwarder.ForwardBatch(batch)` with connection pooling
 3. **Success Path**: `RemoveFromQueue()` - delete file from `/queue`
-4. **Failure Path**: `MoveQueueToRetry()` - move to `/retry` with metadata
+4. **Failure Path**: `MoveQueueToRetry()` - move to `/retry` with metadata including trigger reason
 
 ### 5. HTTP Connection Pooling
 
@@ -153,9 +154,22 @@ Timer Trigger → collectRetryJobs() → Worker Pool → processRetryJob() → U
 
 **Retry Job Collection**:
 1. **Scan Directories**: `/var/spool/bytefreezer-proxy/{tenant}/{dataset}/retry/`
-2. **Find Metadata**: Files ending with `.json`
+2. **Find Metadata**: Files ending with `.meta` (includes trigger_reason)
 3. **Validate Data**: Ensure corresponding data file exists
 4. **Create Jobs**: `RetryJob{TenantID, DatasetID, BatchID, FilePath, MetaPath}`
+
+**Metadata Structure** (`.meta` files):
+```json
+{
+  "id": "batch_20250921_143022",
+  "tenant_id": "customer-1",
+  "dataset_id": "ebpf-data",
+  "trigger_reason": "timeout",
+  "status": "retry",
+  "retry_count": 1,
+  "failure_reason": "HTTP 500: receiver temporary error"
+}
+```
 
 **Concurrent Retry Processing**:
 ```go

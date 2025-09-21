@@ -57,6 +57,17 @@ The proxy exposes the following key metrics:
 - `bytefreezer_proxy_spool_queue_bytes` - Bytes in spool queue
 - `bytefreezer_proxy_dlq_files_total` - Files in dead letter queue
 
+### Batch Trigger Reason Metrics
+- `bytefreezer_proxy_batch_triggers_total` - Total batches by trigger reason (timeout, size_limit_reached, service_shutdown, single_message, service_restart)
+- `bytefreezer_proxy_batch_trigger_analysis` - Distribution of batch creation triggers for optimization
+
+These metrics help you understand:
+- **timeout**: Batches triggered by time limits - may indicate low data volume
+- **size_limit_reached**: Batches triggered by size limits - normal high-volume behavior
+- **service_shutdown**: Batches triggered during shutdown - should be minimal
+- **single_message**: Individual message processing - indicates batching disabled
+- **service_restart**: Recovered batches on startup - indicates unclean shutdowns
+
 ### System Metrics (Go Runtime)
 - `go_goroutines` - Number of goroutines
 - `go_memstats_alloc_bytes` - Allocated memory bytes

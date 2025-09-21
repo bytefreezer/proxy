@@ -2,6 +2,85 @@
 
 ## Latest Changes
 
+### 📊 Enhanced Batch Trigger Tracking and Monitoring
+**Release Date**: September 2025
+
+#### Overview
+Added comprehensive trigger reason tracking throughout the batch processing system to provide complete visibility into why batches were created. This feature enables better debugging, monitoring, and understanding of batch processing behavior.
+
+#### Key Features
+
+##### 1. Trigger Reason Metadata
+- **DataBatch Enhancement**: Added `TriggerReason` field to track batch creation triggers
+- **SpooledFile Enhancement**: Added `TriggerReason` field to track batch triggers in spool metadata
+- **Complete Visibility**: Every batch now includes the reason it was finalized
+
+##### 2. Comprehensive Trigger Tracking
+Available trigger reasons:
+
+| Trigger Reason | Description | When It Occurs |
+|----------------|-------------|----------------|
+| `timeout` | Batch finalized due to timeout | When `batching.timeout_seconds` is reached |
+| `size_limit_reached` | Batch finalized due to size limits | When `batching.max_bytes` is reached |
+| `service_shutdown` | Batch finalized during shutdown | When service is gracefully stopping |
+| `single_message` | Individual message processing | When batching is disabled or single messages |
+| `service_restart` | File recovered on startup | When orphaned queue files are recovered |
+
+##### 3. Enhanced Metadata Files
+Spool metadata (`.meta` files) now include trigger information:
+```json
+{
+  "id": "batch_20250921_143022",
+  "tenant_id": "customer-1",
+  "dataset_id": "ebpf-data",
+  "trigger_reason": "timeout",
+  "status": "retry",
+  "failure_reason": "HTTP 500: receiver temporary error"
+}
+```
+
+##### 4. Debugging and Monitoring Benefits
+- **Batch Analysis**: Understand why batches are being created
+- **Performance Tuning**: Identify if timeouts vs size limits are triggering batches
+- **Problem Diagnosis**: See if batches are timing out when they should reach size limits
+- **Configuration Optimization**: Adjust `max_lines`, `max_bytes`, and `timeout_seconds` based on actual triggers
+
+#### Configuration Impact
+```yaml
+batching:
+  enabled: true
+  max_lines: 0          # Disabled - only size and timeout matter
+  max_bytes: 10485760   # 10MB limit
+  timeout_seconds: 30   # Will show as "timeout" trigger reason
+```
+
+#### API Enhancements
+- **DLQ Statistics**: `/api/v2/dlq/stats` now shows trigger reason distribution
+- **File Listings**: `/api/v2/dlq/files` includes trigger reasons in file metadata
+- **Batch Information**: All batch-related APIs include trigger reason context
+
+#### Monitoring Use Cases
+
+##### 1. Batch Size Optimization
+```bash
+# Check if batches are timing out vs reaching size limits
+grep "trigger_reason" /var/spool/bytefreezer-proxy/*/meta/*.meta | grep timeout
+```
+
+##### 2. Performance Analysis
+- **High timeout triggers**: Consider increasing `timeout_seconds` or reducing `max_bytes`
+- **High size_limit triggers**: Consider increasing `max_bytes` if appropriate
+- **Many single_message triggers**: Consider enabling batching if disabled
+
+##### 3. Troubleshooting
+- **service_shutdown triggers**: Normal during graceful shutdowns
+- **service_restart triggers**: Indicates recovery from unclean shutdown
+
+#### Backward Compatibility
+- **No Breaking Changes**: All existing functionality preserved
+- **Automatic Enhancement**: Existing deployments automatically gain trigger tracking
+- **API Compatibility**: All existing API responses include new trigger reason fields
+
 ### 🚀 Major Performance Enhancement: Concurrent Upload Architecture
 **Release Date**: September 2025
 

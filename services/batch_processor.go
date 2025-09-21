@@ -162,14 +162,15 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 
 	// Create domain batch
 	domainBatch := &domain.DataBatch{
-		ID:          generateBatchID(batch.TenantID, batch.DatasetID),
-		TenantID:    batch.TenantID,
-		DatasetID:   batch.DatasetID,
-		Data:        compressedData,
-		LineCount:   int(batch.LineCount),
-		TotalBytes:  batch.TotalBytes, // Original uncompressed size
-		CreatedAt:   batch.CreatedAt,
-		BearerToken: batch.BearerToken,
+		ID:            generateBatchID(batch.TenantID, batch.DatasetID),
+		TenantID:      batch.TenantID,
+		DatasetID:     batch.DatasetID,
+		Data:          compressedData,
+		LineCount:     int(batch.LineCount),
+		TotalBytes:    batch.TotalBytes, // Original uncompressed size
+		CreatedAt:     batch.CreatedAt,
+		BearerToken:   batch.BearerToken,
+		TriggerReason: reason,
 	}
 
 	// Send to batch channel - NEVER drop batches, always block if needed
