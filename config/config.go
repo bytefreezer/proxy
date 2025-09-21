@@ -175,9 +175,6 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	if cfg.Batching.TimeoutSeconds == 0 {
 		cfg.Batching.TimeoutSeconds = 30
 	}
-	if cfg.Batching.MaxLines == 0 {
-		cfg.Batching.MaxLines = 1000
-	}
 	if cfg.Batching.MaxBytes == 0 {
 		cfg.Batching.MaxBytes = 1048576 // 1MB
 	}

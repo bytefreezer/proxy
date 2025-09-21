@@ -20,11 +20,16 @@
 - `size_limit_reached` - Batch finalized due to maximum byte size reached
 - `timeout` - Batch finalized due to timeout (unchanged)
 
+#### Configuration Fix
+- **Removed Unwanted Default**: Eliminated `MaxLines = 1000` default that was overriding `max_lines: 0` configuration
+- **Correct Behavior**: Now `max_lines: 0` properly disables line count limits as intended
+- **Only Size and Timeout**: With line limits disabled, batches will only trigger on `size_limit_reached` (20MB) or `timeout` (60s)
+
 #### Verification
 After this fix, batches will show correct trigger reasons in metadata:
 ```json
 {
-  "trigger_reason": "timeout",  // For 1.28MB batch (under 20MB limit)
+  "trigger_reason": "timeout",  // For 1.28MB batch (under 20MB limit, line limits disabled)
   "line_count": 40080,
   "size": 52560  // Compressed size on disk
 }
