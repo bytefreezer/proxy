@@ -43,9 +43,11 @@ type SpooledFile struct {
 	TenantID      string    `json:"tenant_id"`
 	DatasetID     string    `json:"dataset_id"`
 	BearerToken   string    `json:"bearer_token,omitempty"` // Authentication token for this tenant
-	Filename      string    `json:"filename"`
-	Size          int64     `json:"size"`
-	LineCount     int       `json:"line_count"`
+	Filename         string    `json:"filename"`
+	Size             int64     `json:"size"`                // Compressed size on disk
+	CompressedSize   int64     `json:"compressed_size"`     // Same as Size for backwards compatibility
+	UncompressedSize int64     `json:"uncompressed_size"`   // Original data size before compression
+	LineCount        int       `json:"line_count"`
 	CreatedAt     time.Time `json:"created_at"`
 	LastRetry     time.Time `json:"last_retry"`
 	RetryCount    int       `json:"retry_count"`
@@ -370,21 +372,29 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 	// Count lines in the data
 	lineCount := s.countLines(data)
 
+	// For SpoolData, the data is written as-is (no compression), so:
+	// - UncompressedSize = original data size
+	// - CompressedSize = same as Size (no compression applied here)
+	uncompressedSize := dataSize
+	compressedSize := dataSize
+
 	// Write metadata file
 	metadata := SpooledFile{
-		ID:            id,
-		TenantID:      tenantID,
-		DatasetID:     datasetID,
-		BearerToken:   bearerToken,
-		Filename:      filename,
-		Size:          dataSize,
-		LineCount:     lineCount,
-		CreatedAt:     time.Now(),
-		LastRetry:     time.Time{},
-		RetryCount:    0,
-		Status:        "pending",
-		FailureReason: failureReason,
-		TriggerReason: triggerReason,
+		ID:               id,
+		TenantID:         tenantID,
+		DatasetID:        datasetID,
+		BearerToken:      bearerToken,
+		Filename:         filename,
+		Size:             dataSize,           // File size on disk
+		CompressedSize:   compressedSize,     // Same as Size for backwards compatibility
+		UncompressedSize: uncompressedSize,   // Original data size (same as Size here)
+		LineCount:        lineCount,
+		CreatedAt:        time.Now(),
+		LastRetry:        time.Time{},
+		RetryCount:       0,
+		Status:           "pending",
+		FailureReason:    failureReason,
+		TriggerReason:    triggerReason,
 	}
 
 	metaData, err := json.Marshal(metadata)
@@ -1499,6 +1509,43 @@ func (s *SpoolingService) safeReadFile(filePath string) ([]byte, error) {
 	return os.ReadFile(cleanPath)
 }
 
+// getUncompressedSize returns the uncompressed size of a gzip file
+func (s *SpoolingService) getUncompressedSize(filePath string) (int64, error) {
+	fileData, err := s.safeReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+
+	// Check if file is gzipped
+	if len(fileData) < 2 || fileData[0] != 0x1f || fileData[1] != 0x8b {
+		// Not gzipped, return the actual file size
+		return int64(len(fileData)), nil
+	}
+
+	// File is gzipped, decompress to get original size
+	reader, err := gzip.NewReader(bytes.NewReader(fileData))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer reader.Close()
+
+	// Count bytes in decompressed data
+	var uncompressedSize int64
+	buffer := make([]byte, 32*1024) // 32KB buffer
+	for {
+		n, err := reader.Read(buffer)
+		uncompressedSize += int64(n)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, fmt.Errorf("failed to read decompressed data: %w", err)
+		}
+	}
+
+	return uncompressedSize, nil
+}
+
 // countLines counts the number of lines in the data
 func (s *SpoolingService) countLines(data []byte) int {
 	if len(data) == 0 {
@@ -2326,25 +2373,36 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		lineCount = s.countLines(fileData)
 	}
 
-	now := time.Now()
-	metadata := SpooledFile{
-		ID:            batchID,
-		TenantID:      tenantID,
-		DatasetID:     datasetID,
-		BearerToken:   "", // Will be filled from batch context if available
-		Filename:      dstDataFile,
-		Size:          int64(0), // Will be updated if fileInfo available
-		LineCount:     lineCount, // Count lines from actual file data
-		CreatedAt:     now,
-		LastRetry:     now,
-		RetryCount:    1, // First retry attempt
-		Status:        "retry",
-		FailureReason: failureReason,
-		TriggerReason: triggerReason,
+	// Get compressed size
+	var compressedSize int64
+	if fileInfo != nil {
+		compressedSize = fileInfo.Size()
 	}
 
-	if fileInfo != nil {
-		metadata.Size = fileInfo.Size()
+	// Get uncompressed size
+	uncompressedSize, err := s.getUncompressedSize(dstDataFile)
+	if err != nil {
+		log.Warnf("Failed to get uncompressed size for %s: %v", dstDataFile, err)
+		uncompressedSize = compressedSize // Fallback to compressed size
+	}
+
+	now := time.Now()
+	metadata := SpooledFile{
+		ID:               batchID,
+		TenantID:         tenantID,
+		DatasetID:        datasetID,
+		BearerToken:      "", // Will be filled from batch context if available
+		Filename:         dstDataFile,
+		Size:             compressedSize,      // Compressed size on disk
+		CompressedSize:   compressedSize,      // Same as Size for backwards compatibility
+		UncompressedSize: uncompressedSize,    // Original data size before compression
+		LineCount:        lineCount,           // Count lines from actual file data
+		CreatedAt:        now,
+		LastRetry:        now,
+		RetryCount:       1, // First retry attempt
+		Status:           "retry",
+		FailureReason:    failureReason,
+		TriggerReason:    triggerReason,
 	}
 
 	// Write metadata to retry directory
@@ -2514,26 +2572,37 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		lineCount = s.countLines(fileData)
 	}
 
+	// Get compressed size
+	var compressedSize int64
+	if fileInfo != nil {
+		compressedSize = fileInfo.Size()
+	}
+
+	// Get uncompressed size
+	uncompressedSize, err := s.getUncompressedSize(dstDataFile)
+	if err != nil {
+		log.Warnf("Failed to get uncompressed size for %s: %v", dstDataFile, err)
+		uncompressedSize = compressedSize // Fallback to compressed size
+	}
+
 	// Create metadata with retry count 0 (fresh start)
 	now := time.Now()
 	metadata := SpooledFile{
-		ID:            batchID,
-		TenantID:      tenantID,
-		DatasetID:     datasetID,
-		BearerToken:   "", // Will be filled from config during retry
-		Filename:      dstDataFile,
-		Size:          int64(0),
-		LineCount:     lineCount, // Count lines from actual file data
-		CreatedAt:     now, // Use current time as creation time
-		LastRetry:     time.Time{}, // No retry attempted yet
-		RetryCount:    0, // Fresh start - gets full 4 retry attempts
-		Status:        "retry",
-		FailureReason: "Recovered from orphaned queue file on startup",
-		TriggerReason: "service_restart", // Special case for recovered files
-	}
-
-	if fileInfo != nil {
-		metadata.Size = fileInfo.Size()
+		ID:               batchID,
+		TenantID:         tenantID,
+		DatasetID:        datasetID,
+		BearerToken:      "", // Will be filled from config during retry
+		Filename:         dstDataFile,
+		Size:             compressedSize,      // Compressed size on disk
+		CompressedSize:   compressedSize,      // Same as Size for backwards compatibility
+		UncompressedSize: uncompressedSize,    // Original data size before compression
+		LineCount:        lineCount,           // Count lines from actual file data
+		CreatedAt:        now,                 // Use current time as creation time
+		LastRetry:        time.Time{},         // No retry attempted yet
+		RetryCount:       0,                   // Fresh start - gets full 4 retry attempts
+		Status:           "retry",
+		FailureReason:    "Recovered from orphaned queue file on startup",
+		TriggerReason:    "service_restart", // Special case for recovered files
 	}
 
 	// Write metadata to retry directory
