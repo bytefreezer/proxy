@@ -691,11 +691,20 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 
 			// Extract batch ID from filename (remove .meta extension)
 			batchID := strings.TrimSuffix(fileName, ".meta")
-			dataFilePath := filepath.Join(retryDir, batchID)
 			metaFilePath := filepath.Join(retryDir, fileName)
 
-			// Check if data file exists
-			if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
+			// Find the corresponding data file (could be .ndjson.gz or .ndjson)
+			var dataFilePath string
+			possibleExts := []string{".ndjson.gz", ".ndjson"}
+			for _, ext := range possibleExts {
+				candidate := filepath.Join(retryDir, batchID+ext)
+				if _, err := os.Stat(candidate); err == nil {
+					dataFilePath = candidate
+					break
+				}
+			}
+
+			if dataFilePath == "" {
 				log.Warnf("No data file found for batch %s in retry directory", batchID)
 				continue
 			}
