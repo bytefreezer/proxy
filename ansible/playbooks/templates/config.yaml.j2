@@ -39,8 +39,22 @@ bearer_token: "{{ config.bearer_token }}"
 receiver:
   base_url: "{{ config.receiver.base_url }}"
   timeout_seconds: {{ config.receiver.timeout_seconds }}
-  retry_count: {{ config.receiver.retry_count }}
-  retry_delay_seconds: {{ config.receiver.retry_delay_seconds }}
+  upload_worker_count: {{ config.receiver.upload_worker_count | default(5) }}    # Number of upload workers (aligned with receiver)
+  max_idle_conns: {{ config.receiver.max_idle_conns | default(10) }}        # HTTP connection pool size
+  max_conns_per_host: {{ config.receiver.max_conns_per_host | default(6) }}     # Max connections per host
+
+  # Dedicated retry HTTP client configuration (defaults to same values as upload client)
+  # retry_max_idle_conns: {{ config.receiver.retry_max_idle_conns | default(10) }}      # HTTP connection pool size for retries (optional)
+  # retry_max_conns_per_host: {{ config.receiver.retry_max_conns_per_host | default(6) }}   # Max connections per host for retries (optional)
+
+# Batch processing configuration
+batching:
+  enabled: {{ config.batching.enabled | default(true) | lower }}
+  max_lines: {{ config.batching.max_lines | default(0) }}       # Max lines per batch (0 = disabled)
+  max_bytes: {{ config.batching.max_bytes | default(20971520) }}   # Max bytes per batch - 20MB (0 = disabled)
+  timeout_seconds: {{ config.batching.timeout_seconds | default(60) }}   # Timeout always takes priority
+  compression_enabled: {{ config.batching.compression_enabled | default(true) | lower }}
+  compression_level: {{ config.batching.compression_level | default(6) }}
 
 # SOC alerting configuration
 soc:
