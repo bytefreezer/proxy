@@ -842,8 +842,14 @@ func (s *SpoolingService) removeSuccessfulRetryFile(metadata *SpooledFile) error
 		return fmt.Errorf("failed to remove data file %s: %w", metadata.Filename, err)
 	}
 
-	// Remove metadata file
-	metaPath := metadata.Filename + ".json"
+	// Remove metadata file (.meta extension)
+	// Extract batch ID from data file path and construct metadata path
+	dataFile := filepath.Base(metadata.Filename)
+	batchID := strings.TrimSuffix(dataFile, filepath.Ext(dataFile))          // Remove .gz
+	batchID = strings.TrimSuffix(batchID, filepath.Ext(batchID))             // Remove .ndjson
+	retryDir := filepath.Dir(metadata.Filename)
+	metaPath := filepath.Join(retryDir, batchID+".meta")
+
 	if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove metadata file %s: %w", metaPath, err)
 	}
