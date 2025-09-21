@@ -118,25 +118,25 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 	batch.LastUpdated = time.Now()
 
 	// Check if batch is ready to be sent
-	if bp.shouldFinalizeBatch(batch) {
-		bp.finalizeBatch(key, batch, "size_limit_reached")
+	if reason := bp.shouldFinalizeBatch(batch); reason != "" {
+		bp.finalizeBatch(key, batch, reason)
 		delete(bp.batches, key)
 	}
 }
 
-// shouldFinalizeBatch determines if a batch should be finalized
-func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) bool {
+// shouldFinalizeBatch determines if a batch should be finalized and returns the reason
+func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) string {
 	// Check line count limit (only if > 0, 0 = disabled)
 	if bp.config.Batching.MaxLines > 0 && batch.LineCount >= int64(bp.config.Batching.MaxLines) {
-		return true
+		return "line_limit_reached"
 	}
 
 	// Check byte size limit (only if > 0, 0 = disabled)
 	if bp.config.Batching.MaxBytes > 0 && batch.TotalBytes >= bp.config.Batching.MaxBytes {
-		return true
+		return "size_limit_reached"
 	}
 
-	return false
+	return ""
 }
 
 // finalizeBatch converts an active batch to a domain batch and sends it

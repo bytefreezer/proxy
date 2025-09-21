@@ -2,6 +2,36 @@
 
 ## Latest Changes
 
+### 🐛 Critical Bug Fix: Trigger Reason Accuracy
+**Release Date**: September 21, 2025
+
+#### Bug Fixed
+- **Issue**: Batch processing incorrectly reported `size_limit_reached` for all batches that hit limits, even when they were triggered by line count limits
+- **Root Cause**: `shouldFinalizeBatch()` function returned only boolean, causing `finalizeBatch()` to always use hardcoded `"size_limit_reached"` reason
+- **Impact**: Made trigger reason monitoring unreliable for performance analysis
+
+#### Fix Details
+- **Enhanced Logic**: `shouldFinalizeBatch()` now returns specific trigger reason string
+- **Accurate Reporting**: Correctly distinguishes between `size_limit_reached` and `line_limit_reached`
+- **Preserved Functionality**: Timeout triggers continue to work correctly via separate timeout checker
+
+#### New Trigger Reasons
+- `line_limit_reached` - Batch finalized due to maximum line count reached
+- `size_limit_reached` - Batch finalized due to maximum byte size reached
+- `timeout` - Batch finalized due to timeout (unchanged)
+
+#### Verification
+After this fix, batches will show correct trigger reasons in metadata:
+```json
+{
+  "trigger_reason": "timeout",  // For 1.28MB batch (under 20MB limit)
+  "line_count": 40080,
+  "size": 52560  // Compressed size on disk
+}
+```
+
+---
+
 ### 📊 Enhanced Batch Trigger Tracking and Monitoring
 **Release Date**: September 2025
 
