@@ -30,7 +30,7 @@ Available trigger reasons:
 Spool metadata (`.meta` files) now include trigger information:
 ```json
 {
-  "id": "batch_20250921_143022",
+  "id": "20250921-143022--customer-1--ebpf-data",
   "tenant_id": "customer-1",
   "dataset_id": "ebpf-data",
   "trigger_reason": "timeout",
@@ -81,10 +81,23 @@ grep "trigger_reason" /var/spool/bytefreezer-proxy/*/meta/*.meta | grep timeout
 - **service_shutdown triggers**: Normal during graceful shutdowns
 - **service_restart triggers**: Indicates recovery from unclean shutdown
 
+#### Improved Filename Format
+**Enhanced delimiter for better parsing**: Changed batch ID format from underscores to double dashes for more reliable parsing when tenant/dataset names contain underscores.
+
+**New Format**:
+- ✅ **Before**: `customer_1_ebpf_data_1695123456789` (ambiguous parsing)
+- ✅ **After**: `customer-1--ebpf-data--1695123456789` (clear delimiter)
+
+**Benefits**:
+- **Reliable parsing**: `strings.Split(id, "--")` works even with underscores in names
+- **Cross-platform safe**: Double dash is safe on all operating systems
+- **Future-proof**: Clear separation for automated processing
+
 #### Backward Compatibility
 - **No Breaking Changes**: All existing functionality preserved
 - **Automatic Enhancement**: Existing deployments automatically gain trigger tracking
 - **API Compatibility**: All existing API responses include new trigger reason fields
+- **Filename Format**: New delimiter format applies to new files only
 
 ### 🚀 Major Performance Enhancement: Concurrent Upload Architecture
 **Release Date**: September 2025

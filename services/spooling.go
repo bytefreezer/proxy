@@ -223,7 +223,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 
 	// Generate batch ID and paths
 	now := time.Now()
-	batchID := fmt.Sprintf("%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
+	batchID := fmt.Sprintf("%s--%s--%s", now.Format("20060102-150405"), tenantID, datasetID)
 
 	// Compress data
 	var compressed bytes.Buffer
@@ -1308,7 +1308,7 @@ func (s *SpoolingService) removeSpooledFile(file SpooledFile) error {
 func (s *SpoolingService) generateSpoolPaths(tenantID, datasetID string, data []byte) (string, string, string, error) {
 	now := time.Now()
 	batchID := fmt.Sprintf("batch%d", now.UnixNano())
-	id := fmt.Sprintf("%s_%s_%s", now.Format("20060102-150405"), tenantID, datasetID)
+	id := fmt.Sprintf("%s--%s--%s", now.Format("20060102-150405"), tenantID, datasetID)
 
 	// Determine file extension based on compression
 	var extension string
@@ -1478,6 +1478,25 @@ func (s *SpoolingService) calculateCurrentSize() error {
 	s.currentSize = totalSize
 	log.Debugf("Current spooling size: %d bytes", s.currentSize)
 	return nil
+}
+
+// safeReadFile safely reads a file with path validation to prevent directory traversal
+func (s *SpoolingService) safeReadFile(filePath string) ([]byte, error) {
+	// Clean the path to prevent directory traversal
+	cleanPath := filepath.Clean(filePath)
+
+	// Ensure the path is within our spooling directory
+	if !strings.HasPrefix(cleanPath, s.directory) {
+		return nil, fmt.Errorf("file path outside spooling directory: %s", cleanPath)
+	}
+
+	// Additional validation: ensure it's a data file we expect
+	if !strings.HasSuffix(cleanPath, ".ndjson") && !strings.HasSuffix(cleanPath, ".ndjson.gz") {
+		return nil, fmt.Errorf("invalid file type for line counting: %s", cleanPath)
+	}
+
+	// Safe to read the file now
+	return os.ReadFile(cleanPath)
 }
 
 // countLines counts the number of lines in the data
@@ -2298,6 +2317,15 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		log.Warnf("Failed to get file info for %s: %v", dstDataFile, err)
 	}
 
+	// Read file to count lines
+	var lineCount int
+	if fileData, err := s.safeReadFile(dstDataFile); err != nil {
+		log.Warnf("Failed to read file for line counting %s: %v", dstDataFile, err)
+		lineCount = 0
+	} else {
+		lineCount = s.countLines(fileData)
+	}
+
 	now := time.Now()
 	metadata := SpooledFile{
 		ID:            batchID,
@@ -2306,7 +2334,7 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		BearerToken:   "", // Will be filled from batch context if available
 		Filename:      dstDataFile,
 		Size:          int64(0), // Will be updated if fileInfo available
-		LineCount:     0,        // Will be calculated if needed
+		LineCount:     lineCount, // Count lines from actual file data
 		CreatedAt:     now,
 		LastRetry:     now,
 		RetryCount:    1, // First retry attempt
@@ -2477,6 +2505,15 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		log.Warnf("Failed to get file info for %s: %v", dstDataFile, err)
 	}
 
+	// Read file to count lines
+	var lineCount int
+	if fileData, err := s.safeReadFile(dstDataFile); err != nil {
+		log.Warnf("Failed to read file for line counting %s: %v", dstDataFile, err)
+		lineCount = 0
+	} else {
+		lineCount = s.countLines(fileData)
+	}
+
 	// Create metadata with retry count 0 (fresh start)
 	now := time.Now()
 	metadata := SpooledFile{
@@ -2486,7 +2523,7 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		BearerToken:   "", // Will be filled from config during retry
 		Filename:      dstDataFile,
 		Size:          int64(0),
-		LineCount:     0,
+		LineCount:     lineCount, // Count lines from actual file data
 		CreatedAt:     now, // Use current time as creation time
 		LastRetry:     time.Time{}, // No retry attempted yet
 		RetryCount:    0, // Fresh start - gets full 4 retry attempts

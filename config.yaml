@@ -45,7 +45,7 @@ batching:
   enabled: true
   max_lines: 0          # Max lines per batch (0 = disabled)
   max_bytes: 20971520   # Max bytes per batch - 20MB (0 = disabled)
-  timeout_seconds: 60   # Timeout always takes priority
+  timeout_seconds: 60   # 1 minute timeout
   compression_enabled: true
   compression_level: 6
 

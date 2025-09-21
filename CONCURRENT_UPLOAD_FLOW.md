@@ -161,7 +161,7 @@ Timer Trigger → collectRetryJobs() → Worker Pool → processRetryJob() → U
 **Metadata Structure** (`.meta` files):
 ```json
 {
-  "id": "batch_20250921_143022",
+  "id": "20250921-143022--customer-1--ebpf-data",
   "tenant_id": "customer-1",
   "dataset_id": "ebpf-data",
   "trigger_reason": "timeout",

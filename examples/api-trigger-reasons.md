@@ -16,10 +16,10 @@ GET /api/v2/dlq/files
   "spooling_enabled": true,
   "files": [
     {
-      "id": "batch_20250921_143022",
+      "id": "20250921-143022--customer-1--ebpf-data",
       "tenant_id": "customer-1",
       "dataset_id": "ebpf-data",
-      "filename": "batch_20250921_143022.ndjson.gz",
+      "filename": "20250921-143022--customer-1--ebpf-data.ndjson.gz",
       "size": 8192,
       "line_count": 50,
       "created_at": "2025-09-21T14:30:22Z",
@@ -30,10 +30,10 @@ GET /api/v2/dlq/files
       "trigger_reason": "timeout"
     },
     {
-      "id": "batch_20250921_143128",
+      "id": "20250921-143128--customer-1--web-logs",
       "tenant_id": "customer-1",
       "dataset_id": "web-logs",
-      "filename": "batch_20250921_143128.ndjson.gz",
+      "filename": "20250921-143128--customer-1--web-logs.ndjson.gz",
       "size": 10485760,
       "line_count": 2500,
       "created_at": "2025-09-21T14:31:28Z",
@@ -44,10 +44,10 @@ GET /api/v2/dlq/files
       "trigger_reason": "size_limit_reached"
     },
     {
-      "id": "batch_20250921_143045",
+      "id": "20250921-143045--customer-2--metrics",
       "tenant_id": "customer-2",
       "dataset_id": "metrics",
-      "filename": "batch_20250921_143045.ndjson.gz",
+      "filename": "20250921-143045--customer-2--metrics.ndjson.gz",
       "size": 1024,
       "line_count": 5,
       "created_at": "2025-09-21T14:30:45Z",

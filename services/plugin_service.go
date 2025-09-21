@@ -371,5 +371,5 @@ func (ps *PluginService) GetActivePlugins() []string {
 
 // generateBatchID generates a unique batch ID with tenant and dataset info
 func generateBatchID(tenantID, datasetID string) string {
-	return fmt.Sprintf("%s_%s_%d", tenantID, datasetID, time.Now().UnixNano())
+	return fmt.Sprintf("%s--%s--%d", tenantID, datasetID, time.Now().UnixNano())
 }
