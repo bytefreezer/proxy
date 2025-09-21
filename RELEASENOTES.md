@@ -8,7 +8,7 @@
 #### New Features
 - **Compressed Size Tracking**: Added `compressed_size` field to metadata showing actual file size on disk
 - **Uncompressed Size Tracking**: Added `uncompressed_size` field to metadata showing original data size before compression
-- **Backwards Compatibility**: Existing `size` field preserved for compatibility, contains compressed size
+- **Clean API**: Removed redundant `size` field to eliminate confusion
 
 #### Enhanced Metadata Format
 ```json
@@ -16,13 +16,14 @@
   "id": "customer-1--ebpf-data--1758485456619420694",
   "tenant_id": "customer-1",
   "dataset_id": "ebpf-data",
-  "size": 52560,                    // Compressed size on disk (backwards compatible)
-  "compressed_size": 52560,         // Same as size field
+  "compressed_size": 52560,         // Actual file size on disk
   "uncompressed_size": 1280506,     // Original data size (1.28MB uncompressed)
   "line_count": 40080,
   "trigger_reason": "timeout"
 }
 ```
+
+**Note**: Removed redundant `size` field - now only `compressed_size` and `uncompressed_size` for clarity.
 
 #### Benefits
 - **Storage Analysis**: Understand actual disk usage vs original data size

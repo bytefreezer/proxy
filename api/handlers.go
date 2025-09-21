@@ -149,13 +149,14 @@ type DatasetDLQStats struct {
 
 // FileInfo represents basic file information
 type FileInfo struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	DatasetID     string    `json:"dataset_id"`
-	Size          int64     `json:"size"`
-	CreatedAt     time.Time `json:"created_at"`
-	RetryCount    int       `json:"retry_count"`
-	FailureReason string    `json:"failure_reason,omitempty"`
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	DatasetID        string    `json:"dataset_id"`
+	CompressedSize   int64     `json:"compressed_size"`
+	UncompressedSize int64     `json:"uncompressed_size"`
+	CreatedAt        time.Time `json:"created_at"`
+	RetryCount       int       `json:"retry_count"`
+	FailureReason    string    `json:"failure_reason,omitempty"`
 }
 
 // DLQRetryRequest represents a request to retry DLQ files
@@ -196,17 +197,18 @@ type DLQListResponse struct {
 
 // DLQFileInfo represents information about a file in the DLQ
 type DLQFileInfo struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	DatasetID     string    `json:"dataset_id"`
-	Filename      string    `json:"filename"`
-	Size          int64     `json:"size"`
-	LineCount     int       `json:"line_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	LastRetry     time.Time `json:"last_retry"`
-	RetryCount    int       `json:"retry_count"`
-	Status        string    `json:"status"`
-	FailureReason string    `json:"failure_reason,omitempty"`
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	DatasetID        string    `json:"dataset_id"`
+	Filename         string    `json:"filename"`
+	CompressedSize   int64     `json:"compressed_size"`
+	UncompressedSize int64     `json:"uncompressed_size"`
+	LineCount        int       `json:"line_count"`
+	CreatedAt        time.Time `json:"created_at"`
+	LastRetry        time.Time `json:"last_retry"`
+	RetryCount       int       `json:"retry_count"`
+	Status           string    `json:"status"`
+	FailureReason    string    `json:"failure_reason,omitempty"`
 	TriggerReason string    `json:"trigger_reason,omitempty"`
 }
 
@@ -555,18 +557,19 @@ func (api *API) ListDLQFiles() usecase.Interactor {
 		output.Files = make([]DLQFileInfo, len(files))
 		for i, file := range files {
 			output.Files[i] = DLQFileInfo{
-				ID:            file.ID,
-				TenantID:      file.TenantID,
-				DatasetID:     file.DatasetID,
-				Filename:      filepath.Base(file.Filename),
-				Size:          file.Size,
-				LineCount:     file.LineCount,
-				CreatedAt:     file.CreatedAt,
-				LastRetry:     file.LastRetry,
-				RetryCount:    file.RetryCount,
-				Status:        file.Status,
-				FailureReason: file.FailureReason,
-				TriggerReason: file.TriggerReason,
+				ID:               file.ID,
+				TenantID:         file.TenantID,
+				DatasetID:        file.DatasetID,
+				Filename:         filepath.Base(file.Filename),
+				CompressedSize:   file.CompressedSize,
+				UncompressedSize: file.UncompressedSize,
+				LineCount:        file.LineCount,
+				CreatedAt:        file.CreatedAt,
+				LastRetry:        file.LastRetry,
+				RetryCount:       file.RetryCount,
+				Status:           file.Status,
+				FailureReason:    file.FailureReason,
+				TriggerReason:    file.TriggerReason,
 			}
 		}
 
@@ -642,13 +645,14 @@ func convertToFileInfo(spooledFile *services.SpooledFile) *FileInfo {
 		return nil
 	}
 	return &FileInfo{
-		ID:            spooledFile.ID,
-		TenantID:      spooledFile.TenantID,
-		DatasetID:     spooledFile.DatasetID,
-		Size:          spooledFile.Size,
-		CreatedAt:     spooledFile.CreatedAt,
-		RetryCount:    spooledFile.RetryCount,
-		FailureReason: spooledFile.FailureReason,
+		ID:               spooledFile.ID,
+		TenantID:         spooledFile.TenantID,
+		DatasetID:        spooledFile.DatasetID,
+		CompressedSize:   spooledFile.CompressedSize,
+		UncompressedSize: spooledFile.UncompressedSize,
+		CreatedAt:        spooledFile.CreatedAt,
+		RetryCount:       spooledFile.RetryCount,
+		FailureReason:    spooledFile.FailureReason,
 	}
 }
 

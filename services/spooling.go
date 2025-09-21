@@ -44,8 +44,7 @@ type SpooledFile struct {
 	DatasetID     string    `json:"dataset_id"`
 	BearerToken   string    `json:"bearer_token,omitempty"` // Authentication token for this tenant
 	Filename         string    `json:"filename"`
-	Size             int64     `json:"size"`                // Compressed size on disk
-	CompressedSize   int64     `json:"compressed_size"`     // Same as Size for backwards compatibility
+	CompressedSize   int64     `json:"compressed_size"`     // Compressed size on disk
 	UncompressedSize int64     `json:"uncompressed_size"`   // Original data size before compression
 	LineCount        int       `json:"line_count"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -385,9 +384,8 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 		DatasetID:        datasetID,
 		BearerToken:      bearerToken,
 		Filename:         filename,
-		Size:             dataSize,           // File size on disk
-		CompressedSize:   compressedSize,     // Same as Size for backwards compatibility
-		UncompressedSize: uncompressedSize,   // Original data size (same as Size here)
+		CompressedSize:   compressedSize,     // File size on disk
+		UncompressedSize: uncompressedSize,   // Original data size (same as compressed here)
 		LineCount:        lineCount,
 		CreatedAt:        time.Now(),
 		LastRetry:        time.Time{},
@@ -786,8 +784,8 @@ func (s *SpoolingService) processRetryJob(job RetryJob, forwarder *HTTPForwarder
 
 	if success {
 		// Remove successful file and metadata
-		log.Infof("✅ Retry upload successful for batch %s (%d bytes, %d lines)",
-			metadata.ID, metadata.Size, metadata.LineCount)
+		log.Infof("✅ Retry upload successful for batch %s (%d bytes compressed, %d lines)",
+			metadata.ID, metadata.CompressedSize, metadata.LineCount)
 
 		if err := s.removeSuccessfulRetryFile(metadata); err != nil {
 			log.Errorf("Failed to cleanup successful retry file %s: %v", metadata.ID, err)
@@ -837,7 +835,7 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 		DatasetID:   metadata.DatasetID,
 		Data:        data,
 		LineCount:   metadata.LineCount,
-		TotalBytes:  metadata.Size,
+		TotalBytes:  metadata.CompressedSize,
 		CreatedAt:   metadata.CreatedAt,
 		BearerToken: metadata.BearerToken,
 	}
@@ -1120,7 +1118,7 @@ func (s *SpoolingService) cleanupTenantFiles(tenantID string, files []SpooledFil
 				log.Warnf("Failed to remove old spooled file %s: %v", file.ID, err)
 			} else {
 				cleaned++
-				tenantSize -= file.Size
+				tenantSize -= file.CompressedSize
 			}
 		}
 	}
@@ -1144,7 +1142,7 @@ func (s *SpoolingService) cleanupTenantFiles(tenantID string, files []SpooledFil
 				log.Warnf("Failed to remove spooled file %s for size limit: %v", file.ID, err)
 			} else {
 				cleaned++
-				tenantSize -= file.Size
+				tenantSize -= file.CompressedSize
 				log.Debugf("Removed file %s for tenant %s size limit", file.ID, tenantID)
 			}
 		}
@@ -1304,7 +1302,7 @@ func (s *SpoolingService) removeSpooledFile(file SpooledFile) error {
 	}
 
 	// Update current size
-	s.currentSize -= file.Size
+	s.currentSize -= file.CompressedSize
 
 	// Try to remove empty directories
 	s.cleanupEmptyDirs(filepath.Dir(dataPath))
@@ -1411,7 +1409,7 @@ func (s *SpoolingService) getTenantSizeFlat(tenantID string) (int64, error) {
 	var totalSize int64
 	for _, file := range files {
 		if file.TenantID == tenantID {
-			totalSize += file.Size
+			totalSize += file.CompressedSize
 		}
 	}
 
@@ -1753,7 +1751,7 @@ func (s *SpoolingService) GetDetailedStats() (*SpoolingStats, error) {
 		}
 
 		// Update tenant stats
-		tenantStats.SizeBytes += file.Size
+		tenantStats.SizeBytes += file.CompressedSize
 		tenantStats.FileCount++
 
 		// Get or create dataset stats
@@ -1771,7 +1769,7 @@ func (s *SpoolingService) GetDetailedStats() (*SpoolingStats, error) {
 		}
 
 		// Update dataset stats
-		datasetStats.SizeBytes += file.Size
+		datasetStats.SizeBytes += file.CompressedSize
 		datasetStats.FileCount++
 		datasetStats.StatusBreakdown[file.Status]++
 
@@ -2056,10 +2054,10 @@ func (s *SpoolingService) countFilesInDirectory(dirPath, extension string) (int,
 		if !found {
 			createdAt = info.ModTime()
 			spooledFile := &SpooledFile{
-				ID:        baseName,
-				Filename:  filepath.Join(dirPath, file.Name()),
-				Size:      info.Size(),
-				CreatedAt: createdAt,
+				ID:             baseName,
+				Filename:       filepath.Join(dirPath, file.Name()),
+				CompressedSize: info.Size(),
+				CreatedAt:      createdAt,
 			}
 			if oldestFile == nil || createdAt.Before(oldestFile.CreatedAt) {
 				oldestFile = spooledFile
@@ -2393,8 +2391,7 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		DatasetID:        datasetID,
 		BearerToken:      "", // Will be filled from batch context if available
 		Filename:         dstDataFile,
-		Size:             compressedSize,      // Compressed size on disk
-		CompressedSize:   compressedSize,      // Same as Size for backwards compatibility
+		CompressedSize:   compressedSize,      // Compressed size on disk
 		UncompressedSize: uncompressedSize,    // Original data size before compression
 		LineCount:        lineCount,           // Count lines from actual file data
 		CreatedAt:        now,
@@ -2593,8 +2590,7 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		DatasetID:        datasetID,
 		BearerToken:      "", // Will be filled from config during retry
 		Filename:         dstDataFile,
-		Size:             compressedSize,      // Compressed size on disk
-		CompressedSize:   compressedSize,      // Same as Size for backwards compatibility
+		CompressedSize:   compressedSize,      // Compressed size on disk
 		UncompressedSize: uncompressedSize,    // Original data size before compression
 		LineCount:        lineCount,           // Count lines from actual file data
 		CreatedAt:        now,                 // Use current time as creation time
