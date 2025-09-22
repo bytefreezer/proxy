@@ -135,6 +135,10 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
 	req.Header.Set("X-Proxy-File-Extension", batch.FileExtension) // Plugin-defined file extension
 
+	// Complete filename for receiver queue storage
+	filename := fmt.Sprintf("%s.%s.gz", batch.ID, batch.FileExtension)
+	req.Header.Set("X-Proxy-Filename", filename)
+
 	// Single HTTP attempt only - file-level retry handles failures
 	resp, err := f.httpClient.Do(req)
 	if err != nil {
