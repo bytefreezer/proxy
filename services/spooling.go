@@ -1579,7 +1579,7 @@ func (s *SpoolingService) getDirectorySize(dirPath string) (int64, error) {
 			return err
 		}
 
-		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".ndjson") || strings.HasSuffix(info.Name(), ".ndjson.gz")) {
+		if !info.IsDir() && !strings.HasSuffix(info.Name(), ".meta") {
 			totalSize += info.Size()
 		}
 
@@ -1598,7 +1598,7 @@ func (s *SpoolingService) calculateCurrentSize() error {
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".ndjson") {
+		if !info.IsDir() && !strings.HasSuffix(info.Name(), ".meta") {
 			totalSize += info.Size()
 		}
 
@@ -1625,7 +1625,7 @@ func (s *SpoolingService) safeReadFile(filePath string) ([]byte, error) {
 	}
 
 	// Additional validation: ensure it's a data file we expect
-	if !strings.HasSuffix(cleanPath, ".ndjson") && !strings.HasSuffix(cleanPath, ".ndjson.gz") {
+	if strings.HasSuffix(cleanPath, ".meta") {
 		return nil, fmt.Errorf("invalid file type for line counting: %s", cleanPath)
 	}
 
@@ -2085,7 +2085,7 @@ func (s *SpoolingService) GetDLQStats() (*DLQStats, error) {
 
 			// Count queue files
 			queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
-			queueFiles, queueBytes, queueOldest := s.countFilesInDirectory(queueDir, ".ndjson.gz")
+			queueFiles, queueBytes, queueOldest := s.countFilesInDirectory(queueDir, "")
 			datasetStats.QueueFiles = queueFiles
 			datasetStats.QueueBytes = queueBytes
 
@@ -2095,7 +2095,7 @@ func (s *SpoolingService) GetDLQStats() (*DLQStats, error) {
 
 			// Count DLQ files
 			dlqDir := filepath.Join(s.directory, tenantID, datasetID, "dlq")
-			dlqFiles, dlqBytes, dlqOldest := s.countFilesInDirectory(dlqDir, ".ndjson.gz")
+			dlqFiles, dlqBytes, dlqOldest := s.countFilesInDirectory(dlqDir, "")
 			datasetStats.DLQFiles = dlqFiles
 			datasetStats.DLQBytes = dlqBytes
 
@@ -2137,7 +2137,13 @@ func (s *SpoolingService) countFilesInDirectory(dirPath, extension string) (int,
 	var oldestFile *SpooledFile
 
 	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), extension) {
+		// Skip metadata files and directories
+		if strings.HasSuffix(file.Name(), ".meta") || file.IsDir() {
+			continue
+		}
+
+		// If extension is specified, filter by it; otherwise count all data files
+		if extension != "" && !strings.HasSuffix(file.Name(), extension) {
 			continue
 		}
 
@@ -2264,12 +2270,16 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 			}
 
 			for _, file := range dlqFiles {
-				if !strings.HasSuffix(file.Name(), ".ndjson.gz") && !strings.HasSuffix(file.Name(), ".ndjson") {
+				// Skip metadata files, only process data files (any extension with .gz or without)
+				if strings.HasSuffix(file.Name(), ".meta") {
 					continue
 				}
 
-				baseName := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
-				baseName = strings.TrimSuffix(baseName, ".ndjson")
+				// Extract base filename (everything before the first dot)
+				baseName := file.Name()
+				if dotIndex := strings.Index(baseName, "."); dotIndex > 0 {
+					baseName = baseName[:dotIndex]
+				}
 
 				// Move data file from DLQ to retry
 				srcPath := filepath.Join(dlqDir, file.Name())
@@ -2625,15 +2635,15 @@ func (s *SpoolingService) processOrphanedQueueFiles() error {
 					continue
 				}
 
-				// Process data files (.ndjson.gz or .ndjson)
-				if strings.HasSuffix(entry.Name(), ".ndjson.gz") || strings.HasSuffix(entry.Name(), ".ndjson") {
-					// Extract batch ID from filename
+				// Process all data files (skip metadata files)
+				if !strings.HasSuffix(entry.Name(), ".meta") {
+					// Extract batch ID from filename (everything before the first dot)
 					filename := entry.Name()
 					var batchID string
-					if strings.HasSuffix(filename, ".ndjson.gz") {
-						batchID = strings.TrimSuffix(filename, ".ndjson.gz")
+					if dotIndex := strings.Index(filename, "."); dotIndex > 0 {
+						batchID = filename[:dotIndex]
 					} else {
-						batchID = strings.TrimSuffix(filename, ".ndjson")
+						batchID = filename
 					}
 
 					// Move to retry with retry count 0 (fresh start)
