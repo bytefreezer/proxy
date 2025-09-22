@@ -323,6 +323,7 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		"",                  // No failure reason - this is initial spooling
 		batch.ID,            // Use the existing batch ID
 		batch.TriggerReason, // Pass the trigger reason from the batch
+		batch.FileExtension, // Plugin-defined file extension
 	)
 }
 

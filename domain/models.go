@@ -20,6 +20,7 @@ type DataBatch struct {
 	TenantID      string
 	DatasetID     string
 	BearerToken   string // Authentication token for this tenant
+	FileExtension string // Plugin-defined file extension
 	Messages      []UDPMessage
 	LineCount     int
 	TotalBytes    int64

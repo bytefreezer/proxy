@@ -28,14 +28,15 @@ type BatchProcessor struct {
 
 // activeBatch represents a batch being built
 type activeBatch struct {
-	TenantID    string
-	DatasetID   string
-	BearerToken string
-	Messages    [][]byte
-	LineCount   int64
-	TotalBytes  int64
-	CreatedAt   time.Time
-	LastUpdated time.Time
+	TenantID      string
+	DatasetID     string
+	BearerToken   string
+	FileExtension string
+	Messages      [][]byte
+	LineCount     int64
+	TotalBytes    int64
+	CreatedAt     time.Time
+	LastUpdated   time.Time
 }
 
 // NewBatchProcessor creates a new batch processor
@@ -101,12 +102,13 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 		}
 
 		batch = &activeBatch{
-			TenantID:    msg.TenantID,
-			DatasetID:   msg.DatasetID,
-			BearerToken: bearerToken,
-			Messages:    make([][]byte, 0),
-			CreatedAt:   msg.Timestamp,
-			LastUpdated: msg.Timestamp,
+			TenantID:      msg.TenantID,
+			DatasetID:     msg.DatasetID,
+			BearerToken:   bearerToken,
+			FileExtension: msg.FileExtension,
+			Messages:      make([][]byte, 0),
+			CreatedAt:     msg.Timestamp,
+			LastUpdated:   msg.Timestamp,
 		}
 		bp.batches[key] = batch
 	}
@@ -165,6 +167,7 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 		ID:            generateBatchID(batch.TenantID, batch.DatasetID),
 		TenantID:      batch.TenantID,
 		DatasetID:     batch.DatasetID,
+		FileExtension: batch.FileExtension,
 		Data:          compressedData,
 		LineCount:     int(batch.LineCount),
 		TotalBytes:    batch.TotalBytes, // Original uncompressed size

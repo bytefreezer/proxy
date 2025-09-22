@@ -358,7 +358,7 @@ func TestSpoolingService_StoreBatchToQueue(t *testing.T) {
 	service := NewSpoolingService(cfg)
 
 	testData := []byte(`{"message": "test message", "timestamp": "2024-01-15T10:30:45Z"}`)
-	err = service.StoreBatchToQueue("test-tenant", "test-dataset", "test-token", testData, "Test failure reason", "test-batch-123", "timeout")
+	err = service.StoreBatchToQueue("test-tenant", "test-dataset", "test-token", testData, "Test failure reason", "test-batch-123", "timeout", "raw")
 	if err != nil {
 		t.Fatalf("Failed to store batch to queue: %v", err)
 	}

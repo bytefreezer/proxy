@@ -25,12 +25,13 @@ type InputPlugin interface {
 
 // DataMessage represents raw data from any input source
 type DataMessage struct {
-	Data      []byte            `json:"data"`
-	TenantID  string            `json:"tenant_id"`
-	DatasetID string            `json:"dataset_id"`
-	Metadata  map[string]string `json:"metadata"` // Source-specific metadata
-	Timestamp time.Time         `json:"timestamp"`
-	SourceIP  string            `json:"source_ip,omitempty"` // For UDP/network sources
+	Data          []byte            `json:"data"`
+	TenantID      string            `json:"tenant_id"`
+	DatasetID     string            `json:"dataset_id"`
+	FileExtension string            `json:"file_extension"`      // Plugin-defined file extension
+	Metadata      map[string]string `json:"metadata"`            // Source-specific metadata
+	Timestamp     time.Time         `json:"timestamp"`
+	SourceIP      string            `json:"source_ip,omitempty"` // For UDP/network sources
 }
 
 // PluginHealth represents the health status of a plugin
