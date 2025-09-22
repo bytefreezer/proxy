@@ -300,8 +300,9 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 	}
 
 	// No metadata created for queue files - they're meant for immediate processing
-	log.Debugf("Stored batch %s to queue for tenant=%s dataset=%s (no metadata needed)",
-		batchID, tenantID, datasetID)
+	actualFilename := filepath.Base(batchFilePath)
+	log.Debugf("Stored file %s to queue for tenant=%s dataset=%s (no metadata needed)",
+		actualFilename, tenantID, datasetID)
 
 	return nil
 }
@@ -788,8 +789,9 @@ func (s *SpoolingService) processRetryJob(job RetryJob, forwarder *HTTPForwarder
 
 	if success {
 		// Remove successful file and metadata
-		log.Infof("✅ Retry upload successful for batch %s (%d bytes compressed, %d lines)",
-			metadata.ID, metadata.CompressedSize, metadata.LineCount)
+		actualFilename := filepath.Base(metadata.Filename)
+		log.Infof("✅ Retry upload successful for file %s (%d bytes compressed, %d lines)",
+			actualFilename, metadata.CompressedSize, metadata.LineCount)
 
 		if err := s.removeSuccessfulRetryFile(metadata); err != nil {
 			log.Errorf("Failed to cleanup successful retry file %s: %v", metadata.ID, err)
@@ -2417,7 +2419,8 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		}
 	}
 
-	log.Infof("Moved batch %s to retry due to: %s", batchID, failureReason)
+	actualFilename := filepath.Base(srcDataFile)
+	log.Infof("Moved file %s to retry due to: %s", actualFilename, failureReason)
 	return nil
 }
 
@@ -2455,7 +2458,9 @@ func (s *SpoolingService) RemoveFromQueue(tenantID, datasetID, batchID string) e
 
 	// No metadata to remove - queue files don't have metadata
 
-	log.Debugf("Removed batch %s from queue after successful upload", batchID)
+	if dataFileRemoved {
+		log.Debugf("Removed file for batch %s from queue after successful upload", batchID)
+	}
 	return nil
 }
 
