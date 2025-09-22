@@ -1,0 +1,76 @@
+app:
+  name: bytefreezer-proxy
+  version: 0.0.2
+
+# Logging configuration
+logging:
+  level: debug
+  encoding: console
+
+# API server configuration
+server:
+  api_port: 8088
+
+# Plugin-based input configuration
+inputs:
+  # UDP Plugin for eBPF data on port 2056
+  - type: "udp"
+    name: "ebpf-udp-listener"
+    config:
+      host: "0.0.0.0"
+      port: 2056
+      dataset_id: "ebpf-data"
+      protocol: "udp"
+      file_extension: "raw"  # Data format extension: "raw", "ndjson", "csv", etc.
+      read_buffer_size: 65536
+      worker_count: 4
+
+# Global tenant configuration (used as fallback for plugins)
+tenant_id: "customer-1"
+bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+
+# Bytefreezer-receiver configuration
+receiver:
+  base_url: "http://localhost:8082/{tenantid}/{datasetid}"
+  timeout_seconds: 30
+  upload_worker_count: 5    # Number of upload workers (aligned with receiver)
+  max_idle_conns: 10        # HTTP connection pool size
+  max_conns_per_host: 6     # Max connections per host
+
+# Batch processing configuration
+batching:
+  enabled: true
+  max_lines: 0          # Max lines per batch (0 = disabled)
+  max_bytes: 10485760   # Max bytes per batch - 10MB (0 = disabled)
+  timeout_seconds: 10   # 10 second timeout for testing
+  compression_enabled: true
+  compression_level: 6
+
+# SOC alerting configuration
+soc:
+  enabled: false
+  endpoint: ""
+  timeout: 30
+
+# OpenTelemetry configuration (disabled by default)
+otel:
+  enabled: false
+  service_name: "bytefreezer-proxy"
+  scrapeIntervalseconds: 15
+
+# Housekeeping configuration
+housekeeping:
+  enabled: true
+  intervalseconds: 60
+
+# Local spooling for failed uploads - use local directory for testing
+spooling:
+  enabled: true
+  directory: "./test-spool"
+  max_size_bytes: 1073741824  # 1GB
+  retry_attempts: 5
+  retry_interval_seconds: 60  # 1 minute
+  cleanup_interval_seconds: 300  # 5 minutes
+
+# Development mode
+dev: false
