@@ -661,7 +661,7 @@ func (s *SpoolingService) processRetries() {
 	}
 }
 
-// collectRetryJobs collects all retry jobs for a tenant
+// collectRetryJobs collects all retry jobs for a tenant from both queue/ and retry/ directories
 func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 	var jobs []RetryJob
 
@@ -673,6 +673,12 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 	}
 
 	for _, datasetID := range datasets {
+		// Process queue directory first (files that haven't been attempted yet)
+		queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
+		queueJobs := s.collectQueueJobs(tenantID, datasetID, queueDir)
+		jobs = append(jobs, queueJobs...)
+
+		// Then process retry directory (files that have failed before)
 		retryDir := filepath.Join(s.directory, tenantID, datasetID, "retry")
 
 		// Check if retry directory exists
@@ -737,6 +743,60 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 	return jobs
 }
 
+// collectQueueJobs collects jobs from the queue directory (files that haven't been attempted yet)
+func (s *SpoolingService) collectQueueJobs(tenantID, datasetID, queueDir string) []RetryJob {
+	var jobs []RetryJob
+
+	// Check if queue directory exists
+	if _, err := os.Stat(queueDir); os.IsNotExist(err) {
+		return jobs
+	}
+
+	// Read queue directory
+	entries, err := os.ReadDir(queueDir)
+	if err != nil {
+		log.Errorf("Failed to read queue directory %s: %v", queueDir, err)
+		return jobs
+	}
+
+	log.Debugf("Found %d entries in queue directory %s", len(entries), queueDir)
+
+	// Process each data file in queue (no metadata files in queue)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		fileName := entry.Name()
+
+		// Extract batch ID from filename (remove file extension)
+		var batchID string
+		if strings.Contains(fileName, ".") {
+			// Find the first dot to get the base filename
+			parts := strings.Split(fileName, ".")
+			batchID = parts[0]
+		} else {
+			batchID = fileName
+		}
+
+		dataFilePath := filepath.Join(queueDir, fileName)
+
+		// Create retry job for queue file (no metadata file path)
+		job := RetryJob{
+			TenantID:  tenantID,
+			DatasetID: datasetID,
+			BatchID:   batchID,
+			FilePath:  dataFilePath,
+			MetaPath:  "", // Queue files don't have metadata
+		}
+
+		jobs = append(jobs, job)
+		log.Debugf("Added queue job for batch %s from file %s", batchID, fileName)
+	}
+
+	return jobs
+}
+
 // retryJobWorker processes retry jobs from the job channel
 func (s *SpoolingService) retryJobWorker(workerID int, jobChannel <-chan RetryJob, resultChannel chan<- struct {
 	success bool
@@ -766,9 +826,14 @@ func (s *SpoolingService) retryJobWorker(workerID int, jobChannel <-chan RetryJo
 	log.Debugf("Retry worker %d finished", workerID)
 }
 
-// processRetryJob processes a single retry job
+// processRetryJob processes a single retry job (either from queue or retry directory)
 func (s *SpoolingService) processRetryJob(job RetryJob, forwarder *HTTPForwarder) bool {
-	// Read metadata
+	if job.MetaPath == "" {
+		// Queue job - no metadata, attempt direct upload
+		return s.processQueueJob(job, forwarder)
+	}
+
+	// Retry job - has metadata, process normally
 	metadata, err := s.readRetryMetadata(job.MetaPath)
 	if err != nil {
 		log.Errorf("Failed to read metadata for batch %s: %v", job.BatchID, err)
@@ -807,6 +872,61 @@ func (s *SpoolingService) processRetryJob(job RetryJob, forwarder *HTTPForwarder
 		}
 		return false
 	}
+}
+
+// processQueueJob processes a queue job (file without metadata)
+func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder) bool {
+	// Read the data file directly
+	data, err := os.ReadFile(job.FilePath)
+	if err != nil {
+		log.Errorf("Failed to read queue file %s: %v", job.FilePath, err)
+		return false
+	}
+
+	// Extract file extension from filename for proper DataBatch creation
+	fileName := filepath.Base(job.FilePath)
+	fileExtension := "raw" // default
+	if strings.Contains(fileName, ".") {
+		parts := strings.Split(fileName, ".")
+		if len(parts) >= 2 {
+			// Get the extension before .gz if present, otherwise the last extension
+			if len(parts) >= 3 && parts[len(parts)-1] == "gz" {
+				fileExtension = parts[len(parts)-2]
+			} else {
+				fileExtension = parts[len(parts)-1]
+			}
+		}
+	}
+
+	// Create a DataBatch for upload
+	batch := &domain.DataBatch{
+		ID:            job.BatchID,
+		TenantID:      job.TenantID,
+		DatasetID:     job.DatasetID,
+		Data:          data,
+		FileExtension: fileExtension,
+		CreatedAt:     time.Now(),
+		TotalBytes:    int64(len(data)),
+		LineCount:     strings.Count(string(data), "\n"), // Simple line count
+	}
+
+	// Attempt upload
+	err = forwarder.ForwardBatch(batch)
+	if err != nil {
+		log.Warnf("Queue file upload failed for %s: %v - moving to retry", fileName, err)
+		// Move to retry directory with metadata
+		if moveErr := s.MoveQueueToRetry(job.TenantID, job.DatasetID, job.BatchID, err.Error(), "upload_failed"); moveErr != nil {
+			log.Errorf("Failed to move queue file %s to retry: %v", fileName, moveErr)
+		}
+		return false
+	}
+
+	// Success - remove from queue
+	log.Infof("✅ Queue file upload successful for %s (%d bytes)", fileName, len(data))
+	if err := os.Remove(job.FilePath); err != nil {
+		log.Errorf("Failed to remove successful queue file %s: %v", job.FilePath, err)
+	}
+	return true
 }
 
 // readRetryMetadata reads metadata from a retry metadata file
