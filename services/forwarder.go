@@ -133,6 +133,7 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Line-Count", fmt.Sprintf("%d", batch.LineCount))
 	req.Header.Set("X-Proxy-Original-Bytes", fmt.Sprintf("%d", batch.TotalBytes))
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
+	req.Header.Set("X-Proxy-File-Extension", batch.FileExtension) // Plugin-defined file extension
 
 	// Single HTTP attempt only - file-level retry handles failures
 	resp, err := f.httpClient.Do(req)
