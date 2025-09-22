@@ -703,13 +703,17 @@ func (s *SpoolingService) collectRetryJobs(tenantID string) []RetryJob {
 			batchID := strings.TrimSuffix(fileName, ".meta")
 			metaFilePath := filepath.Join(retryDir, fileName)
 
-			// Find the corresponding data file (could be .ndjson.gz or .ndjson)
+			// Find the corresponding data file (with any extension: .raw.gz, .csv.gz, .ndjson.gz, etc.)
 			var dataFilePath string
-			possibleExts := []string{".ndjson.gz", ".ndjson"}
-			for _, ext := range possibleExts {
-				candidate := filepath.Join(retryDir, batchID+ext)
-				if _, err := os.Stat(candidate); err == nil {
-					dataFilePath = candidate
+			retryFiles, err := os.ReadDir(retryDir)
+			if err != nil {
+				log.Warnf("Failed to read retry directory for batch %s: %v", batchID, err)
+				continue
+			}
+
+			for _, file := range retryFiles {
+				if strings.HasPrefix(file.Name(), batchID+".") && !strings.HasSuffix(file.Name(), ".meta") {
+					dataFilePath = filepath.Join(retryDir, file.Name())
 					break
 				}
 			}
@@ -2332,13 +2336,16 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 	// Source paths in queue (no metadata in queue)
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
 
-	// Find the batch file (could be .gz or .ndjson)
+	// Find the batch file (with any extension: .raw.gz, .csv.gz, .ndjson.gz, etc.)
 	var srcDataFile string
-	possibleExts := []string{".ndjson.gz", ".ndjson"}
-	for _, ext := range possibleExts {
-		candidate := filepath.Join(queueDir, batchID+ext)
-		if _, err := os.Stat(candidate); err == nil {
-			srcDataFile = candidate
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		return fmt.Errorf("failed to read queue directory: %w", err)
+	}
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), batchID+".") {
+			srcDataFile = filepath.Join(queueDir, file.Name())
 			break
 		}
 	}
@@ -2423,16 +2430,22 @@ func (s *SpoolingService) RemoveFromQueue(tenantID, datasetID, batchID string) e
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Remove data file from queue
+	// Remove data file from queue (with any extension: .raw.gz, .csv.gz, .ndjson.gz, etc.)
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
-	possibleExts := []string{".ndjson.gz", ".ndjson"}
 
 	var dataFileRemoved bool
-	for _, ext := range possibleExts {
-		dataFile := filepath.Join(queueDir, batchID+ext)
-		if err := os.Remove(dataFile); err == nil {
-			dataFileRemoved = true
-			break
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		log.Warnf("Failed to read queue directory for batch %s: %v", batchID, err)
+	} else {
+		for _, file := range files {
+			if strings.HasPrefix(file.Name(), batchID+".") {
+				dataFile := filepath.Join(queueDir, file.Name())
+				if err := os.Remove(dataFile); err == nil {
+					dataFileRemoved = true
+					break
+				}
+			}
 		}
 	}
 
@@ -2530,13 +2543,16 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		return fmt.Errorf("failed to create retry directory: %w", err)
 	}
 
-	// Find the data file
+	// Find the data file (with any extension: .raw.gz, .csv.gz, .ndjson.gz, etc.)
 	var srcDataFile string
-	possibleExts := []string{".ndjson.gz", ".ndjson"}
-	for _, ext := range possibleExts {
-		candidate := filepath.Join(queueDir, batchID+ext)
-		if _, err := os.Stat(candidate); err == nil {
-			srcDataFile = candidate
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		return fmt.Errorf("failed to read queue directory: %w", err)
+	}
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), batchID+".") {
+			srcDataFile = filepath.Join(queueDir, file.Name())
 			break
 		}
 	}
