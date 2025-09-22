@@ -106,8 +106,7 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	url = strings.ReplaceAll(url, "{tenantid}", batch.TenantID)
 	url = strings.ReplaceAll(url, "{datasetid}", batch.DatasetID)
 
-	// Append file extension to URL path so receiver knows the format
-	url = fmt.Sprintf("%s.%s", url, batch.FileExtension)
+	// File extension is communicated via headers, not URL path
 
 	// Create request
 	req, err := http.NewRequest("POST", url, bytes.NewReader(batch.Data))
