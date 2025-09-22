@@ -101,10 +101,13 @@ func NewRetryHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 
 // ForwardBatch forwards a data batch to bytefreezer-receiver
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
-	// Replace placeholders in base URL with actual tenant and dataset IDs
+	// Replace placeholders in base URL with actual tenant and dataset IDs, and add file extension
 	url := f.config.Receiver.BaseURL
 	url = strings.ReplaceAll(url, "{tenantid}", batch.TenantID)
 	url = strings.ReplaceAll(url, "{datasetid}", batch.DatasetID)
+
+	// Append file extension to URL path so receiver knows the format
+	url = fmt.Sprintf("%s.%s", url, batch.FileExtension)
 
 	// Create request
 	req, err := http.NewRequest("POST", url, bytes.NewReader(batch.Data))
@@ -138,6 +141,8 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	// Complete filename for receiver queue storage
 	filename := fmt.Sprintf("%s.%s.gz", batch.ID, batch.FileExtension)
 	req.Header.Set("X-Proxy-Filename", filename)
+
+	log.Infof("📁 Sending to receiver: URL=%s, Filename=%s, Extension=%s", url, filename, batch.FileExtension)
 
 	// Single HTTP attempt only - file-level retry handles failures
 	resp, err := f.httpClient.Do(req)
