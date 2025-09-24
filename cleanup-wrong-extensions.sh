@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to fix incorrectly named metadata files
-# Changes .ndjson.gz.json files to .meta files
+# Changes .raw.gz.json files to .meta files (supports any extension format)
 
 SPOOL_DIR="${1:-/var/spool/bytefreezer-proxy}"
 
@@ -12,10 +12,10 @@ fi
 
 echo "Fixing metadata file extensions in $SPOOL_DIR..."
 
-# Find all .ndjson.gz.json files and rename them to .meta
-find "$SPOOL_DIR" -name "*.ndjson.gz.json" -type f | while read -r file; do
-    # Extract the base name without the .ndjson.gz.json extension
-    base_name=$(basename "$file" .ndjson.gz.json)
+# Find all .gz.json files and rename them to .meta (supports any extension)
+find "$SPOOL_DIR" -name "*.gz.json" -type f | while read -r file; do
+    # Extract the base name without the .gz.json extension
+    base_name=$(basename "$file" .gz.json)
     dir_name=$(dirname "$file")
     new_name="$dir_name/$base_name.meta"
 

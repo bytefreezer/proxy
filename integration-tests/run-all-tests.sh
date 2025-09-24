@@ -221,7 +221,7 @@ test_udp_plugin() {
     
     # Check if data was spooled (since receiver is fake)
     if [[ -d "/tmp/bytefreezer-proxy-test-spool" ]]; then
-        local spool_files=$(find /tmp/bytefreezer-proxy-test-spool -name "*.ndjson" | wc -l)
+        local spool_files=$(find /tmp/bytefreezer-proxy-test-spool -name "*.raw.gz" | wc -l)
         if [[ $spool_files -gt 0 ]]; then
             success "UDP plugin test passed - data spooled"
             return 0

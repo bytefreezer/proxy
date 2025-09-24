@@ -82,8 +82,8 @@ default:
 ```
 
 **File Operations**:
-1. **Generate Batch ID**: `batch_<timestamp_nanos>`
-2. **Spool Path**: `/var/spool/bytefreezer-proxy/{tenant}/{dataset}/queue/{batch_id}`
+1. **Generate File Name**: `{tenant}--{dataset}--{timestamp}--{extension}.gz`
+2. **Spool Path**: `/var/spool/bytefreezer-proxy/{tenant}/{dataset}/queue/{tenant}--{dataset}--{timestamp}--{extension}.gz`
 3. **Data Safety**: File written with compressed data BEFORE upload attempt
 4. **No Metadata**: Queue files are data-only (no .json metadata)
 
@@ -110,7 +110,7 @@ func (w *UploadWorker) run(ctx context.Context, wg *sync.WaitGroup) {
 ```
 
 **Upload Process** (`plugin_service.go:attemptImmediateUpload()`):
-1. **Read Spooled File**: Load compressed data from `/queue/{batch_id}`
+1. **Read Spooled File**: Load compressed data from `/queue/{tenant}--{dataset}--{timestamp}--{extension}.gz`
 2. **HTTP Forward**: `forwarder.ForwardBatch(batch)` with connection pooling
 3. **Success Path**: `RemoveFromQueue()` - delete file from `/queue`
 4. **Failure Path**: `MoveQueueToRetry()` - move to `/retry` with metadata including trigger reason

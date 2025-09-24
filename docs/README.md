@@ -809,23 +809,23 @@ spooling:
 │   │   │   ├── msg_001.ndjson
 │   │   │   └── msg_002.ndjson
 │   │   └── queue/                      # Compressed batches ready for upload
-│   │       ├── 20240115-103045_customer-1_syslog-data.ndjson.gz
-│   │       └── 20240115-103047_customer-1_syslog-data.ndjson.gz
+│   │       ├── customer-1--syslog-data--20240115103045--raw.gz
+│   │       └── customer-1--syslog-data--20240115103047--raw.gz
 │   ├── ebpf-data/
 │   │   ├── raw/
 │   │   │   └── msg_003.ndjson
 │   │   └── queue/
-│   │       └── 20240115-103048_customer-1_ebpf-data.ndjson.gz
+│   │       └── customer-1--ebpf-data--20240115103048--raw.gz
 │   ├── meta/                           # Metadata for all datasets in tenant
 │   │   ├── 20240115-103045_customer-1_syslog-data.meta
 │   │   ├── 20240115-103047_customer-1_syslog-data.meta
 │   │   └── 20240115-103048_customer-1_ebpf-data.meta
 │   └── dlq/                           # Dead Letter Queue after 4 retry failures
 │       ├── syslog-data/
-│       │   ├── 20240115-103045_customer-1_syslog-data.ndjson.gz
+│       │   ├── customer-1--syslog-data--20240115103045--raw.gz
 │       │   └── 20240115-103045_customer-1_syslog-data.meta
 │       └── ebpf-data/
-│           ├── 20240115-103048_customer-1_ebpf-data.ndjson.gz
+│           ├── customer-1--ebpf-data--20240115103048--raw.gz
 │           └── 20240115-103048_customer-1_ebpf-data.meta
 └── customer-2/                        # Additional tenants follow same structure
     ├── network-flows/

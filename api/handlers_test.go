@@ -35,10 +35,10 @@ func TestAPI_GetDLQStats(t *testing.T) {
 
 	// Create test data structure
 	testStructure := map[string]string{
-		"tenant1/dataset1/queue/batch1.ndjson.gz": "test data 1",
-		"tenant1/dataset1/queue/batch2.ndjson.gz": "test data 2",
-		"tenant1/dataset1/dlq/failed1.ndjson.gz":  "failed data 1",
-		"tenant2/dataset2/queue/batch3.ndjson.gz": "test data 3",
+		"tenant1/dataset1/queue/tenant1--dataset1--20240115103045--raw.gz": "test data 1",
+		"tenant1/dataset1/queue/tenant1--dataset1--20240115103047--raw.gz": "test data 2",
+		"tenant1/dataset1/dlq/tenant1--dataset1--20240115103050--raw.gz":   "failed data 1",
+		"tenant2/dataset2/queue/tenant2--dataset2--20240115103052--raw.gz": "test data 3",
 	}
 
 	for path, content := range testStructure {
@@ -178,15 +178,15 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 	}
 
 	// Create test data file
-	testDataFile := filepath.Join(dlqDir, "failed_batch.ndjson.gz")
+	testDataFile := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.gz")
 	testData := "test compressed data"
 	if err := os.WriteFile(testDataFile, []byte(testData), 0600); err != nil {
 		t.Fatalf("Failed to create test data file: %v", err)
 	}
 
-	// Create test metadata file
+	// Create test metadata file - ID should match the filename without .gz
 	testMetadata := services.SpooledFile{
-		ID:            "failed_batch",
+		ID:            "tenant1--dataset1--20240115103045--raw",
 		TenantID:      "test-tenant",
 		DatasetID:     "test-dataset",
 		BearerToken:   "test-token",
@@ -206,7 +206,7 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 		t.Fatalf("Failed to marshal metadata: %v", err)
 	}
 
-	testMetaFile := filepath.Join(dlqDir, "failed_batch.meta")
+	testMetaFile := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.meta")
 	if err := os.WriteFile(testMetaFile, metaData, 0600); err != nil {
 		t.Fatalf("Failed to create test metadata file: %v", err)
 	}
@@ -237,8 +237,8 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 
 	if len(output.Details) > 0 {
 		detail := output.Details[0]
-		if detail.FileID != "failed_batch" {
-			t.Errorf("Expected file ID 'failed_batch', got '%s'", detail.FileID)
+		if detail.FileID != "tenant1--dataset1--20240115103045--raw" {
+			t.Errorf("Expected file ID 'tenant1--dataset1--20240115103045--raw', got '%s'", detail.FileID)
 		}
 
 		if detail.TenantID != "test-tenant" {
@@ -300,16 +300,16 @@ func TestAPI_RetryDLQFiles_SpecificTenant(t *testing.T) {
 			}
 
 			// Create test files
-			filename := "failed_batch.ndjson.gz"
+			filename := "tenant1--dataset1--20240115103045--raw.gz"
 			filePath := filepath.Join(dlqDir, filename)
 			if err := os.WriteFile(filePath, []byte("test data"), 0600); err != nil {
 				t.Fatalf("Failed to create test file: %v", err)
 			}
 
-			metaFilename := "failed_batch.meta"
+			metaFilename := "tenant1--dataset1--20240115103045--raw.meta"
 			metaPath := filepath.Join(dlqDir, metaFilename)
 			metadata := services.SpooledFile{
-				ID:        "failed_batch",
+				ID:        "tenant1--dataset1--20240115103045--raw",
 				TenantID:  tenant,
 				DatasetID: dataset,
 				Filename:  filePath,
@@ -390,14 +390,14 @@ func TestAPI_RetryDLQFiles_SpecificTenantAndDataset(t *testing.T) {
 	}
 
 	// Create test file
-	filePath := filepath.Join(dlqDir, "failed_batch.ndjson.gz")
+	filePath := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.gz")
 	if err := os.WriteFile(filePath, []byte("test data"), 0600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	metaPath := filepath.Join(dlqDir, "failed_batch.meta")
+	metaPath := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.meta")
 	metadata := services.SpooledFile{
-		ID:        "failed_batch",
+		ID:        "tenant1--dataset1--20240115103045--raw",
 		TenantID:  "specific-tenant",
 		DatasetID: "specific-dataset",
 		Filename:  filePath,

@@ -154,15 +154,15 @@ func TestSpoolingService_GetDLQStats(t *testing.T) {
 
 	service := NewSpoolingService(cfg)
 
-	// Create test directory structure with files (only .ndjson.gz files are counted)
+	// Create test directory structure with files (only .raw.gz files are counted)
 	testStructure := map[string]string{
-		"tenant1/dataset1/queue/batch1.ndjson.gz": "test compressed data 1",
-		"tenant1/dataset1/queue/batch2.ndjson.gz": "test compressed data 2",
-		"tenant1/dataset2/queue/batch3.ndjson.gz": "test compressed data 3",
-		"tenant1/dataset1/dlq/failed1.ndjson.gz":  "failed compressed data 1",
-		"tenant1/dataset2/dlq/failed2.ndjson.gz":  "failed compressed data 2",
-		"tenant2/dataset3/queue/batch4.ndjson.gz": "test compressed data 4",
-		"tenant2/dataset3/dlq/failed3.ndjson.gz":  "failed compressed data 3",
+		"tenant1/dataset1/queue/tenant1--dataset1--20240115103045--raw.gz": "test compressed data 1",
+		"tenant1/dataset1/queue/tenant1--dataset1--20240115103047--raw.gz": "test compressed data 2",
+		"tenant1/dataset2/queue/tenant1--dataset2--20240115103049--raw.gz": "test compressed data 3",
+		"tenant1/dataset1/dlq/tenant1--dataset1--20240115103050--raw.gz":   "failed compressed data 1",
+		"tenant1/dataset2/dlq/tenant1--dataset2--20240115103052--raw.gz":   "failed compressed data 2",
+		"tenant2/dataset3/queue/tenant2--dataset3--20240115103054--raw.gz": "test compressed data 4",
+		"tenant2/dataset3/dlq/tenant2--dataset3--20240115103056--raw.gz":   "failed compressed data 3",
 	}
 
 	for path, content := range testStructure {
@@ -238,7 +238,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 	}
 
 	// Create test data file
-	testDataFile := filepath.Join(dlqDir, "failed_batch.ndjson.gz")
+	testDataFile := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.gz")
 	testData := "test compressed data"
 	if err := os.WriteFile(testDataFile, []byte(testData), 0600); err != nil {
 		t.Fatalf("Failed to create test data file: %v", err)
@@ -246,7 +246,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 
 	// Create test metadata file
 	testMetadata := SpooledFile{
-		ID:            "failed_batch",
+		ID:            "tenant1--dataset1--20240115103045--raw",
 		TenantID:      "test-tenant",
 		DatasetID:     "test-dataset",
 		BearerToken:   "test-token",
@@ -266,7 +266,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 		t.Fatalf("Failed to marshal metadata: %v", err)
 	}
 
-	testMetaFile := filepath.Join(dlqDir, "failed_batch.meta")
+	testMetaFile := filepath.Join(dlqDir, "tenant1--dataset1--20240115103045--raw.meta")
 	if err := os.WriteFile(testMetaFile, metaData, 0600); err != nil {
 		t.Fatalf("Failed to create test metadata file: %v", err)
 	}
@@ -288,8 +288,8 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 
 	if len(result.Details) > 0 {
 		detail := result.Details[0]
-		if detail.FileID != "failed_batch" {
-			t.Errorf("Expected file ID 'failed_batch', got '%s'", detail.FileID)
+		if detail.FileID != "tenant1--dataset1--20240115103045--raw" {
+			t.Errorf("Expected file ID 'tenant1--dataset1--20240115103045--raw', got '%s'", detail.FileID)
 		}
 
 		if !detail.Success {
@@ -310,7 +310,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 	}
 
 	// Verify metadata was moved to retry and reset
-	metaFilePath := filepath.Join(retryDir, "failed_batch.meta")
+	metaFilePath := filepath.Join(retryDir, "tenant1--dataset1--20240115103045--raw.meta")
 	metaContent, err := os.ReadFile(metaFilePath)
 	if err != nil {
 		t.Fatalf("Failed to read metadata file: %v", err)
@@ -408,8 +408,8 @@ func TestSpoolingService_CountFilesInDirectory(t *testing.T) {
 
 	// Create test files
 	testFiles := map[string]string{
-		"file1.ndjson.gz": "test data 1",
-		"file2.ndjson.gz": "test data 2 longer content",
+		"tenant1--dataset1--20240115103045--raw.gz": "test data 1",
+		"tenant1--dataset1--20240115103047--raw.gz": "test data 2 longer content",
 		"file3.txt":       "should be ignored",
 		"file4.ndjson":    "should be ignored",
 	}
@@ -421,8 +421,8 @@ func TestSpoolingService_CountFilesInDirectory(t *testing.T) {
 		}
 	}
 
-	// Count files with .ndjson.gz extension
-	count, totalBytes, oldestFile := service.countFilesInDirectory(testDir, ".ndjson.gz")
+	// Count files with .gz extension (all compressed data files)
+	count, totalBytes, oldestFile := service.countFilesInDirectory(testDir, ".gz")
 
 	if count != 2 {
 		t.Errorf("Expected 2 files, got %d", count)
@@ -469,7 +469,6 @@ func TestSpoolingService_TriggerReasonMetadata(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Test MoveQueueToRetry with trigger reason
-			batchID := "test-batch-" + tc.name
 			tenantID := "test-tenant"
 			datasetID := "test-dataset"
 
@@ -479,21 +478,24 @@ func TestSpoolingService_TriggerReasonMetadata(t *testing.T) {
 				t.Fatalf("Failed to create queue directory: %v", err)
 			}
 
-			queueFile := filepath.Join(queueDir, batchID+".ndjson.gz")
+			// Use the new filename format consistently
+			queueFilename := "tenant1--dataset1--20240115103045--raw.gz"
+			queueFile := filepath.Join(queueDir, queueFilename)
 			testData := []byte(`{"message": "test data", "trigger": "` + tc.triggerReason + `"}`)
 			if err := os.WriteFile(queueFile, testData, 0600); err != nil {
 				t.Fatalf("Failed to create queue file: %v", err)
 			}
 
-			// Move to retry with trigger reason
-			err := service.MoveQueueToRetry(tenantID, datasetID, batchID, tc.failureReason, tc.triggerReason)
+			// Move to retry with trigger reason - use filename without .gz as batch ID
+			actualBatchID := strings.TrimSuffix(queueFilename, ".gz")
+			err := service.MoveQueueToRetry(tenantID, datasetID, actualBatchID, tc.failureReason, tc.triggerReason)
 			if err != nil {
 				t.Fatalf("Failed to move queue to retry: %v", err)
 			}
 
 			// Verify metadata file was created with trigger reason
 			retryDir := filepath.Join(tempDir, tenantID, datasetID, "retry")
-			metaFile := filepath.Join(retryDir, batchID+".meta")
+			metaFile := filepath.Join(retryDir, actualBatchID+".meta")
 
 			if _, err := os.Stat(metaFile); os.IsNotExist(err) {
 				t.Fatalf("Metadata file not created: %s", metaFile)

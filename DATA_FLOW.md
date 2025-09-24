@@ -46,7 +46,7 @@ UDP Packet → Plugin → Batching → Spooling → Receiver
 - **Key Line**: Line 192-193: "SPOOL FIRST - all data goes to spool before any transmission attempts"
 - **Action**: `ps.spoolingService.StoreBatchToQueue()`
 - **Timing**: **IMMEDIATE** - as soon as batch is created
-- **File System**: Data written to `/tmp/bytefreezer-proxy/tenant/dataset/queue/batch.ndjson.gz`
+- **File System**: Data written to `/var/spool/bytefreezer-proxy/tenant/dataset/queue/tenant--dataset--timestamp--raw.gz`
 
 #### **Step 7: Asynchronous Transmission to Receiver** (Background)
 - **Location**: `services/spooling.go:retryWorker()`
@@ -99,7 +99,7 @@ Spool Queue → Background Worker → HTTP POST → Receiver (every 60s)
 ```
 
 ### **File Lifecycle**:
-1. **Immediate**: `queue/batch_123.ndjson.gz` created
+1. **Immediate**: `queue/tenant--dataset--20240921143022--raw.gz` created
 2. **Background**: HTTP POST attempted every 60s
 3. **Success**: File deleted from queue
 4. **Failure**: After 4 attempts → moved to `dlq/`
