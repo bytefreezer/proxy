@@ -202,7 +202,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 	}
 
 	return &domain.DataBatch{
-		ID:            generateBatchIDWithExtension(msg.TenantID, msg.DatasetID, msg.FileExtension),
+		ID:            generateBatchIDWithDataHint(msg.TenantID, msg.DatasetID, msg.DataHint),
 		TenantID:      msg.TenantID,
 		DatasetID:     msg.DatasetID,
 		Data:          compressedData,
@@ -211,7 +211,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 		CreatedAt:     msg.Timestamp,
 		BearerToken:   bearerToken,
 		TriggerReason: "single_message", // Single message processing (not batched)
-		FileExtension: msg.FileExtension, // Plugin-defined file extension
+		DataHint:      msg.DataHint, // Data format hint for downstream processing
 	}
 }
 
@@ -324,7 +324,7 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		"",                  // No failure reason - this is initial spooling
 		batch.ID,            // Use the existing batch ID
 		batch.TriggerReason, // Pass the trigger reason from the batch
-		batch.FileExtension, // Plugin-defined file extension
+		batch.DataHint, // Data format hint for downstream processing
 	)
 }
 
@@ -371,7 +371,7 @@ func (ps *PluginService) GetActivePlugins() []string {
 	return ps.pluginManager.ListPlugins()
 }
 
-// generateBatchIDWithExtension generates a unique batch ID with extension for new format
-func generateBatchIDWithExtension(tenantID, datasetID, extension string) string {
-	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), extension)
+// generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
+func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
+	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)
 }

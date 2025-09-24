@@ -1,20 +1,20 @@
 # ByteFreezer Proxy Filename Format
 
-## New Format (v2.0+): `tenant--dataset--timestamp--extension.gz`
+## New Format (v2.0+): `tenant--dataset--timestamp--datahint.gz`
 
-ByteFreezer Proxy now uses a structured filename format that embeds metadata directly into the filename, eliminating the need to store FileExtension separately and preventing malformed filename issues.
+ByteFreezer Proxy now uses a structured filename format that embeds metadata directly into the filename, eliminating the need to store DataHint separately and preventing malformed filename issues.
 
 ### Format Structure
 
 ```
-{tenant}--{dataset}--{timestamp}--{extension}.gz
+{tenant}--{dataset}--{timestamp}--{datahint}.gz
 ```
 
 **Components:**
 - `tenant`: Tenant identifier (e.g., `acme`, `company`)
 - `dataset`: Dataset identifier (e.g., `logs`, `metrics`)
 - `timestamp`: Unix nanosecond timestamp (e.g., `1736938245123456789`)
-- `extension`: Data format type (e.g., `raw`, `csv`, `ndjson`, `json`)
+- `datahint`: Data format hint (e.g., `raw`, `csv`, `ndjson`, `syslog`)
 - `.gz`: Always compressed with gzip
 
 ### Examples
@@ -63,7 +63,7 @@ When forwarding to bytefreezer-receiver, the proxy sends:
 ```http
 POST /webhook/acme/logs
 X-Proxy-Filename: acme--logs--1736938245123456789--raw.gz
-X-Proxy-File-Extension: raw
+X-Proxy-Data-Hint: raw
 X-Proxy-Batch-ID: batch_1736938245123456789
 Content-Encoding: gzip
 ```
@@ -72,9 +72,9 @@ Content-Encoding: gzip
 
 #### Generate Filename
 ```go
-func generateProxyFilename(tenantID, datasetID string, createdAt time.Time, fileExtension string) string {
+func generateProxyFilename(tenantID, datasetID string, createdAt time.Time, dataHint string) string {
     timestamp := createdAt.UnixNano()
-    return fmt.Sprintf("%s--%s--%d--%s.gz", tenantID, datasetID, timestamp, fileExtension)
+    return fmt.Sprintf("%s--%s--%d--%s.gz", tenantID, datasetID, timestamp, dataHint)
 }
 
 // Example usage:
@@ -82,19 +82,19 @@ filename := generateProxyFilename("acme", "logs", time.Now(), "raw")
 // Result: acme--logs--1736938245123456789--raw.gz
 ```
 
-#### Extract Extension
+#### Extract Data Hint
 ```go
-func extractFileExtension(filename string) string {
+func extractDataHint(filename string) string {
     basename := filepath.Base(filename)
     basename = strings.TrimSuffix(basename, ".gz")
 
-    // New format: tenant--dataset--timestamp--extension
+    // New format: tenant--dataset--timestamp--datahint
     parts := strings.Split(basename, "--")
     if len(parts) >= 4 {
-        return parts[3] // extension is 4th part
+        return parts[3] // data hint is 4th part
     }
 
-    // Fallback for old format: batch_id.extension.gz
+    // Fallback for old format: batch_id.datahint.gz
     if strings.Contains(basename, ".") {
         parts := strings.Split(basename, ".")
         if len(parts) >= 2 {
@@ -106,16 +106,16 @@ func extractFileExtension(filename string) string {
 }
 
 // Example usage:
-ext := extractFileExtension("acme--logs--1736938245123456789--raw.gz")
+hint := extractDataHint("acme--logs--1736938245123456789--raw.gz")
 // Result: "raw"
 ```
 
-## Old Format (Legacy): `batch_id.extension.gz`
+## Old Format (Legacy): `batch_id.datahint.gz`
 
 The legacy format is still supported for backward compatibility during migration:
 
 ```
-batch_{timestamp}.{extension}.gz
+batch_{timestamp}.{datahint}.gz
 ```
 
 **Examples:**
@@ -142,15 +142,15 @@ if strings.Contains(filename, "..") {
 ```
 
 **Common Malformed Examples:**
-- `batch_123456789..gz` (missing extension)
-- `acme--logs--123456789..gz` (missing extension)
-- `batch_123456789.gz` (no extension part)
+- `batch_123456789..gz` (missing data hint)
+- `acme--logs--123456789..gz` (missing data hint)
+- `batch_123456789.gz` (no data hint part)
 
 ## Implementation Status
 
 - ✅ **Proxy Generation**: New format implemented in `services/forwarder.go`
 - ✅ **Proxy Parsing**: Both formats supported in retry/queue processing
 - ✅ **Receiver Validation**: New format validation in webhook handlers
-- ✅ **Receiver Parsing**: Extension extraction for S3 metadata
+- ✅ **Receiver Parsing**: Data hint extraction for S3 metadata
 - ✅ **Tests**: Comprehensive test coverage for both formats
 - ✅ **Documentation**: Format specification and examples

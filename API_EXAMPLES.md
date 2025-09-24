@@ -14,7 +14,7 @@ curl -X POST http://receiver:8080/webhook/acme/logs \
   -H "Content-Type: application/octet-stream" \
   -H "Content-Encoding: gzip" \
   -H "X-Proxy-Filename: acme--logs--1736938245123456789--raw.gz" \
-  -H "X-Proxy-File-Extension: raw" \
+  -H "X-Proxy-Data-Hint: raw" \
   -H "X-Proxy-Batch-ID: batch_1736938245123456789" \
   --data-binary @compressed_data.gz
 ```
@@ -26,7 +26,7 @@ curl -X POST http://receiver:8080/webhook/acme/logs \
 # Filename: company--syslogs--1736938245123456789--raw.gz
 curl -X POST http://receiver:8080/webhook/company/syslogs \
   -H "X-Proxy-Filename: company--syslogs--1736938245123456789--raw.gz" \
-  -H "X-Proxy-File-Extension: raw" \
+  -H "X-Proxy-Data-Hint: raw" \
   --data-binary @logs.raw.gz
 ```
 
@@ -35,7 +35,7 @@ curl -X POST http://receiver:8080/webhook/company/syslogs \
 # Filename: analytics--metrics--1736938245123456789--csv.gz
 curl -X POST http://receiver:8080/webhook/analytics/metrics \
   -H "X-Proxy-Filename: analytics--metrics--1736938245123456789--csv.gz" \
-  -H "X-Proxy-File-Extension: csv" \
+  -H "X-Proxy-Data-Hint: csv" \
   --data-binary @metrics.csv.gz
 ```
 
@@ -44,7 +44,7 @@ curl -X POST http://receiver:8080/webhook/analytics/metrics \
 # Filename: events--api--1736938245123456789--ndjson.gz
 curl -X POST http://receiver:8080/webhook/events/api \
   -H "X-Proxy-Filename: events--api--1736938245123456789--ndjson.gz" \
-  -H "X-Proxy-File-Extension: ndjson" \
+  -H "X-Proxy-Data-Hint: ndjson" \
   --data-binary @events.ndjson.gz
 ```
 
@@ -242,7 +242,7 @@ plugins:
       "10.0.1.0/24": "acme"
       "10.0.2.0/24": "company"
     dataset: "logs"
-    file_extension: "raw"
+    data_hint: "raw"
 ```
 
 ### Receiver Configuration

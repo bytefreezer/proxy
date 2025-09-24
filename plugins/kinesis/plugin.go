@@ -37,7 +37,7 @@ type Config struct {
 	TenantID        string `mapstructure:"tenant_id"`
 	DatasetID       string `mapstructure:"dataset_id"`
 	BearerToken     string `mapstructure:"bearer_token,omitempty"`
-	FileExtension   string `mapstructure:"file_extension,omitempty"` // File extension for data files (defaults to "ndjson")
+	DataHint        string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "ndjson")
 	PollInterval    int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
 	MaxRecords      int    `mapstructure:"max_records,omitempty"`      // Max records per GetRecords call (default: 100)
 	ShardIteratorType string `mapstructure:"shard_iterator_type,omitempty"` // LATEST, TRIM_HORIZON, etc.
@@ -68,8 +68,8 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	}
 
 	// Set defaults
-	if p.config.FileExtension == "" {
-		p.config.FileExtension = "ndjson"
+	if p.config.DataHint == "" {
+		p.config.DataHint = "ndjson"
 	}
 	if p.config.PollInterval == 0 {
 		p.config.PollInterval = 5
@@ -111,7 +111,7 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 		LastUpdated: time.Now(),
 	}
 
-	log.Infof("Kinesis plugin configured: %s -> %s/%s (%s)", p.config.StreamName, p.config.TenantID, p.config.DatasetID, p.config.FileExtension)
+	log.Infof("Kinesis plugin configured: %s -> %s/%s (%s)", p.config.StreamName, p.config.TenantID, p.config.DatasetID, p.config.DataHint)
 	return nil
 }
 
@@ -260,7 +260,7 @@ func (p *Plugin) processRecord(record types.Record, shardID string) {
 		Data:          record.Data,
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
-		FileExtension: p.config.FileExtension,
+		DataHint:      p.config.DataHint,
 		Timestamp:     *record.ApproximateArrivalTimestamp,
 		Metadata: map[string]string{
 			"kinesis_stream":      p.config.StreamName,

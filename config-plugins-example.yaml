@@ -22,6 +22,7 @@ inputs:
       port: 2056
       dataset_id: "ebpf-data"
       protocol: "udp"
+      data_hint: "raw"                # eBPF data is binary/raw format
       read_buffer_size: 65536
       worker_count: 4
 
@@ -33,6 +34,7 @@ inputs:
       port: 2057
       dataset_id: "syslog-data"
       protocol: "syslog"
+      data_hint: "syslog"            # Enable syslog parsing downstream
       syslog_mode: "rfc3164"
 
   # Kafka Plugin (NEW!)
@@ -44,6 +46,7 @@ inputs:
       group_id: "bytefreezer-proxy-metrics"
       tenant_id: "customer-1"
       dataset_id: "kafka-metrics"
+      data_hint: "prom"               # Prometheus metrics format
       auto_offset_reset: "latest"
       session_timeout: 30
       heartbeat_interval: 10
@@ -57,6 +60,7 @@ inputs:
       queue_group: "bytefreezer-processors"
       tenant_id: "customer-1"
       dataset_id: "nats-events"
+      data_hint: "ndjson"             # NDJSON event format
       max_reconnect: -1  # Unlimited reconnects
       reconnect_wait: 2
 
@@ -69,6 +73,7 @@ inputs:
       path: "/webhook"
       tenant_id: "customer-1"
       dataset_id: "webhook-data"
+      data_hint: "ndjson"             # JSON webhook data
       bearer_token: "webhook-specific-token"  # Optional: overrides global
       max_payload_size: 10485760       # 10MB limit
       max_lines_per_request: 1000      # 1000 lines limit

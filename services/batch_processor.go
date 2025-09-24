@@ -31,7 +31,7 @@ type activeBatch struct {
 	TenantID      string
 	DatasetID     string
 	BearerToken   string
-	FileExtension string
+	DataHint      string
 	Messages      [][]byte
 	LineCount     int64
 	TotalBytes    int64
@@ -105,7 +105,7 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 			TenantID:      msg.TenantID,
 			DatasetID:     msg.DatasetID,
 			BearerToken:   bearerToken,
-			FileExtension: msg.FileExtension,
+			DataHint:      msg.DataHint,
 			Messages:      make([][]byte, 0),
 			CreatedAt:     msg.Timestamp,
 			LastUpdated:   msg.Timestamp,
@@ -164,10 +164,10 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 
 	// Create domain batch
 	domainBatch := &domain.DataBatch{
-		ID:            generateBatchIDWithExtension(batch.TenantID, batch.DatasetID, batch.FileExtension),
+		ID:            generateBatchIDWithDataHint(batch.TenantID, batch.DatasetID, batch.DataHint),
 		TenantID:      batch.TenantID,
 		DatasetID:     batch.DatasetID,
-		FileExtension: batch.FileExtension,
+		DataHint:      batch.DataHint,
 		Data:          compressedData,
 		LineCount:     int(batch.LineCount),
 		TotalBytes:    batch.TotalBytes, // Original uncompressed size

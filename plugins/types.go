@@ -25,13 +25,13 @@ type InputPlugin interface {
 
 // DataMessage represents raw data from any input source
 type DataMessage struct {
-	Data          []byte            `json:"data"`
-	TenantID      string            `json:"tenant_id"`
-	DatasetID     string            `json:"dataset_id"`
-	FileExtension string            `json:"file_extension"`      // Plugin-defined file extension
-	Metadata      map[string]string `json:"metadata"`            // Source-specific metadata
-	Timestamp     time.Time         `json:"timestamp"`
-	SourceIP      string            `json:"source_ip,omitempty"` // For UDP/network sources
+	Data      []byte            `json:"data"`
+	TenantID  string            `json:"tenant_id"`
+	DatasetID string            `json:"dataset_id"`
+	DataHint  string            `json:"data_hint"`           // Data format hint for downstream processing (defaults to "raw")
+	Metadata  map[string]string `json:"metadata"`            // Source-specific metadata
+	Timestamp time.Time         `json:"timestamp"`
+	SourceIP  string            `json:"source_ip,omitempty"` // For UDP/network sources
 }
 
 // PluginHealth represents the health status of a plugin
@@ -55,3 +55,36 @@ const (
 
 // InputPluginFactory creates new instances of input plugins
 type InputPluginFactory func() InputPlugin
+
+// Data Hint Constants
+// These constants define the supported data format hints for downstream processing.
+// When data_hint is not specified, it defaults to "raw".
+const (
+	// Text-based formats
+	DataHintNDJSON    = "ndjson"    // Newline-delimited JSON
+	DataHintCSV       = "csv"       // Comma-separated values
+	DataHintTSV       = "tsv"       // Tab-separated values
+	DataHintApache    = "apache"    // Apache access/error logs
+	DataHintNginx     = "nginx"     // Nginx access/error logs
+	DataHintIIS       = "iis"       // Windows IIS web server logs
+	DataHintSquid     = "squid"     // Squid proxy cache logs
+	DataHintInflux    = "influx"    // InfluxDB Line Protocol - time-series data
+	DataHintProm      = "prom"      // Prometheus Text Format - metrics exposition
+	DataHintStatsD    = "statsd"    // StatsD - metrics protocol
+	DataHintGraphite  = "graphite"  // Graphite Plaintext Protocol - metrics format
+	DataHintSyslog    = "syslog"    // Syslog RFC5424 - structured system logs
+	DataHintCEF       = "cef"       // Common Event Format by ArcSight
+	DataHintGELF      = "gelf"      // Graylog Extended Log Format
+	DataHintLEEF      = "leef"      // Log Event Extended Format by IBM
+	DataHintCLF       = "log"       // CLF/NCSA Combined - Common/Combined Log Format
+	DataHintFIX       = "fix"       // FIX Protocol - Financial Information eXchange
+	DataHintHL7       = "hl7"       // HL7 v2 - Healthcare messaging standard
+
+	// Binary formats
+	DataHintSFlow     = "sflow"     // sFlow - Sampled network packet data (BINARY)
+	DataHintNetFlow   = "netflow"   // NetFlow v5/v9 - Cisco flow data (BINARY)
+	DataHintIPFIX     = "ipfix"     // IPFIX - IP Flow Information Export (BINARY)
+
+	// Default format
+	DataHintRaw       = "raw"       // Raw data - no specific format processing
+)

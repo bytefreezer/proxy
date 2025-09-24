@@ -901,11 +901,11 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		return false
 	}
 
-	// Extract file extension from filename for proper DataBatch creation
+	// Extract data hint from filename for proper DataBatch creation
 	fileName := filepath.Base(job.FilePath)
-	fileExtension := extractFileExtension(fileName)
-	if fileExtension == "" {
-		fileExtension = "raw" // default fallback
+	dataHint := extractDataHint(fileName)
+	if dataHint == "" {
+		dataHint = "raw" // default fallback
 	}
 
 	// Create a DataBatch for upload
@@ -914,7 +914,7 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		TenantID:      job.TenantID,
 		DatasetID:     job.DatasetID,
 		Data:          data,
-		FileExtension: fileExtension,
+		DataHint:      dataHint,
 		CreatedAt:     time.Now(),
 		TotalBytes:    int64(len(data)),
 		LineCount:     strings.Count(string(data), "\n"), // Simple line count
@@ -964,8 +964,8 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 		return false
 	}
 
-	// Extract file extension from filename for retry processing
-	fileExtension := extractFileExtension(metadata.Filename)
+	// Extract data hint from filename for retry processing
+	dataHint := extractDataHint(metadata.Filename)
 
 	// Create a batch for upload
 	batch := &domain.DataBatch{
@@ -977,7 +977,7 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 		TotalBytes:    metadata.CompressedSize,
 		CreatedAt:     metadata.CreatedAt,
 		BearerToken:   metadata.BearerToken,
-		FileExtension: fileExtension, // Extract from filename to fix malformed filenames
+		DataHint:      dataHint, // Extract from filename to fix malformed filenames
 	}
 
 	// Try to upload

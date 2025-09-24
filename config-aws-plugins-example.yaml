@@ -21,7 +21,7 @@ inputs:
       region: "us-west-2"
       tenant_id: "customer-1"
       dataset_id: "kinesis-data"
-      file_extension: "ndjson"  # Data format: "ndjson", "json", "raw", "csv"
+      data_hint: "ndjson"          # Data format hint for downstream processing
       poll_interval_seconds: 5
       max_records: 100
       shard_iterator_type: "LATEST"  # LATEST, TRIM_HORIZON, AT_TIMESTAMP, etc.
@@ -35,7 +35,7 @@ inputs:
       region: "us-west-2"
       tenant_id: "customer-2"
       dataset_id: "sqs-messages"
-      file_extension: "json"
+      data_hint: "ndjson"          # SQS messages typically contain JSON
       poll_interval_seconds: 3
       max_messages: 10          # Max 10 (AWS limit)
       visibility_timeout_seconds: 30
@@ -51,7 +51,7 @@ inputs:
       port: 2056
       dataset_id: "syslog-data"
       protocol: "udp"
-      file_extension: "raw"
+      data_hint: "raw"             # Raw UDP data
       read_buffer_size: 65536
       worker_count: 4
 

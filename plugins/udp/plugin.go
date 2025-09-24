@@ -36,7 +36,7 @@ type Config struct {
 	BearerToken       string `mapstructure:"bearer_token,omitempty"`
 	Protocol          string `mapstructure:"protocol,omitempty"`    // "udp", "syslog"
 	SyslogMode        string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424"
-	FileExtension     string `mapstructure:"file_extension,omitempty"` // File extension for data files (defaults to "raw")
+	DataHint          string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "raw")
 	ReadBufferSize    int    `mapstructure:"read_buffer_size,omitempty"`
 	WorkerCount       int    `mapstructure:"worker_count,omitempty"`
 	ChannelBufferSize int    `mapstructure:"channel_buffer_size,omitempty"`
@@ -130,9 +130,9 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		return fmt.Errorf("plugin is already started")
 	}
 
-	// Set default file extension if not specified
-	if p.config.FileExtension == "" {
-		p.config.FileExtension = "raw"
+	// Set default data hint if not specified
+	if p.config.DataHint == "" {
+		p.config.DataHint = "raw"
 	}
 
 	p.ctx, p.cancel = context.WithCancel(ctx)
@@ -318,7 +318,7 @@ func (p *Plugin) processMessage(msg *udpMessage) {
 		Data:          payload,
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
-		FileExtension: p.config.FileExtension,
+		DataHint:      p.config.DataHint,
 		Timestamp:     time.Now(),
 		SourceIP:      msg.From.IP.String(),
 		Metadata: map[string]string{

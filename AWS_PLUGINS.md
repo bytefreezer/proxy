@@ -29,7 +29,7 @@ inputs:
       region: "us-west-2"                      # Required: AWS region
       tenant_id: "customer-1"                  # Required: ByteFreezer tenant
       dataset_id: "streaming-data"             # Required: ByteFreezer dataset
-      file_extension: "ndjson"                 # Optional: Data format (default: ndjson)
+      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson)
       poll_interval_seconds: 5                # Optional: Polling frequency (default: 5)
       max_records: 100                        # Optional: Records per API call (default: 100)
       shard_iterator_type: "LATEST"           # Optional: LATEST, TRIM_HORIZON, etc. (default: LATEST)
@@ -47,7 +47,7 @@ inputs:
       region: "us-west-2"                      # Required: AWS region
       tenant_id: "customer-1"                  # Required: ByteFreezer tenant
       dataset_id: "queue-messages"             # Required: ByteFreezer dataset
-      file_extension: "json"                   # Optional: Data format (default: ndjson)
+      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson)
       poll_interval_seconds: 3                # Optional: Polling frequency (default: 5)
       max_messages: 10                        # Optional: Messages per receive (max: 10, default: 10)
       visibility_timeout_seconds: 30          # Optional: Visibility timeout (default: 30)
@@ -131,7 +131,7 @@ inputs:
       region: "us-west-2"
       tenant_id: "production"
       dataset_id: "app-logs"
-      file_extension: "ndjson"
+      data_hint: "ndjson"
       poll_interval_seconds: 5
       max_records: 100
       shard_iterator_type: "LATEST"
@@ -144,7 +144,7 @@ inputs:
       region: "us-west-2"
       tenant_id: "production"
       dataset_id: "events"
-      file_extension: "json"
+      data_hint: "ndjson"
       poll_interval_seconds: 3
       max_messages: 10
       visibility_timeout_seconds: 30

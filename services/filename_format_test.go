@@ -82,7 +82,7 @@ func TestGenerateProxyFilename(t *testing.T) {
 	}
 }
 
-func TestExtractFileExtension(t *testing.T) {
+func TestExtractDataHint(t *testing.T) {
 	testCases := []struct {
 		name     string
 		filename string
@@ -137,7 +137,7 @@ func TestExtractFileExtension(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := extractFileExtension(tc.filename)
+			result := extractDataHint(tc.filename)
 			if result != tc.expected {
 				t.Errorf("Expected %s, got %s", tc.expected, result)
 			}
@@ -153,7 +153,7 @@ func TestForwarderWithNewFilenameFormat(t *testing.T) {
 		ID:            "batch_12345",
 		TenantID:      "test-tenant",
 		DatasetID:     "test-dataset",
-		FileExtension: "raw",
+		DataHint:      "raw",
 		CreatedAt:     testTime,
 		Data:          []byte("test data"),
 		LineCount:     1,
@@ -161,16 +161,16 @@ func TestForwarderWithNewFilenameFormat(t *testing.T) {
 	}
 
 	expectedFilename := fmt.Sprintf("test-tenant--test-dataset--%d--raw.gz", testTime.UnixNano())
-	actualFilename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.FileExtension)
+	actualFilename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.DataHint)
 
 	if actualFilename != expectedFilename {
 		t.Errorf("Expected filename %s, got %s", expectedFilename, actualFilename)
 	}
 
-	// Verify we can extract the extension back
-	extractedExt := extractFileExtension(actualFilename)
-	if extractedExt != batch.FileExtension {
-		t.Errorf("Expected extracted extension %s, got %s", batch.FileExtension, extractedExt)
+	// Verify we can extract the data hint back
+	extractedHint := extractDataHint(actualFilename)
+	if extractedHint != batch.DataHint {
+		t.Errorf("Expected extracted data hint %s, got %s", batch.DataHint, extractedHint)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestFilenameFormatBackwardCompatibility(t *testing.T) {
 
 	for _, test := range oldFormatTests {
 		t.Run(fmt.Sprintf("old_format_%s", test.extension), func(t *testing.T) {
-			result := extractFileExtension(test.filename)
+			result := extractDataHint(test.filename)
 			if result != test.extension {
 				t.Errorf("Expected %s, got %s for filename %s", test.extension, result, test.filename)
 			}

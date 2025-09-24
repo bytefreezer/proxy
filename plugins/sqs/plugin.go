@@ -38,7 +38,7 @@ type Config struct {
 	TenantID             string `mapstructure:"tenant_id"`
 	DatasetID            string `mapstructure:"dataset_id"`
 	BearerToken          string `mapstructure:"bearer_token,omitempty"`
-	FileExtension        string `mapstructure:"file_extension,omitempty"`        // File extension for data files (defaults to "ndjson")
+	DataHint             string `mapstructure:"data_hint,omitempty"`             // Data format hint for downstream processing (defaults to "ndjson")
 	PollInterval         int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
 	MaxMessages          int    `mapstructure:"max_messages,omitempty"`          // Max messages per receive call (default: 10, max: 10)
 	VisibilityTimeout    int    `mapstructure:"visibility_timeout_seconds,omitempty"` // Visibility timeout (default: 30)
@@ -73,8 +73,8 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	}
 
 	// Set defaults
-	if p.config.FileExtension == "" {
-		p.config.FileExtension = "ndjson"
+	if p.config.DataHint == "" {
+		p.config.DataHint = "ndjson"
 	}
 	if p.config.PollInterval == 0 {
 		p.config.PollInterval = 5
@@ -148,7 +148,7 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 		LastUpdated: time.Now(),
 	}
 
-	log.Infof("SQS plugin configured: %s -> %s/%s (%s)", p.config.QueueName, p.config.TenantID, p.config.DatasetID, p.config.FileExtension)
+	log.Infof("SQS plugin configured: %s -> %s/%s (%s)", p.config.QueueName, p.config.TenantID, p.config.DatasetID, p.config.DataHint)
 	return nil
 }
 
@@ -296,7 +296,7 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 		Data:          []byte(*message.Body),
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
-		FileExtension: p.config.FileExtension,
+		DataHint:      p.config.DataHint,
 		Timestamp:     time.Now(), // SQS doesn't provide original timestamp
 		Metadata:      metadata,
 	}

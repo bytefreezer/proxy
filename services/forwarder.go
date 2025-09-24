@@ -136,13 +136,13 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Line-Count", fmt.Sprintf("%d", batch.LineCount))
 	req.Header.Set("X-Proxy-Original-Bytes", fmt.Sprintf("%d", batch.TotalBytes))
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
-	req.Header.Set("X-Proxy-File-Extension", batch.FileExtension) // Plugin-defined file extension
+	req.Header.Set("X-Proxy-Data-Hint", batch.DataHint) // Data format hint for downstream processing
 
 	// Complete filename for receiver queue storage: tenant--dataset--timestamp--extension.gz
-	filename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.FileExtension)
+	filename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.DataHint)
 	req.Header.Set("X-Proxy-Filename", filename)
 
-	log.Infof("📁 Sending to receiver: URL=%s, Filename=%s, Extension=%s", url, filename, batch.FileExtension)
+	log.Infof("📁 Sending to receiver: URL=%s, Filename=%s, DataHint=%s", url, filename, batch.DataHint)
 
 	// Single HTTP attempt only - file-level retry handles failures
 	resp, err := f.httpClient.Do(req)
@@ -173,13 +173,13 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 }
 
 // generateProxyFilename creates a filename in format: tenant--dataset--timestamp--extension.gz
-func generateProxyFilename(tenantID, datasetID string, createdAt time.Time, fileExtension string) string {
+func generateProxyFilename(tenantID, datasetID string, createdAt time.Time, dataHint string) string {
 	timestamp := createdAt.UnixNano()
-	return fmt.Sprintf("%s--%s--%d--%s.gz", tenantID, datasetID, timestamp, fileExtension)
+	return fmt.Sprintf("%s--%s--%d--%s.gz", tenantID, datasetID, timestamp, dataHint)
 }
 
-// extractFileExtension parses file extension from proxy filename format
-func extractFileExtension(filename string) string {
+// extractDataHint parses data hint from proxy filename format
+func extractDataHint(filename string) string {
 	// Remove path if present
 	basename := filepath.Base(filename)
 
@@ -189,14 +189,14 @@ func extractFileExtension(filename string) string {
 	// Split by -- separator
 	parts := strings.Split(basename, "--")
 	if len(parts) >= 4 {
-		return parts[3] // extension is 4th part
+		return parts[3] // data hint is 4th part
 	}
 
-	// Fallback: try old format batch_id.extension.gz
+	// Fallback: try old format batch_id.datahint.gz
 	if strings.Contains(basename, ".") {
 		parts := strings.Split(basename, ".")
 		if len(parts) >= 2 {
-			return parts[len(parts)-1] // last part before .gz
+			return parts[len(parts)-1] // last part before .gz (data hint)
 		}
 	}
 
