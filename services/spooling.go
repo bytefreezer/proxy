@@ -885,17 +885,9 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 
 	// Extract file extension from filename for proper DataBatch creation
 	fileName := filepath.Base(job.FilePath)
-	fileExtension := "raw" // default
-	if strings.Contains(fileName, ".") {
-		parts := strings.Split(fileName, ".")
-		if len(parts) >= 2 {
-			// Get the extension before .gz if present, otherwise the last extension
-			if len(parts) >= 3 && parts[len(parts)-1] == "gz" {
-				fileExtension = parts[len(parts)-2]
-			} else {
-				fileExtension = parts[len(parts)-1]
-			}
-		}
+	fileExtension := extractFileExtension(fileName)
+	if fileExtension == "" {
+		fileExtension = "raw" // default fallback
 	}
 
 	// Create a DataBatch for upload
@@ -954,16 +946,20 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 		return false
 	}
 
+	// Extract file extension from filename for retry processing
+	fileExtension := extractFileExtension(metadata.Filename)
+
 	// Create a batch for upload
 	batch := &domain.DataBatch{
-		ID:          metadata.ID,
-		TenantID:    metadata.TenantID,
-		DatasetID:   metadata.DatasetID,
-		Data:        data,
-		LineCount:   metadata.LineCount,
-		TotalBytes:  metadata.CompressedSize,
-		CreatedAt:   metadata.CreatedAt,
-		BearerToken: metadata.BearerToken,
+		ID:            metadata.ID,
+		TenantID:      metadata.TenantID,
+		DatasetID:     metadata.DatasetID,
+		Data:          data,
+		LineCount:     metadata.LineCount,
+		TotalBytes:    metadata.CompressedSize,
+		CreatedAt:     metadata.CreatedAt,
+		BearerToken:   metadata.BearerToken,
+		FileExtension: fileExtension, // Extract from filename to fix malformed filenames
 	}
 
 	// Try to upload
@@ -2978,3 +2974,4 @@ func (s *SpoolingService) getDiskUsage(path string) (*DiskUsage, error) {
 		Free:  freeSize,
 	}, nil
 }
+

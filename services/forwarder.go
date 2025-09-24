@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -137,8 +138,8 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
 	req.Header.Set("X-Proxy-File-Extension", batch.FileExtension) // Plugin-defined file extension
 
-	// Complete filename for receiver queue storage
-	filename := fmt.Sprintf("%s.%s.gz", batch.ID, batch.FileExtension)
+	// Complete filename for receiver queue storage: tenant--dataset--timestamp--extension.gz
+	filename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.FileExtension)
 	req.Header.Set("X-Proxy-Filename", filename)
 
 	log.Infof("📁 Sending to receiver: URL=%s, Filename=%s, Extension=%s", url, filename, batch.FileExtension)
@@ -169,4 +170,35 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	log.Warnf("Batch %s upload failed - %s returned HTTP %d: %s",
 		batch.ID, url, resp.StatusCode, bodyStr)
 	return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr)
+}
+
+// generateProxyFilename creates a filename in format: tenant--dataset--timestamp--extension.gz
+func generateProxyFilename(tenantID, datasetID string, createdAt time.Time, fileExtension string) string {
+	timestamp := createdAt.UnixNano()
+	return fmt.Sprintf("%s--%s--%d--%s.gz", tenantID, datasetID, timestamp, fileExtension)
+}
+
+// extractFileExtension parses file extension from proxy filename format
+func extractFileExtension(filename string) string {
+	// Remove path if present
+	basename := filepath.Base(filename)
+
+	// Remove .gz suffix
+	basename = strings.TrimSuffix(basename, ".gz")
+
+	// Split by -- separator
+	parts := strings.Split(basename, "--")
+	if len(parts) >= 4 {
+		return parts[3] // extension is 4th part
+	}
+
+	// Fallback: try old format batch_id.extension.gz
+	if strings.Contains(basename, ".") {
+		parts := strings.Split(basename, ".")
+		if len(parts) >= 2 {
+			return parts[len(parts)-1] // last part before .gz
+		}
+	}
+
+	return ""
 }
