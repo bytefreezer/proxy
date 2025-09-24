@@ -51,7 +51,7 @@ When working on ANY ByteFreezer project, always follow these steps:
 ### 5. API Changes (For Services with APIs)
 - [ ] Follow existing API patterns (usually `/api/v2/` for ByteFreezer)
 - [ ] Add new endpoints to appropriate router files
-- [ ] Create request/response structs with proper JSON tags
+- [ ] Create request/response structs with proper struct tags
 - [ ] Test with curl examples or appropriate testing tools
 - [ ] Document API changes in RELEASENOTES.md
 
@@ -99,7 +99,7 @@ When working on ANY ByteFreezer project, always follow these steps:
 - Document all configuration options
 
 ### Logging
-- Use structured logging (JSON format preferred)
+- Use structured logging (structured format preferred)
 - Log levels: debug, info, warn, error
 - Include relevant context (tenant_id, request_id, etc.)
 - Don't log sensitive information (tokens, passwords)
@@ -112,7 +112,7 @@ When working on ANY ByteFreezer project, always follow these steps:
 
 ### APIs
 - Follow REST conventions where applicable
-- Use consistent JSON response formats
+- Use consistent response formats
 - Include API versioning (typically `/api/v2/`)
 - Provide comprehensive error responses
 - Document with examples
@@ -169,8 +169,8 @@ The proxy implements a high-performance concurrent upload system aligned with th
 ```
 /var/spool/bytefreezer-proxy/{tenant}/{dataset}/
 ├── queue/    # New files ready for upload (data files only)
-├── retry/    # Failed uploads awaiting retry (data + .json metadata)
-└── dlq/      # Dead letter queue - permanently failed (data + .json metadata)
+├── retry/    # Failed uploads awaiting retry (data + .meta metadata)
+└── dlq/      # Dead letter queue - permanently failed (data + .meta metadata)
 ```
 
 #### Retry Processing

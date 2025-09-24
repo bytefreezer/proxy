@@ -45,8 +45,8 @@ func TestGenerateProxyFilename(t *testing.T) {
 			name:      "special characters in tenant",
 			tenantID:  "test_tenant",
 			datasetID: "test-dataset",
-			extension: "json",
-			expected:  fmt.Sprintf("test_tenant--test-dataset--%d--json.gz", expectedNanos),
+			extension: "ndjson",
+			expected:  fmt.Sprintf("test_tenant--test-dataset--%d--ndjson.gz", expectedNanos),
 		},
 	}
 
@@ -125,8 +125,8 @@ func TestExtractDataHint(t *testing.T) {
 		},
 		{
 			name:     "with path",
-			filename: "/path/to/file/acme--logs--123456789--json.gz",
-			expected: "json",
+			filename: "/path/to/file/acme--logs--123456789--ndjson.gz",
+			expected: "ndjson",
 		},
 		{
 			name:     "no .gz suffix",
@@ -183,7 +183,7 @@ func TestFilenameFormatBackwardCompatibility(t *testing.T) {
 		{"batch_20250115103045.raw.gz", "raw"},
 		{"batch_20250115103045.csv.gz", "csv"},
 		{"tenant1--dataset1--20250115103045--ndjson.gz", "ndjson"},
-		{"batch_20250115103045.json.gz", "json"},
+		{"batch_20250115103045.ndjson.gz", "ndjson"},
 	}
 
 	for _, test := range oldFormatTests {

@@ -24,7 +24,7 @@ ByteFreezer Proxy now uses a structured filename format that embeds metadata dir
 | Raw logs  | `acme--logs--1736938245123456789--raw.gz` |
 | CSV data  | `company--metrics--1736938245123456789--csv.gz` |
 | NDJSON    | `tenant1--events--1736938245123456789--ndjson.gz` |
-| JSON API  | `api--requests--1736938245123456789--json.gz` |
+| NDJSON API | `api--requests--1736938245123456789--ndjson.gz` |
 
 ### Benefits
 

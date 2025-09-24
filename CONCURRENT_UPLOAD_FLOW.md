@@ -85,7 +85,7 @@ default:
 1. **Generate File Name**: `{tenant}--{dataset}--{timestamp}--{extension}.gz`
 2. **Spool Path**: `/var/spool/bytefreezer-proxy/{tenant}/{dataset}/queue/{tenant}--{dataset}--{timestamp}--{extension}.gz`
 3. **Data Safety**: File written with compressed data BEFORE upload attempt
-4. **No Metadata**: Queue files are data-only (no .json metadata)
+4. **No Metadata**: Queue files are data-only (no .meta metadata)
 
 ### 4. Concurrent Upload Processing
 
@@ -197,7 +197,7 @@ Max Retries Exceeded → moveToDLQ() → /dlq Directory → SOC Alert
 
 **DLQ Process**:
 1. **Directory**: `/var/spool/bytefreezer-proxy/{tenant}/{dataset}/dlq/`
-2. **Files**: Both data file and `.json` metadata
+2. **Files**: Both data file and `.meta` metadata
 3. **Metadata Update**: `Status: "dlq"`, `FailureReason: "max_retries_exceeded"`
 4. **Protection**: DLQ files are NEVER deleted by cleanup processes
 5. **Alerting**: SOC notification for permanent failures

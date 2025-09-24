@@ -10,7 +10,7 @@ app:
 
 logging:
   level: "info"
-  encoding: "json"
+  encoding: "console"
 
 server:
   api_port: 8080

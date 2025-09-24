@@ -29,7 +29,7 @@ ByteFreezer Proxy is a **pure pass-through service** that forwards any line-base
 
 | Format | Processing | Use Cases |
 |--------|------------|-----------|
-| **JSON Logs** | Pass-through | Application logs, structured events |
+| **NDJSON Logs** | Pass-through | Application logs, structured events |
 | **Plain Text** | Pass-through | Legacy logs, free-form messages |
 | **CSV/TSV** | Pass-through | Metrics, tabular data exports |
 | **Syslog** | Pass-through | System logs, network device logs |
@@ -514,7 +514,7 @@ echo "<134>$(date '+%b %d %H:%M:%S') myhost myapp: Test syslog message" | nc -u 
 # Test plain UDP
 echo "Plain text log message" | nc -u localhost 2056
 
-# Test JSON over UDP
+# Test NDJSON over UDP
 echo '{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"Test"}' | nc -u localhost 2056
 ```
 
@@ -527,9 +527,9 @@ curl -X POST http://localhost:8081/webhook \
   -H "Authorization: Bearer your-token" \
   -d "Test webhook message"
 
-# Test with JSON data
+# Test with NDJSON data
 curl -X POST http://localhost:8081/webhook \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-ndjson" \
   -H "Authorization: Bearer your-token" \
   -d '{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"Test"}'
 

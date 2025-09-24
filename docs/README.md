@@ -27,7 +27,7 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 ### **Supported Data Formats**
 | Format | Processing | Use Cases |
 |--------|------------|-----------|
-| **JSON Logs** | Pass-through | Application logs, structured events |
+| **NDJSON Logs** | Pass-through | Application logs, structured events |
 | **Plain Text** | Metadata wrapping | Legacy logs, free-form messages |
 | **CSV/TSV** | Pass-through | Metrics, tabular data exports |
 | **Syslog** | Structure extraction | System logs, network device logs |
@@ -380,14 +380,14 @@ logger -n proxy-host -P 2056 -p daemon.warn "System daemon warning"
 
 **Design Philosophy**: The proxy treats syslog as one of many data formats, performing minimal structure extraction while preserving the original message content. This approach enables:
 - **High Performance**: No parsing bottlenecks in the data collection layer
-- **Universal Format Support**: Same pipeline works for JSON, CSV, plain text, syslog, etc.
+- **Universal Format Support**: Same pipeline works for NDJSON, CSV, plain text, syslog, etc.
 - **Parallelization**: Downstream Piper workers can process any format in parallel
 - **Flexibility**: Complex parsing rules are handled in Piper, not the proxy
 - **Separation of Concerns**: Proxy = Collection & Forwarding, Piper = Parsing & Transformation
 
-### JSON Output Format
+### NDJSON Output Format
 
-Syslog messages are converted to JSON with basic structure:
+Syslog messages are converted to NDJSON with basic structure:
 ```json
 {
   "priority": 13,
@@ -457,7 +457,7 @@ apt-get install softflowd
 softflowd -i eth0 -n 192.168.1.100:2055 -v 9 -t maxlife=60
 ```
 
-### NetFlow JSON Output Format
+### NetFlow NDJSON Output Format
 ```json
 {
   "version": 5,
@@ -539,7 +539,7 @@ net add sflow sampling-rate 1000
 net commit
 ```
 
-### sFlow JSON Output Format
+### sFlow NDJSON Output Format
 
 **Flow Sample:**
 ```json
@@ -587,7 +587,7 @@ net commit
 1. **Receive** NetFlow/sFlow packets on configured ports
 2. **Parse** according to version-specific format (v5/v9/IPFIX for NetFlow, v5 for sFlow)
 3. **Extract** flow information, packet samples, and interface counters
-4. **Convert** to structured JSON format with network metadata
+4. **Convert** to structured NDJSON format with network metadata
 5. **Batch** flow records for efficient processing
 6. **Forward** to bytefreezer-receiver via HTTP webhook
 7. **Store** in S3 as `raw/format=netflow/` or `raw/format=sflow/`
@@ -973,7 +973,7 @@ ByteFreezer Proxy implements a **stream-first, process-later** architecture:
 ### **2. Processing Phase (Piper)**
 - **Parallel Processing**: Multiple workers process data from S3
 - **Complex Parsing**: Field extraction, transformations, enrichment
-- **Format Detection**: Automatic detection of JSON, CSV, syslog, etc.
+- **Format Detection**: Automatic detection of NDJSON, CSV, syslog, etc.
 - **Rule Engine**: Configurable parsing and routing rules
 
 ### **Data Flow Example:**
@@ -982,11 +982,11 @@ UDP Line Data → Proxy (batch) → Receiver → S3 → Piper (parse/transform) 
 ```
 
 ### **Format Handling:**
-- **JSON**: Passed through as-is for fast processing
+- **NDJSON**: Passed through as-is for fast processing
 - **Plain Text**: Wrapped with metadata (timestamp, source IP)
 - **Syslog**: Basic structure extracted, message preserved
 - **CSV/Delimited**: Treated as plain text, parsing happens in Piper
-- **Binary Protocols**: Parsed to structured JSON (NetFlow, sFlow)
+- **Binary Protocols**: Parsed to structured NDJSON (NetFlow, sFlow)
 
 ### **Line-Based Streaming Benefits:**
 🚀 **High Throughput**: No format-specific parsing bottlenecks  
@@ -1003,7 +1003,7 @@ POST {base_url}/data/{tenant_id}/{dataset_id}
 ```
 
 **Data Forwarding Examples:**
-- JSON logs: `POST http://localhost:8080/data/customer-1/app-logs-json`
+- NDJSON logs: `POST http://localhost:8080/data/customer-1/app-logs-ndjson`
 - Syslog data: `POST http://localhost:8080/data/customer-1/system-logs`  
 - CSV metrics: `POST http://localhost:8080/data/customer-1/server-metrics`
 - Plain text: `POST http://localhost:8080/data/customer-1/legacy-logs`

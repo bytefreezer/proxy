@@ -165,7 +165,7 @@ bytefreezer_proxy_batch_triggers_total
 
 #### Grafana Dashboard Query
 ```sql
--- For visualization in Grafana with JSON data source
+-- For visualization in Grafana with NDJSON data source
 SELECT
   trigger_reason,
   COUNT(*) as count,
