@@ -2482,7 +2482,9 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 	// Source paths in queue (no metadata in queue)
 	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
 
-	// Find the batch file (with any extension: .raw.gz, .csv.gz, .ndjson.gz, etc.)
+	// Find the batch file with new format: batch.ID = "tenant--dataset--timestamp"
+	// Queue filename = "tenant--dataset--timestamp--extension.gz"
+	// So we need to find files that start with batchID + "--" (not batchID + ".")
 	var srcDataFile string
 	files, err := os.ReadDir(queueDir)
 	if err != nil {
@@ -2490,8 +2492,10 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 	}
 
 	for _, file := range files {
-		if strings.HasPrefix(file.Name(), batchID+".") {
-			srcDataFile = filepath.Join(queueDir, file.Name())
+		fileName := file.Name()
+		// New format: batchID.gz (batchID already includes extension)
+		if fileName == batchID+".gz" {
+			srcDataFile = filepath.Join(queueDir, fileName)
 			break
 		}
 	}
@@ -2586,8 +2590,10 @@ func (s *SpoolingService) RemoveFromQueue(tenantID, datasetID, batchID string) e
 		log.Warnf("Failed to read queue directory for batch %s: %v", batchID, err)
 	} else {
 		for _, file := range files {
-			if strings.HasPrefix(file.Name(), batchID+".") {
-				dataFile := filepath.Join(queueDir, file.Name())
+			fileName := file.Name()
+			// New format: batchID.gz (batchID already includes extension)
+			if fileName == batchID+".gz" {
+				dataFile := filepath.Join(queueDir, fileName)
 				if err := os.Remove(dataFile); err == nil {
 					dataFileRemoved = true
 					break
