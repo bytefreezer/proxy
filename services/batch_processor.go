@@ -164,7 +164,7 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 
 	// Create domain batch
 	domainBatch := &domain.DataBatch{
-		ID:            generateBatchID(batch.TenantID, batch.DatasetID),
+		ID:            generateBatchIDWithExtension(batch.TenantID, batch.DatasetID, batch.FileExtension),
 		TenantID:      batch.TenantID,
 		DatasetID:     batch.DatasetID,
 		FileExtension: batch.FileExtension,

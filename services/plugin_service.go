@@ -202,7 +202,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 	}
 
 	return &domain.DataBatch{
-		ID:            generateBatchID(msg.TenantID, msg.DatasetID),
+		ID:            generateBatchIDWithExtension(msg.TenantID, msg.DatasetID, msg.FileExtension),
 		TenantID:      msg.TenantID,
 		DatasetID:     msg.DatasetID,
 		Data:          compressedData,
@@ -211,6 +211,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 		CreatedAt:     msg.Timestamp,
 		BearerToken:   bearerToken,
 		TriggerReason: "single_message", // Single message processing (not batched)
+		FileExtension: msg.FileExtension, // Plugin-defined file extension
 	}
 }
 
@@ -370,7 +371,7 @@ func (ps *PluginService) GetActivePlugins() []string {
 	return ps.pluginManager.ListPlugins()
 }
 
-// generateBatchID generates a unique batch ID with tenant and dataset info
-func generateBatchID(tenantID, datasetID string) string {
-	return fmt.Sprintf("%s--%s--%d", tenantID, datasetID, time.Now().UnixNano())
+// generateBatchIDWithExtension generates a unique batch ID with extension for new format
+func generateBatchIDWithExtension(tenantID, datasetID, extension string) string {
+	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), extension)
 }
