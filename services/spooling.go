@@ -35,6 +35,9 @@ type SpoolingService struct {
 	mutex       sync.RWMutex
 	shutdown    chan struct{}
 	wg          sync.WaitGroup
+
+	// Immediate retry trigger channel
+	retryTrigger chan struct{}
 }
 
 // SpooledFile represents a file in the spooling directory
@@ -71,6 +74,7 @@ func NewSpoolingService(cfg *config.Config) *SpoolingService {
 		cleanupInterval: time.Duration(cfg.Spooling.CleanupIntervalSec) * time.Second,
 		retryForwarder:  NewRetryHTTPForwarder(cfg), // Dedicated HTTP client for retry processing
 		shutdown:        make(chan struct{}),
+		retryTrigger:    make(chan struct{}, 100), // Buffered channel to prevent blocking
 	}
 }
 
@@ -448,6 +452,9 @@ func (s *SpoolingService) retryWorker() {
 		case <-s.shutdown:
 			return
 		case <-ticker.C:
+			s.processRetries()
+		case <-s.retryTrigger:
+			// Immediate retry triggered by DLQ resubmit
 			s.processRetries()
 		}
 	}
@@ -2227,9 +2234,9 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 		Details: make([]DLQRetryDetail, 0),
 	}
 
-	// Get tenants to process
+	// Get tenants to process - support wildcard "*"
 	var tenants []string
-	if tenantID != "" {
+	if tenantID != "" && tenantID != "*" {
 		tenants = []string{tenantID}
 	} else {
 		allTenants, err := s.getTenants()
@@ -2240,9 +2247,9 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 	}
 
 	for _, tenant := range tenants {
-		// Get datasets to process
+		// Get datasets to process - support wildcard "*"
 		var datasets []string
-		if datasetID != "" {
+		if datasetID != "" && datasetID != "*" {
 			datasets = []string{datasetID}
 		} else {
 			allDatasets, err := s.getTenantDatasets(tenant)
@@ -2350,6 +2357,15 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 
 				log.Infof("Retried DLQ file: %s (tenant=%s, dataset=%s)", baseName, tenant, dataset)
 			}
+		}
+	}
+
+	// Trigger immediate retry processing if any files were moved
+	if result.FilesRetried > 0 {
+		select {
+		case s.retryTrigger <- struct{}{}:
+		default:
+			// Channel full, retry will happen on next scheduled interval
 		}
 	}
 
