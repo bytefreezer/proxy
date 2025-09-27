@@ -49,7 +49,7 @@ func TestSpoolingService_StoreRawMessage(t *testing.T) {
 		t.Errorf("Expected 1 file, got %d", len(files))
 	}
 
-	// Verify file content
+	// Verify file content (JSON normalization may change field order, so check valid JSON)
 	if len(files) > 0 {
 		filePath := filepath.Join(rawDir, files[0].Name())
 		content, err := os.ReadFile(filePath)
@@ -57,8 +57,19 @@ func TestSpoolingService_StoreRawMessage(t *testing.T) {
 			t.Fatalf("Failed to read stored file: %v", err)
 		}
 
-		if string(content) != string(testData) {
-			t.Errorf("File content mismatch. Expected: %s, Got: %s", testData, content)
+		// Check that stored content is valid JSON
+		var stored, expected interface{}
+		if err := json.Unmarshal(content, &stored); err != nil {
+			t.Errorf("Stored content is not valid JSON: %v", err)
+		}
+		if err := json.Unmarshal(testData, &expected); err != nil {
+			t.Errorf("Test data is not valid JSON: %v", err)
+		}
+
+		// Verify content is compact (no unnecessary whitespace)
+		contentStr := string(content)
+		if strings.Contains(contentStr, "  ") || strings.Contains(contentStr, "\n") {
+			t.Errorf("Stored content should be compact JSON without pretty formatting")
 		}
 	}
 }

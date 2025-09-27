@@ -175,13 +175,20 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return fmt.Errorf("failed to create raw directory %s: %w", rawDir, err)
 	}
 
+	// Normalize JSON to compact format for valid NDJSON
+	normalizedData, err := normalizeJSONToNDJSON(data)
+	if err != nil {
+		log.Warnf("Failed to normalize JSON for tenant=%s dataset=%s: %v, storing as-is", tenantID, datasetID, err)
+		normalizedData = data // Fallback to original data if normalization fails
+	}
+
 	// Generate unique filename for this message
 	now := time.Now()
-	filename := fmt.Sprintf("%d_%d.ndjson", now.UnixNano(), len(data))
+	filename := fmt.Sprintf("%d_%d.ndjson", now.UnixNano(), len(normalizedData))
 	filePath := filepath.Join(rawDir, filename)
 
-	// Write raw message
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	// Write normalized message
+	if err := os.WriteFile(filePath, normalizedData, 0600); err != nil {
 		return fmt.Errorf("failed to write raw message file: %w", err)
 	}
 
