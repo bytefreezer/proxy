@@ -33,7 +33,7 @@ type Config struct {
 	GroupID           string   `mapstructure:"group_id"`
 	TenantID          string   `mapstructure:"tenant_id"`
 	DatasetID         string   `mapstructure:"dataset_id"`
-	DataHint          string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "json", "ndjson", "raw")
+	DataHint          string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
 	BearerToken       string   `mapstructure:"bearer_token,omitempty"`
 	AutoOffsetReset   string   `mapstructure:"auto_offset_reset,omitempty"`  // "earliest", "latest"
 	SessionTimeout    int      `mapstructure:"session_timeout,omitempty"`    // seconds

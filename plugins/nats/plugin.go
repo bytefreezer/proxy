@@ -34,7 +34,7 @@ type Config struct {
 	QueueGroup    string   `mapstructure:"queue_group,omitempty"`
 	TenantID      string   `mapstructure:"tenant_id"`
 	DatasetID     string   `mapstructure:"dataset_id"`
-	DataHint      string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "json", "ndjson", "raw")
+	DataHint      string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
 	BearerToken   string   `mapstructure:"bearer_token,omitempty"`
 	MaxReconnect  int      `mapstructure:"max_reconnect,omitempty"`
 	ReconnectWait int      `mapstructure:"reconnect_wait,omitempty"` // seconds

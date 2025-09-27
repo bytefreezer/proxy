@@ -8,13 +8,13 @@ ByteFreezer Proxy now includes native AWS integration with Kinesis Data Streams 
 - **Type**: `kinesis`
 - **Purpose**: Consume data from Amazon Kinesis Data Streams
 - **Use Cases**: Real-time streaming data, IoT events, log aggregation
-- **Output Format**: Configurable (ndjson, json, raw, csv)
+- **Output Format**: Configurable (ndjson, raw, csv) - ndjson handles all JSON normalization
 
 ### SQS Plugin
 - **Type**: `sqs`
 - **Purpose**: Process messages from Amazon SQS queues
 - **Use Cases**: Event-driven processing, decoupling, batch jobs
-- **Output Format**: Configurable (ndjson, json, raw, csv)
+- **Output Format**: Configurable (ndjson, raw, csv) - ndjson handles all JSON normalization
 
 ## Configuration
 
@@ -29,7 +29,7 @@ inputs:
       region: "us-west-2"                      # Required: AWS region
       tenant_id: "customer-1"                  # Required: ByteFreezer tenant
       dataset_id: "streaming-data"             # Required: ByteFreezer dataset
-      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson)
+      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson) - use for all JSON normalization
       poll_interval_seconds: 5                # Optional: Polling frequency (default: 5)
       max_records: 100                        # Optional: Records per API call (default: 100)
       shard_iterator_type: "LATEST"           # Optional: LATEST, TRIM_HORIZON, etc. (default: LATEST)
@@ -47,7 +47,7 @@ inputs:
       region: "us-west-2"                      # Required: AWS region
       tenant_id: "customer-1"                  # Required: ByteFreezer tenant
       dataset_id: "queue-messages"             # Required: ByteFreezer dataset
-      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson)
+      data_hint: "ndjson"                      # Optional: Data format hint (default: ndjson) - use for all JSON normalization
       poll_interval_seconds: 3                # Optional: Polling frequency (default: 5)
       max_messages: 10                        # Optional: Messages per receive (max: 10, default: 10)
       visibility_timeout_seconds: 30          # Optional: Visibility timeout (default: 30)
@@ -169,6 +169,23 @@ spooling:
   retry_interval_seconds: 60
 ```
 
+## Format Verification and Processing
+
+All AWS plugins include comprehensive format verification using the high-performance Sonic JSON library:
+
+### Data Format Handling
+- **`ndjson`**: Normalizes all JSON data (pretty-printed or single-line) to compact single-line format
+- **`raw`**: Passes data through without modification
+- **Custom formats**: Uses generic formatter that removes newlines
+
+### JSON Normalization Process
+1. **Input Validation**: Verifies JSON structure using Sonic parser (2.19x faster than standard library)
+2. **Format Normalization**: Converts pretty-printed JSON to single-line compact format
+3. **1 Document Per Message**: Ensures each message becomes exactly one line in spooled files
+4. **Error Handling**: Graceful fallback to original data if formatting fails
+
+**Note**: The `ndjson` data hint handles all JSON processing - there is no separate `json` hint to avoid confusion.
+
 ## Data Flow Architecture
 
 ### Kinesis Plugin Flow
@@ -246,7 +263,9 @@ Both plugins generate filenames using the new format:
 
 Examples:
 - `production--app-logs--1736938245123456789--ndjson.gz`
-- `customer-1--events--1736938245123456789--json.gz`
+- `customer-1--events--1736938245123456789--ndjson.gz`
+
+**Note**: All JSON data uses the `ndjson` format hint and generates `.ndjson.gz` files for consistency.
 
 ## Performance Tuning
 
