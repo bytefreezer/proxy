@@ -33,6 +33,7 @@ type Config struct {
 	GroupID           string   `mapstructure:"group_id"`
 	TenantID          string   `mapstructure:"tenant_id"`
 	DatasetID         string   `mapstructure:"dataset_id"`
+	DataHint          string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "json", "ndjson", "raw")
 	BearerToken       string   `mapstructure:"bearer_token,omitempty"`
 	AutoOffsetReset   string   `mapstructure:"auto_offset_reset,omitempty"`  // "earliest", "latest"
 	SessionTimeout    int      `mapstructure:"session_timeout,omitempty"`    // seconds
@@ -306,11 +307,25 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 	p.metrics.LastMessageTime = time.Now()
 	p.metrics.Partition[msg.Topic] = msg.Partition
 
+	// Format data according to data hint
+	formattedData := msg.Value
+	if p.config.DataHint != "" {
+		var err error
+		formatter := plugins.GetFormatter(p.config.DataHint)
+		formattedData, err = formatter.Format(msg.Value)
+		if err != nil {
+			log.Warnf("Data formatting failed for Kafka message from topic %s (format: %s): %v", msg.Topic, p.config.DataHint, err)
+			// Continue with original data if formatting fails
+			formattedData = msg.Value
+		}
+	}
+
 	// Create data message for output
 	dataMsg := &plugins.DataMessage{
-		Data:      msg.Value,
+		Data:      formattedData,
 		TenantID:  p.config.TenantID,
 		DatasetID: p.config.DatasetID,
+		DataHint:  p.config.DataHint,
 		Timestamp: msg.Timestamp,
 		Metadata: map[string]string{
 			"topic":     msg.Topic,

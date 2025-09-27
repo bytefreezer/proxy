@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
 	"github.com/n0needt0/go-goodies/log"
@@ -126,28 +125,6 @@ func (s *SpoolingService) Stop() error {
 	return nil
 }
 
-// normalizeJSONToNDJSON converts pretty-printed JSON to compact single-line format for NDJSON using Sonic
-func normalizeJSONToNDJSON(data []byte) ([]byte, error) {
-	// Trim whitespace
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 {
-		return nil, fmt.Errorf("empty JSON data")
-	}
-
-	// Check if it's valid JSON by unmarshaling to interface{} using Sonic
-	var jsonObj interface{}
-	if err := sonic.Unmarshal(data, &jsonObj); err != nil {
-		return nil, fmt.Errorf("invalid JSON: %w", err)
-	}
-
-	// Marshal back to compact format (no indentation) using Sonic
-	compactJSON, err := sonic.Marshal(jsonObj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-
-	return compactJSON, nil
-}
 
 // StoreRawMessage stores individual message in raw directory for later batching
 func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte) error {
@@ -175,20 +152,13 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return fmt.Errorf("failed to create raw directory %s: %w", rawDir, err)
 	}
 
-	// Normalize JSON to compact format for valid NDJSON
-	normalizedData, err := normalizeJSONToNDJSON(data)
-	if err != nil {
-		log.Warnf("Failed to normalize JSON for tenant=%s dataset=%s: %v, storing as-is", tenantID, datasetID, err)
-		normalizedData = data // Fallback to original data if normalization fails
-	}
-
-	// Generate unique filename for this message
+	// Generate unique filename for this message (data should already be validated at input)
 	now := time.Now()
-	filename := fmt.Sprintf("%d_%d.ndjson", now.UnixNano(), len(normalizedData))
+	filename := fmt.Sprintf("%d_%d.ndjson", now.UnixNano(), len(data))
 	filePath := filepath.Join(rawDir, filename)
 
-	// Write normalized message
-	if err := os.WriteFile(filePath, normalizedData, 0600); err != nil {
+	// Write message (data should already be validated at input)
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write raw message file: %w", err)
 	}
 
@@ -244,16 +214,11 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 			continue
 		}
 
-		// Normalize JSON to compact format for valid NDJSON
-		compactJSON, err := normalizeJSONToNDJSON(data)
-		if err != nil {
-			log.Warnf("Failed to normalize JSON in file %s: %v", filePath, err)
-			continue
+		// Write data and ensure it ends with newline for NDJSON format (data should already be validated at input)
+		ndjsonData.Write(data)
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			ndjsonData.WriteByte('\n')
 		}
-
-		// Write compact JSON and ensure it ends with newline for NDJSON format
-		ndjsonData.Write(compactJSON)
-		ndjsonData.WriteByte('\n')
 
 		processedFiles = append(processedFiles, filePath)
 		totalBytes += int64(len(data))

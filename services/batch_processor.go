@@ -113,7 +113,7 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 		bp.batches[key] = batch
 	}
 
-	// Add message to batch
+	// Add message to batch (data should already be validated at input)
 	batch.Messages = append(batch.Messages, msg.Data)
 	batch.LineCount++
 	batch.TotalBytes += int64(len(msg.Data))

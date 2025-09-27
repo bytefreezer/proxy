@@ -34,6 +34,7 @@ type Config struct {
 	QueueGroup    string   `mapstructure:"queue_group,omitempty"`
 	TenantID      string   `mapstructure:"tenant_id"`
 	DatasetID     string   `mapstructure:"dataset_id"`
+	DataHint      string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "json", "ndjson", "raw")
 	BearerToken   string   `mapstructure:"bearer_token,omitempty"`
 	MaxReconnect  int      `mapstructure:"max_reconnect,omitempty"`
 	ReconnectWait int      `mapstructure:"reconnect_wait,omitempty"` // seconds
@@ -259,11 +260,25 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 	p.metrics.Subjects[msg.Subject]++
 	p.mu.Unlock()
 
+	// Format data according to data hint
+	formattedData := msg.Data
+	if p.config.DataHint != "" {
+		var err error
+		formatter := plugins.GetFormatter(p.config.DataHint)
+		formattedData, err = formatter.Format(msg.Data)
+		if err != nil {
+			log.Warnf("Data formatting failed for NATS message from subject %s (format: %s): %v", msg.Subject, p.config.DataHint, err)
+			// Continue with original data if formatting fails
+			formattedData = msg.Data
+		}
+	}
+
 	// Create data message for output
 	dataMsg := &plugins.DataMessage{
-		Data:      msg.Data,
+		Data:      formattedData,
 		TenantID:  p.config.TenantID,
 		DatasetID: p.config.DatasetID,
+		DataHint:  p.config.DataHint,
 		Timestamp: time.Now(),
 		Metadata: map[string]string{
 			"subject": msg.Subject,

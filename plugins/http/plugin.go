@@ -34,6 +34,7 @@ type Config struct {
 	Path                 string `mapstructure:"path"`
 	TenantID             string `mapstructure:"tenant_id"`
 	DatasetID            string `mapstructure:"dataset_id"`
+	DataHint             string `mapstructure:"data_hint,omitempty"`             // data format hint (e.g., "ndjson")
 	BearerToken          string `mapstructure:"bearer_token,omitempty"`
 	MaxPayloadSize       int64  `mapstructure:"max_payload_size,omitempty"`      // bytes
 	MaxLinesPerRequest   int    `mapstructure:"max_lines_per_request,omitempty"` // lines limit
@@ -224,6 +225,12 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError st
 	}
 }
 
+// formatData normalizes data according to the specified format hint
+func (p *Plugin) formatData(data []byte, dataHint string) ([]byte, error) {
+	formatter := plugins.GetFormatter(dataHint)
+	return formatter.Format(data)
+}
+
 // webhookHandler handles incoming HTTP webhook requests
 func (p *Plugin) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests
@@ -284,18 +291,36 @@ func (p *Plugin) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Format and normalize data according to data hint
+	formattedData := body
+	if p.config.DataHint != "" {
+		var err error
+		formattedData, err = p.formatData(body, p.config.DataHint)
+		if err != nil {
+			log.Warnf("Data formatting failed for request from %s (format: %s): %v", r.RemoteAddr, p.config.DataHint, err)
+			http.Error(w, fmt.Sprintf("Invalid %s format: %v", p.config.DataHint, err), http.StatusBadRequest)
+			p.mu.Lock()
+			p.metrics.RequestsRejected++
+			p.mu.Unlock()
+			return
+		}
+		log.Debugf("Data formatting successful for %s/%s (format: %s), normalized %d bytes -> %d bytes",
+			p.config.TenantID, p.config.DatasetID, p.config.DataHint, len(body), len(formattedData))
+	}
+
 	// Update metrics
 	p.mu.Lock()
 	p.metrics.RequestsReceived++
-	p.metrics.BytesReceived += uint64(len(body))
+	p.metrics.BytesReceived += uint64(len(formattedData))
 	p.metrics.LastRequestTime = time.Now()
 	p.mu.Unlock()
 
 	// Create data message for output
 	dataMsg := &plugins.DataMessage{
-		Data:      body,
+		Data:      formattedData,
 		TenantID:  p.config.TenantID,
 		DatasetID: p.config.DatasetID,
+		DataHint:  p.config.DataHint,
 		Timestamp: time.Now(),
 		SourceIP:  r.RemoteAddr,
 		Metadata: map[string]string{

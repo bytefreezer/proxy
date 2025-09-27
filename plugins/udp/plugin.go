@@ -313,9 +313,22 @@ func (p *Plugin) processMessage(msg *udpMessage) {
 		return
 	}
 
+	// Format data according to data hint
+	formattedData := payload
+	if p.config.DataHint != "" {
+		var err error
+		formatter := plugins.GetFormatter(p.config.DataHint)
+		formattedData, err = formatter.Format(payload)
+		if err != nil {
+			log.Warnf("Data formatting failed for UDP packet from %s (format: %s): %v", msg.From.IP.String(), p.config.DataHint, err)
+			// Continue with original payload if formatting fails
+			formattedData = payload
+		}
+	}
+
 	// Create data message for output
 	dataMsg := &plugins.DataMessage{
-		Data:          payload,
+		Data:          formattedData,
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
 		DataHint:      p.config.DataHint,

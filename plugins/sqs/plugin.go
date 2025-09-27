@@ -292,8 +292,22 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 		}
 	}
 
+	// Format data according to data hint
+	body := []byte(*message.Body)
+	formattedData := body
+	if p.config.DataHint != "" {
+		var err error
+		formatter := plugins.GetFormatter(p.config.DataHint)
+		formattedData, err = formatter.Format(body)
+		if err != nil {
+			log.Warnf("Data formatting failed for SQS message %s (format: %s): %v", *message.MessageId, p.config.DataHint, err)
+			// Continue with original data if formatting fails
+			formattedData = body
+		}
+	}
+
 	msg := &plugins.DataMessage{
-		Data:          []byte(*message.Body),
+		Data:          formattedData,
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
 		DataHint:      p.config.DataHint,

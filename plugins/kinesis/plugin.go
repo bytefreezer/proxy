@@ -256,8 +256,21 @@ func (p *Plugin) getRecords(shardIterator *string) ([]types.Record, *string, err
 
 // processRecord processes a single Kinesis record
 func (p *Plugin) processRecord(record types.Record, shardID string) {
+	// Format data according to data hint
+	formattedData := record.Data
+	if p.config.DataHint != "" {
+		var err error
+		formatter := plugins.GetFormatter(p.config.DataHint)
+		formattedData, err = formatter.Format(record.Data)
+		if err != nil {
+			log.Warnf("Data formatting failed for Kinesis record from shard %s (format: %s): %v", shardID, p.config.DataHint, err)
+			// Continue with original data if formatting fails
+			formattedData = record.Data
+		}
+	}
+
 	msg := &plugins.DataMessage{
-		Data:          record.Data,
+		Data:          formattedData,
 		TenantID:      p.config.TenantID,
 		DatasetID:     p.config.DatasetID,
 		DataHint:      p.config.DataHint,

@@ -1,0 +1,79 @@
+app:
+  name: bytefreezer-proxy
+  version: 0.0.2
+
+# Logging configuration
+logging:
+  level: debug
+  encoding: console
+
+# API server configuration
+server:
+  api_port: 8089
+
+# Plugin-based input configuration
+inputs:
+  # HTTP Plugin for webhook data with JSON normalization
+  - type: "http"
+    name: "json-webhook"
+    config:
+      host: "0.0.0.0"
+      port: 8091
+      path: "/webhook"
+      dataset_id: "json-data"
+      data_hint: "json"  # Enable JSON normalization (pretty-print -> single line)
+      max_payload_size: 1048576
+      max_lines_per_request: 1000
+      read_timeout: 30
+      write_timeout: 30
+      enable_authentication: false
+
+# Global tenant configuration
+tenant_id: "customer-1"
+bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+
+# Bytefreezer-receiver configuration
+receiver:
+  base_url: "http://localhost:8082/{tenantid}/{datasetid}"
+  timeout_seconds: 30
+  upload_worker_count: 5
+  max_idle_conns: 10
+  max_conns_per_host: 6
+
+# Batch processing configuration
+batching:
+  enabled: true
+  max_lines: 1000
+  max_bytes: 1048576  # 1MB
+  timeout_seconds: 10
+  compression_enabled: true
+  compression_level: 6
+
+# SOC alerting configuration
+soc:
+  enabled: false
+  endpoint: ""
+  timeout: 30
+
+# OpenTelemetry configuration (disabled by default)
+otel:
+  enabled: false
+  service_name: "bytefreezer-proxy"
+  scrapeIntervalseconds: 15
+
+# Housekeeping configuration
+housekeeping:
+  enabled: true
+  intervalseconds: 60
+
+# Local spooling for failed uploads
+spooling:
+  enabled: true
+  directory: "./test-json-spool"
+  max_size_bytes: 1073741824  # 1GB
+  retry_attempts: 5
+  retry_interval_seconds: 60
+  cleanup_interval_seconds: 300
+
+# Development mode
+dev: false
