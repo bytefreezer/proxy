@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
 	"github.com/n0needt0/go-goodies/log"
@@ -125,6 +126,29 @@ func (s *SpoolingService) Stop() error {
 	return nil
 }
 
+// normalizeJSONToNDJSON converts pretty-printed JSON to compact single-line format for NDJSON using Sonic
+func normalizeJSONToNDJSON(data []byte) ([]byte, error) {
+	// Trim whitespace
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty JSON data")
+	}
+
+	// Check if it's valid JSON by unmarshaling to interface{} using Sonic
+	var jsonObj interface{}
+	if err := sonic.Unmarshal(data, &jsonObj); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	// Marshal back to compact format (no indentation) using Sonic
+	compactJSON, err := sonic.Marshal(jsonObj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	return compactJSON, nil
+}
+
 // StoreRawMessage stores individual message in raw directory for later batching
 func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte) error {
 	if !s.config.Spooling.Enabled {
@@ -213,10 +237,16 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 			continue
 		}
 
-		ndjsonData.Write(data)
-		if !bytes.HasSuffix(data, []byte("\n")) {
-			ndjsonData.WriteByte('\n')
+		// Normalize JSON to compact format for valid NDJSON
+		compactJSON, err := normalizeJSONToNDJSON(data)
+		if err != nil {
+			log.Warnf("Failed to normalize JSON in file %s: %v", filePath, err)
+			continue
 		}
+
+		// Write compact JSON and ensure it ends with newline for NDJSON format
+		ndjsonData.Write(compactJSON)
+		ndjsonData.WriteByte('\n')
 
 		processedFiles = append(processedFiles, filePath)
 		totalBytes += int64(len(data))
