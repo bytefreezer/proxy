@@ -963,6 +963,7 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		DatasetID:     job.DatasetID,
 		Data:          data,
 		DataHint:      dataHint,
+		Filename:      fileName, // Preserve original filename
 		CreatedAt:     time.Now(),
 		TotalBytes:    int64(len(data)),
 		LineCount:     actualLineCount, // Use verified actual count
@@ -1026,6 +1027,7 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 		CreatedAt:     metadata.CreatedAt,
 		BearerToken:   metadata.BearerToken,
 		DataHint:      dataHint, // Extract from filename to fix malformed filenames
+		Filename:      filepath.Base(metadata.Filename), // Preserve original filename
 	}
 
 	// Try to upload

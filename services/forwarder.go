@@ -138,8 +138,12 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	req.Header.Set("X-Proxy-Created-At", batch.CreatedAt.Format(time.RFC3339))
 	req.Header.Set("X-Proxy-Data-Hint", batch.DataHint) // Data format hint for downstream processing
 
-	// Complete filename for receiver queue storage: tenant--dataset--timestamp--extension.gz
-	filename := generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.DataHint)
+	// Use the original filename from spooling to maintain consistency
+	filename := batch.Filename
+	if filename == "" {
+		// Fallback: generate new filename only if not provided
+		filename = generateProxyFilename(batch.TenantID, batch.DatasetID, batch.CreatedAt, batch.DataHint)
+	}
 	req.Header.Set("X-Proxy-Filename", filename)
 
 	log.Infof("📁 Sending to receiver: URL=%s, Filename=%s, DataHint=%s", url, filename, batch.DataHint)

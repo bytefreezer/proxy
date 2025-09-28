@@ -21,6 +21,7 @@ type DataBatch struct {
 	DatasetID     string
 	BearerToken   string // Authentication token for this tenant
 	DataHint      string // Data format hint for downstream processing
+	Filename      string // Original filename for proxy consistency
 	Messages      []UDPMessage
 	LineCount     int
 	TotalBytes    int64
