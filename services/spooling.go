@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -152,9 +153,12 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return fmt.Errorf("failed to create raw directory %s: %w", rawDir, err)
 	}
 
-	// Generate unique filename for this message (data should already be validated at input)
+	// Count lines for verification tracking
+	lineCount := s.countLines(data)
+
+	// Generate unique filename with line count for verification (data should already be validated at input)
 	now := time.Now()
-	filename := fmt.Sprintf("%d_%d.ndjson", now.UnixNano(), len(data))
+	filename := fmt.Sprintf("%d_%d_%d.ndjson", now.UnixNano(), len(data), lineCount)
 	filePath := filepath.Join(rawDir, filename)
 
 	// Write message (data should already be validated at input)
@@ -162,7 +166,8 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return fmt.Errorf("failed to write raw message file: %w", err)
 	}
 
-	log.Debugf("Stored raw message for tenant=%s dataset=%s: %s", tenantID, datasetID, filename)
+	log.Debugf("Stored raw message for tenant=%s dataset=%s: %s (%d lines, %d bytes)",
+		tenantID, datasetID, filename, lineCount, len(data))
 	return nil
 }
 
@@ -917,6 +922,16 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		dataHint = "raw" // default fallback
 	}
 
+	// Line count verification - extract expected count from filename and compare with actual
+	actualLineCount := s.countLines(data)
+	expectedLineCount := extractLineCountFromFilename(fileName)
+	if expectedLineCount > 0 && expectedLineCount != actualLineCount {
+		log.Warnf("Line count mismatch in %s: expected %d, actual %d - possible data corruption",
+			fileName, expectedLineCount, actualLineCount)
+	} else {
+		log.Debugf("Line count verified for %s: %d lines", fileName, actualLineCount)
+	}
+
 	// Create a DataBatch for upload
 	batch := &domain.DataBatch{
 		ID:            job.BatchID,
@@ -926,7 +941,7 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		DataHint:      dataHint,
 		CreatedAt:     time.Now(),
 		TotalBytes:    int64(len(data)),
-		LineCount:     s.countLines(data), // Count non-empty lines only
+		LineCount:     actualLineCount, // Use verified actual count
 	}
 
 	// Attempt upload
@@ -3014,4 +3029,27 @@ func (s *SpoolingService) getDiskUsage(path string) (*DiskUsage, error) {
 		Free:  freeSize,
 	}, nil
 }
+
+// extractLineCountFromFilename extracts the line count from filenames with pattern: {timestamp}_{bytecount}_{linecount}.ndjson
+func extractLineCountFromFilename(filename string) int {
+	// Remove extension
+	nameWithoutExt := strings.TrimSuffix(filename, ".ndjson")
+
+	// Split by underscore: [timestamp, bytecount, linecount]
+	parts := strings.Split(nameWithoutExt, "_")
+	if len(parts) != 3 {
+		// Old format without line count, return 0
+		return 0
+	}
+
+	// Parse the line count (third part)
+	lineCount, err := strconv.Atoi(parts[2])
+	if err != nil {
+		log.Debugf("Failed to parse line count from filename %s: %v", filename, err)
+		return 0
+	}
+
+	return lineCount
+}
+
 
