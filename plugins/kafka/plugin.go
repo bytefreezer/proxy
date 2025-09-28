@@ -357,7 +357,11 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 
 	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
 	bearerToken := p.config.BearerToken
-	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+	dataHint := p.config.DataHint
+	if dataHint == "" {
+		dataHint = "raw" // default for Kafka
+	}
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData, dataHint); err != nil {
 		log.Errorf("Failed to store Kafka message to filesystem from topic %s: %v", msg.Topic, err)
 		p.metrics.MessagesDropped++
 		return

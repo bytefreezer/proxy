@@ -316,7 +316,11 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 
 	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
 	bearerToken := p.config.BearerToken
-	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+	dataHint := p.config.DataHint
+	if dataHint == "" {
+		dataHint = "raw" // default for SQS
+	}
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData, dataHint); err != nil {
 		log.Errorf("SQS worker %d failed to store message to filesystem: %v", workerID, err)
 		p.mu.Lock()
 		p.metrics.MessagesDropped++

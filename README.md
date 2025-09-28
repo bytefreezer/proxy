@@ -7,13 +7,14 @@ High-performance multi-protocol data streaming proxy for the ByteFreezer platfor
 ByteFreezer Proxy is a **universal data streaming gateway** designed for enterprise environments with diverse data sources. The proxy implements a **plugin-based architecture** with a **stream-first, process-later** design that maximizes throughput while enabling sophisticated downstream processing.
 
 ### **Core Capabilities**
-- **🔌 Plugin Architecture**: Extensible input system supporting UDP, HTTP, Kafka, NATS, and custom plugins
+- **🔌 Plugin Architecture**: Extensible input system supporting UDP, HTTP, Kafka, NATS, SQS, Kinesis, and custom plugins
 - **🌐 Universal Data Ingestion**: Accepts any line-based data format from multiple sources
-- **⚡ High-Performance Streaming**: Optimized for high-throughput data collection
-- **📦 Smart Batching**: Efficient line-based batching with gzip compression
+- **⚡ Socket-to-Filesystem Architecture**: Zero-drop direct filesystem writes eliminate message loss
+- **📦 Smart Batching**: Efficient line-based batching with gzip compression and data hint preservation
 - **🔄 Reliable Delivery**: HTTP forwarding with retry logic and local spooling
 - **🏢 Multi-Tenant Architecture**: Isolated data streams with per-tenant authentication
 - **🔀 Pure Pass-Through**: No data modification, parsing, or transformation
+- **📝 Semantic File Extensions**: Data hint-based file extensions match content types
 - **🛡️ Enterprise-Ready**: Health monitoring, metrics, and operational APIs
 
 ### **Supported Input Plugins**
@@ -23,19 +24,28 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 | **HTTP** | HTTP Webhooks | Lightweight data submission, API integrations |
 | **Kafka** | Apache Kafka | Message queue integration, event streaming |
 | **NATS** | NATS messaging | Pub/sub patterns, microservice communication |
+| **SQS** | Amazon SQS | Cloud message queues, AWS integrations |
+| **Kinesis** | AWS Kinesis | Real-time data streaming, AWS analytics |
 
 ### **Supported Data Formats**
-ByteFreezer Proxy is a **pure pass-through service** that forwards any line-based data without modification:
+ByteFreezer Proxy is a **pure pass-through service** that forwards any line-based data without modification while preserving semantic file extensions:
 
-| Format | Processing | Use Cases |
-|--------|------------|-----------|
-| **NDJSON Logs** | Pass-through | Application logs, structured events |
-| **Plain Text** | Pass-through | Legacy logs, free-form messages |
-| **CSV/TSV** | Pass-through | Metrics, tabular data exports |
-| **Syslog** | Pass-through | System logs, network device logs |
-| **Any Line-Based Data** | Pass-through | Custom formats, proprietary logs |
+| Format | Data Hint | File Extension | Use Cases |
+|--------|-----------|----------------|-----------|
+| **NDJSON/JSON** | `ndjson`, `json` | `.ndjson` | Application logs, structured events |
+| **Syslog** | `syslog` | `.log` | System logs, network device logs |
+| **sFlow** | `sflow` | `.sflow` | Network flow monitoring, traffic analysis |
+| **NetFlow** | `netflow` | `.netflow` | Network flow monitoring, Cisco devices |
+| **CSV/TSV** | `csv`, `tsv` | `.csv`, `.tsv` | Metrics, tabular data exports |
+| **Apache/Nginx Logs** | `apache`, `nginx` | `.log` | Web server logs, access logs |
+| **Plain Text** | `raw` | `.raw` | Legacy logs, free-form messages |
+| **Any Line-Based Data** | Custom hints | Custom extensions | Custom formats, proprietary logs |
 
-**Note**: The proxy forwards data exactly as received - no parsing, extraction, or modification occurs.
+**Key Features**:
+- **Zero Data Loss**: Direct filesystem writes eliminate channel congestion
+- **Semantic Correctness**: File extensions match actual content types
+- **Data Hint Preservation**: Format information flows through entire pipeline
+- **Pure Pass-Through**: No parsing, extraction, or modification occurs
 
 ## Quick Start
 
@@ -68,10 +78,11 @@ inputs:
       host: "0.0.0.0"
       port: 2056
       dataset_id: "syslog-data"
+      data_hint: "syslog"          # Creates .log files
       #will overwrite global for this specific dataset
-      #tenant_id: "other-company"  
+      #tenant_id: "other-company"
       #bearer_token: "other-bearer-token"
-      
+
   # HTTP Plugin - Webhook endpoints
   - type: "http"
     name: "webhook-endpoint"
@@ -80,6 +91,7 @@ inputs:
       port: 8081
       path: "/webhook"
       dataset_id: "webhook-data"
+      data_hint: "ndjson"          # Creates .ndjson files
       max_payload_size: 10485760   # 10MB
       max_lines_per_request: 1000
 
@@ -188,6 +200,55 @@ receiver:
 
 Each input plugin is configured in the `inputs` array:
 
+#### Data Hints and File Extensions
+
+The `data_hint` parameter controls the file extension used for stored data files. This ensures that file extensions accurately reflect the content format and preserve semantic meaning for downstream processing.
+
+**Supported Data Hints:**
+
+| Data Hint | File Extension | Description | Use Cases |
+|-----------|----------------|-------------|-----------|
+| `ndjson` | `.ndjson` | Newline-delimited JSON | eBPF data, API responses, structured logs |
+| `json` | `.ndjson` | JSON data (same as ndjson) | Single JSON documents, API data |
+| `syslog` | `.log` | Syslog format messages | System logs, application logs |
+| `csv` | `.csv` | Comma-separated values | Tabular data, metrics exports |
+| `tsv` | `.tsv` | Tab-separated values | Data exports, reports |
+| `apache` | `.log` | Apache access logs | Web server logs |
+| `nginx` | `.log` | Nginx access logs | Web server logs |
+| `iis` | `.log` | IIS access logs | Microsoft web server logs |
+| `squid` | `.log` | Squid proxy logs | Proxy server logs |
+| `sflow` | `.sflow` | sFlow network data | Network monitoring, flow analysis |
+| `netflow` | `.netflow` | NetFlow network data | Network monitoring, traffic analysis |
+| `raw` | `.raw` | Raw binary or unstructured data | Binary protocols, custom formats |
+| *(custom)* | *(custom)* | Custom format ≤10 chars | Use data hint as extension |
+
+**Default Behavior:**
+- If no `data_hint` is specified, defaults to plugin-specific values:
+  - UDP plugins: `"raw"` (creates `.raw` files)
+  - HTTP plugins: `"ndjson"` (creates `.ndjson` files)
+  - Kafka/NATS/SQS/Kinesis: `"ndjson"` (creates `.ndjson` files)
+- Custom data hints (≤10 characters) use the hint as the file extension
+- Invalid or long hints default to `.raw`
+
+**Example Configuration:**
+```yaml
+inputs:
+  - type: "udp"
+    config:
+      data_hint: "syslog"    # Creates .log files
+  - type: "http"
+    config:
+      data_hint: "ndjson"    # Creates .ndjson files
+  - type: "kafka"
+    config:
+      data_hint: "csv"       # Creates .csv files
+```
+
+**File Naming Convention:**
+Files are stored with the pattern: `{timestamp}_{bytes}_{lines}.{extension}`
+- Example with syslog: `1672531200000000000_1024_50.log`
+- Example with eBPF data: `1672531200000000000_2048_25.ndjson`
+
 ```yaml
 inputs:
   - type: "udp"              # Plugin type
@@ -208,6 +269,7 @@ inputs:
     host: "0.0.0.0"              # Bind address
     port: 2056                   # UDP port
     dataset_id: "syslog-data"    # Dataset identifier
+    data_hint: "syslog"          # Data format hint (creates .log files)
     tenant_id: "custom-tenant"   # Optional: override global
     bearer_token: "token"        # Optional: override global
     read_buffer_size: 65536      # Buffer size in bytes
@@ -252,6 +314,7 @@ echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
     port: 8081                   # HTTP port
     path: "/webhook"             # Endpoint path
     dataset_id: "webhook-data"   # Dataset identifier
+    data_hint: "ndjson"          # Data format hint (creates .ndjson files)
     tenant_id: "custom-tenant"   # Optional: override global
     bearer_token: "token"        # Optional: override global
     max_payload_size: 10485760   # 10MB limit
@@ -271,6 +334,7 @@ echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
     topics: ["app-logs", "metrics"]
     group_id: "bytefreezer-proxy"
     dataset_id: "kafka-data"
+    data_hint: "ndjson"          # Data format hint (creates .ndjson files)
     tenant_id: "custom-tenant"   # Optional: override global
     bearer_token: "token"        # Optional: override global
     auto_offset_reset: "latest"  # earliest, latest
@@ -288,10 +352,44 @@ echo 'net.core.rmem_default = 65536' >> /etc/sysctl.conf
     subjects: ["logs.>", "metrics.>"]
     queue_group: "bytefreezer"
     dataset_id: "nats-data"
+    data_hint: "ndjson"          # Data format hint (creates .ndjson files)
     tenant_id: "custom-tenant"   # Optional: override global
     bearer_token: "token"        # Optional: override global
     max_reconnect: -1            # Unlimited reconnects
     reconnect_wait: 2            # Reconnect wait (seconds)
+```
+
+#### SQS Plugin
+
+```yaml
+- type: "sqs"
+  name: "sqs-consumer"
+  config:
+    queue_url: "https://sqs.us-east-1.amazonaws.com/123456789012/my-queue"
+    region: "us-east-1"
+    dataset_id: "sqs-data"
+    data_hint: "ndjson"          # Data format hint (creates .ndjson files)
+    tenant_id: "custom-tenant"   # Optional: override global
+    bearer_token: "token"        # Optional: override global
+    max_messages: 10             # Max messages per receive
+    wait_time_seconds: 20        # Long polling wait time
+    visibility_timeout: 30       # Message visibility timeout
+```
+
+#### Kinesis Plugin
+
+```yaml
+- type: "kinesis"
+  name: "kinesis-consumer"
+  config:
+    stream_name: "my-data-stream"
+    region: "us-east-1"
+    dataset_id: "kinesis-data"
+    data_hint: "ndjson"          # Data format hint (creates .ndjson files)
+    tenant_id: "custom-tenant"   # Optional: override global
+    bearer_token: "token"        # Optional: override global
+    shard_iterator_type: "LATEST" # LATEST, TRIM_HORIZON, AT_SEQUENCE_NUMBER
+    max_records: 100             # Max records per get
 ```
 
 ### Multi-Tenant & Per-Plugin Authentication
@@ -300,6 +398,7 @@ ByteFreezer Proxy supports **per-plugin tenant isolation** and **per-plugin auth
 - **Route different plugins to different tenants**
 - **Use different authentication tokens per plugin/port**
 - **Isolate data streams by customer/environment**
+- **Apply different data hints per customer/dataset**
 
 #### Multi-Tenant Example
 
@@ -317,8 +416,9 @@ inputs:
       tenant_id: "customer-a"           # Dedicated tenant
       bearer_token: "token-customer-a"  # Dedicated auth
       dataset_id: "ebpf-data"
-      
-  # Customer B - Syslog data on port 2057  
+      data_hint: "ndjson"               # Creates .ndjson files
+
+  # Customer B - Syslog data on port 2057
   - type: "udp"
     name: "customer-b-syslog"
     config:
@@ -326,8 +426,9 @@ inputs:
       tenant_id: "customer-b"           # Different tenant
       bearer_token: "token-customer-b"  # Different auth
       dataset_id: "syslog-data"
-      
-  # Production environment - HTTP webhook on port 8081
+      data_hint: "syslog"               # Creates .log files
+
+  # Production environment - JSON webhook on port 8081
   - type: "http"
     name: "prod-webhook"
     config:
@@ -335,24 +436,38 @@ inputs:
       tenant_id: "production"           # Production tenant
       bearer_token: "prod-token"        # Production auth
       dataset_id: "webhook-data"
-      
-  # Staging environment - HTTP webhook on port 8082
-  - type: "http" 
+      data_hint: "ndjson"               # Creates .ndjson files
+
+  # Staging environment - CSV webhook on port 8082
+  - type: "http"
     name: "staging-webhook"
     config:
       port: 8082
       tenant_id: "staging"              # Staging tenant
       bearer_token: "staging-token"     # Staging auth
       dataset_id: "webhook-data"
+      data_hint: "csv"                  # Creates .csv files
 ```
 
-**Result**: Each plugin routes to isolated tenant directories:
+**Result**: Each plugin routes to isolated tenant directories with appropriate file extensions:
 ```
 /spool/
 ├── customer-a/ebpf-data/
+│   ├── raw/               # Individual .ndjson files
+│   ├── queue/             # Batched customer-a--ebpf-data--timestamp--ndjson.gz
+│   └── retry/
 ├── customer-b/syslog-data/
+│   ├── raw/               # Individual .log files
+│   ├── queue/             # Batched customer-b--syslog-data--timestamp--syslog.gz
+│   └── retry/
 ├── production/webhook-data/
+│   ├── raw/               # Individual .ndjson files
+│   ├── queue/             # Batched production--webhook-data--timestamp--ndjson.gz
+│   └── retry/
 └── staging/webhook-data/
+    ├── raw/               # Individual .csv files
+    ├── queue/             # Batched staging--webhook-data--timestamp--csv.gz
+    └── retry/
 ```
 
 ### Spooling Configuration
@@ -634,7 +749,7 @@ ByteFreezer Proxy supports custom input plugins. See `plugins-examples/` directo
    
    func (p *Plugin) Name() string { return "zmq" }
    func (p *Plugin) Configure(config map[string]interface{}) error { /* ... */ }
-   func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error { /* ... */ }
+   func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error { /* ... */ }
    func (p *Plugin) Stop() error { /* ... */ }
    func (p *Plugin) Health() plugins.PluginHealth { /* ... */ }
    ```
@@ -681,7 +796,7 @@ See the complete ZMQ example in `plugins-examples/zmq/` for a fully functional i
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow
+### Data Flow Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -689,10 +804,34 @@ See the complete ZMQ example in `plugins-examples/zmq/` for a fully functional i
 │                 │    │     Proxy       │    │    Platform     │
 │ • UDP Streams   │    │                 │    │                 │
 │ • HTTP Webhooks │    │ • Plugin System │    │ • Store (S3)    │
-│ • Kafka Topics  │    │ • Batch & Route │    │ • Process       │
-│ • NATS Messages │    │ • Forward       │    │ • Analyze       │
-│ • Custom Sources│    │                 │    │                 │
+│ • Kafka Topics  │    │ • Direct FS     │    │ • Process       │
+│ • NATS Messages │    │ • Batch & Route │    │ • Analyze       │
+│ • SQS Queues    │    │ • Zero Loss     │    │                 │
+│ • Kinesis       │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Socket-to-Filesystem Architecture
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Data Sources │────▶│   Input Plugin  │────▶│  Direct Write   │
+│              │     │                 │     │  to Filesystem  │
+│ • Network    │     │ • Protocol      │     │                 │
+│ • Messages   │     │   Handler       │     │ • Zero Loss     │
+│ • Streams    │     │ • Format Hint   │     │ • Proper Ext.   │
+└──────────────┘     │ • Auth & Limits │     │ • Line Counts   │
+                     └─────────────────┘     └─────────────────┘
+                                                       │
+                                                       ▼
+┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Batch & Send │◀────│   Raw Files     │◀────│   Raw Storage   │
+│              │     │                 │     │                 │
+│ • Periodic   │     │ • .ndjson       │     │ tenant/dataset/ │
+│ • Size Limit │     │ • .log          │     │   raw/          │
+│ • Compress   │     │ • .csv          │     │ {nano}_{size}_  │
+│ • Data Hint  │     │ • .txt          │     │ {lines}.{ext}   │
+└──────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
 ## API Reference

@@ -128,7 +128,7 @@ func (s *SpoolingService) Stop() error {
 
 
 // StoreRawMessage stores individual message in raw directory for later batching
-func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte) error {
+func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
 	}
@@ -156,9 +156,12 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 	// Count lines for verification tracking
 	lineCount := s.countLines(data)
 
+	// Get appropriate file extension based on data hint
+	extension := getFileExtensionForDataHint(dataHint)
+
 	// Generate unique filename with line count for verification (data should already be validated at input)
 	now := time.Now()
-	filename := fmt.Sprintf("%d_%d_%d.ndjson", now.UnixNano(), len(data), lineCount)
+	filename := fmt.Sprintf("%d_%d_%d.%s", now.UnixNano(), len(data), lineCount, extension)
 	filePath := filepath.Join(rawDir, filename)
 
 	// Write message (data should already be validated at input)
@@ -201,79 +204,100 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		return nil // No files to process
 	}
 
-	// Combine raw files into NDJSON
-	var ndjsonData bytes.Buffer
-	var processedFiles []string
-	var totalBytes int64
+	// Group files by data hint (extension)
+	filesByDataHint := make(map[string][]string)
 
 	for _, file := range rawFiles {
-		if !strings.HasSuffix(file.Name(), ".ndjson") {
+		// Skip directories and invalid files
+		if file.IsDir() {
 			continue
 		}
 
-		filePath := filepath.Join(rawDir, file.Name())
-		// #nosec G304 - filePath is constructed from controlled rawDir and validated file.Name()
-		data, err := os.ReadFile(filePath)
+		dataHint := extractDataHintFromFilename(file.Name())
+		if filesByDataHint[dataHint] == nil {
+			filesByDataHint[dataHint] = make([]string, 0)
+		}
+		filesByDataHint[dataHint] = append(filesByDataHint[dataHint], file.Name())
+	}
+
+	// Process each data hint group separately
+	for dataHint, files := range filesByDataHint {
+		if len(files) == 0 {
+			continue
+		}
+
+		// Combine files of the same data hint
+		var combinedData bytes.Buffer
+		var processedFiles []string
+		var totalBytes int64
+
+		for _, fileName := range files {
+			filePath := filepath.Join(rawDir, fileName)
+			// #nosec G304 - filePath is constructed from controlled rawDir and validated fileName
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				log.Warnf("Failed to read raw file %s: %v", filePath, err)
+				continue
+			}
+
+			// For line-based formats (ndjson, csv, syslog), ensure each file ends with newline
+			combinedData.Write(data)
+			if len(data) > 0 && isLineBasedFormat(dataHint) && data[len(data)-1] != '\n' {
+				combinedData.WriteByte('\n')
+			}
+
+			processedFiles = append(processedFiles, filePath)
+			totalBytes += int64(len(data))
+		}
+
+		if len(processedFiles) == 0 {
+			continue // No valid files processed for this data hint
+		}
+
+		// Generate batch file for this data hint
+		now := time.Now()
+		batchFileName := generateProxyFilename(tenantID, datasetID, now, dataHint)
+		batchID := strings.TrimSuffix(batchFileName, ".gz")
+
+		// Compress data
+		var compressed bytes.Buffer
+		gzipWriter, err := gzip.NewWriterLevel(&compressed, 6)
 		if err != nil {
-			log.Warnf("Failed to read raw file %s: %v", filePath, err)
+			log.Errorf("Failed to create gzip writer for %s: %v", dataHint, err)
 			continue
 		}
 
-		// Write data and ensure it ends with newline for NDJSON format (data should already be validated at input)
-		ndjsonData.Write(data)
-		if len(data) > 0 && data[len(data)-1] != '\n' {
-			ndjsonData.WriteByte('\n')
+		if _, err := gzipWriter.Write(combinedData.Bytes()); err != nil {
+			log.Errorf("Failed to compress %s data: %v", dataHint, err)
+			gzipWriter.Close()
+			continue
 		}
 
-		processedFiles = append(processedFiles, filePath)
-		totalBytes += int64(len(data))
-	}
-
-	if len(processedFiles) == 0 {
-		return nil // No valid files processed
-	}
-
-	// Generate batch ID and paths using new format
-	now := time.Now()
-
-	// Use new filename format directly
-	batchFileName := generateProxyFilename(tenantID, datasetID, now, "ndjson")
-	// Extract batch ID from filename (without .gz) for logging and metadata
-	batchID := strings.TrimSuffix(batchFileName, ".gz")
-
-	// Compress data
-	var compressed bytes.Buffer
-	gzipWriter, err := gzip.NewWriterLevel(&compressed, 6)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
-	}
-
-	if _, err := gzipWriter.Write(ndjsonData.Bytes()); err != nil {
-		return fmt.Errorf("failed to compress data: %w", err)
-	}
-
-	if err := gzipWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
-	}
-
-	// Write compressed batch to queue - filename already in new format
-	batchFilePath := filepath.Join(queueDir, batchFileName)
-
-	if err := os.WriteFile(batchFilePath, compressed.Bytes(), 0600); err != nil {
-		return fmt.Errorf("failed to write compressed batch: %w", err)
-	}
-
-	// Note: Queue files don't need metadata - metadata is created only when files move to retry/dlq
-
-	// Remove processed raw files
-	for _, filePath := range processedFiles {
-		if err := os.Remove(filePath); err != nil {
-			log.Warnf("Failed to remove processed raw file %s: %v", filePath, err)
+		if err := gzipWriter.Close(); err != nil {
+			log.Errorf("Failed to close gzip writer for %s: %v", dataHint, err)
+			continue
 		}
-	}
 
-	log.Infof("Created batch %s from %d raw files for tenant=%s dataset=%s",
-		batchID, len(processedFiles), tenantID, datasetID)
+		// Write compressed batch to queue - filename already in new format
+		batchFilePath := filepath.Join(queueDir, batchFileName)
+
+		if err := os.WriteFile(batchFilePath, compressed.Bytes(), 0600); err != nil {
+			log.Errorf("Failed to write compressed batch for %s: %v", dataHint, err)
+			continue
+		}
+
+		// Note: Queue files don't need metadata - metadata is created only when files move to retry/dlq
+
+		// Remove processed raw files
+		for _, filePath := range processedFiles {
+			if err := os.Remove(filePath); err != nil {
+				log.Warnf("Failed to remove processed raw file %s: %v", filePath, err)
+			}
+		}
+
+		log.Infof("Created batch %s from %d raw files (data hint: %s) for tenant=%s dataset=%s",
+			batchID, len(processedFiles), dataHint, tenantID, datasetID)
+	}
 
 	return nil
 }
@@ -1123,17 +1147,17 @@ func (s *SpoolingService) processBatches() {
 				continue
 			}
 
-			// Count .ndjson files
-			var ndjsonCount int
+			// Count all raw files (any extension)
+			var rawFileCount int
 			for _, file := range rawFiles {
-				if strings.HasSuffix(file.Name(), ".ndjson") {
-					ndjsonCount++
+				if !file.IsDir() {
+					rawFileCount++
 				}
 			}
 
 			// Process if we have raw files (could be configurable threshold)
-			if ndjsonCount > 0 {
-				log.Debugf("Processing %d raw files for tenant=%s dataset=%s", ndjsonCount, tenantID, datasetID)
+			if rawFileCount > 0 {
+				log.Debugf("Processing %d raw files for tenant=%s dataset=%s", rawFileCount, tenantID, datasetID)
 
 				// Get bearer token from recent metadata files (fallback to global)
 				bearerToken := s.config.BearerToken
@@ -3030,10 +3054,40 @@ func (s *SpoolingService) getDiskUsage(path string) (*DiskUsage, error) {
 	}, nil
 }
 
-// extractLineCountFromFilename extracts the line count from filenames with pattern: {timestamp}_{bytecount}_{linecount}.ndjson
+// getFileExtensionForDataHint returns appropriate file extension based on data hint
+func getFileExtensionForDataHint(dataHint string) string {
+	switch dataHint {
+	case "ndjson", "json":
+		return "ndjson"
+	case "syslog":
+		return "log"
+	case "csv":
+		return "csv"
+	case "tsv":
+		return "tsv"
+	case "apache", "nginx", "iis", "squid":
+		return "log"
+	case "raw":
+		return "raw"
+	default:
+		// For unknown formats, use the data hint as extension if valid, otherwise default to raw
+		if dataHint != "" && len(dataHint) <= 10 {
+			return dataHint
+		}
+		return "raw"
+	}
+}
+
+// extractLineCountFromFilename extracts the line count from filenames with pattern: {timestamp}_{bytecount}_{linecount}.{extension}
 func extractLineCountFromFilename(filename string) int {
-	// Remove extension
-	nameWithoutExt := strings.TrimSuffix(filename, ".ndjson")
+	// Remove extension by finding the last dot
+	lastDot := strings.LastIndex(filename, ".")
+	var nameWithoutExt string
+	if lastDot > 0 {
+		nameWithoutExt = filename[:lastDot]
+	} else {
+		nameWithoutExt = filename
+	}
 
 	// Split by underscore: [timestamp, bytecount, linecount]
 	parts := strings.Split(nameWithoutExt, "_")
@@ -3050,6 +3104,44 @@ func extractLineCountFromFilename(filename string) int {
 	}
 
 	return lineCount
+}
+
+// extractDataHintFromFilename extracts the data hint (file extension) from filenames
+func extractDataHintFromFilename(filename string) string {
+	// Find the last dot to get extension
+	lastDot := strings.LastIndex(filename, ".")
+	if lastDot < 0 || lastDot == len(filename)-1 {
+		return "txt" // default if no extension
+	}
+
+	extension := filename[lastDot+1:]
+
+	// Handle some common mappings back to data hints
+	switch extension {
+	case "ndjson":
+		return "ndjson"
+	case "log":
+		return "syslog" // Most log files are syslog format
+	case "csv":
+		return "csv"
+	case "tsv":
+		return "tsv"
+	case "txt":
+		return "raw"
+	default:
+		// For other extensions, use the extension as the data hint
+		return extension
+	}
+}
+
+// isLineBasedFormat returns true if the data hint represents a line-based format that should have newlines between records
+func isLineBasedFormat(dataHint string) bool {
+	switch dataHint {
+	case "ndjson", "csv", "tsv", "syslog", "apache", "nginx", "iis", "squid":
+		return true
+	default:
+		return false
+	}
 }
 
 

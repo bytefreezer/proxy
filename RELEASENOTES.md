@@ -2,6 +2,84 @@
 
 ## Latest Changes
 
+### 🚀 Major Architecture Upgrade: Socket-to-Filesystem with Semantic File Extensions
+**Release Date**: September 28, 2025
+
+#### Revolutionary Architecture Changes
+- **Socket-to-Filesystem**: Complete transition from channel-based to direct filesystem writes
+- **Zero Data Loss**: Eliminated all potential message drops due to channel congestion
+- **Semantic File Extensions**: Data hint-based file extensions now match actual content types
+- **New Plugin Interfaces**: All input plugins now use `SpoolingInterface` for direct writes
+
+#### Core Architecture Benefits
+- **🔒 Zero Drop Guarantee**: Direct filesystem writes ensure no message loss
+- **📝 Semantic Correctness**: File extensions match content types (`.log` for syslog, `.ndjson` for JSON, etc.)
+- **🔍 Data Hint Preservation**: Format information flows through entire pipeline
+- **⚡ Improved Performance**: Eliminated channel bottlenecks and memory buffering
+
+#### Plugin Interface Updates
+All plugins now use the new interface:
+```go
+// Old interface (channels)
+Start(ctx context.Context, output chan<- *plugins.DataMessage) error
+
+// New interface (direct filesystem)
+Start(ctx context.Context, spooler plugins.SpoolingInterface) error
+```
+
+#### Data Hint to File Extension Mapping
+| Data Hint | File Extension | Use Case |
+|-----------|----------------|-----------|
+| `ndjson`, `json` | `.ndjson` | Application logs, structured events |
+| `syslog` | `.log` | System logs, network device logs |
+| `sflow` | `.sflow` | Network flow monitoring, traffic analysis |
+| `netflow` | `.netflow` | Network flow monitoring, Cisco devices |
+| `csv`, `tsv` | `.csv`, `.tsv` | Metrics, tabular data exports |
+| `apache`, `nginx`, `iis` | `.log` | Web server logs |
+| `raw` | `.raw` | Legacy logs, free-form messages |
+| Custom hints | Custom extensions | Custom formats (≤10 chars) |
+
+#### File Naming Conventions
+- **Raw files**: `{nanoseconds}_{bytes}_{lines}.{extension}` (e.g., `1759099025440823103_91_1.log`)
+- **Merged files**: `{tenant}--{dataset}--{timestamp}--{dataHint}.gz` (e.g., `test--syslog-data--1759099032349835515--syslog.gz`)
+
+#### Updated Plugin Configurations
+All plugins now support `data_hint` parameter:
+```yaml
+inputs:
+  - type: "udp"
+    config:
+      data_hint: "syslog"    # Creates .log files
+  - type: "http"
+    config:
+      data_hint: "ndjson"    # Creates .ndjson files
+  - type: "kafka"
+    config:
+      data_hint: "ndjson"    # Creates .ndjson files
+```
+
+#### Plugins Updated
+- ✅ **UDP Plugin**: Direct filesystem writes with data hints
+- ✅ **HTTP Plugin**: Direct filesystem writes with data hints
+- ✅ **Kafka Plugin**: Direct filesystem writes with data hints
+- ✅ **NATS Plugin**: Direct filesystem writes with data hints
+- ✅ **SQS Plugin**: Direct filesystem writes with data hints
+- ✅ **Kinesis Plugin**: Direct filesystem writes with data hints
+
+#### Testing & Verification
+- All unit tests updated and passing
+- End-to-end testing confirms proper file extensions
+- Line count accuracy maintained through pipeline
+- Zero message loss verified under load
+
+#### Migration Notes
+- **Configuration**: Add `data_hint` parameters to existing plugin configurations
+- **File Extensions**: Existing deployments will see new semantic file extensions
+- **Backward Compatibility**: System handles both old and new filename formats
+- **Ansible Playbooks**: Updated with proper data hints for all plugin examples
+
+---
+
 ### 📊 Enhanced Metadata: Compression Size Tracking
 **Release Date**: September 21, 2025
 

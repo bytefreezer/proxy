@@ -28,7 +28,7 @@ func TestSpoolingService_StoreRawMessage(t *testing.T) {
 	service := NewSpoolingService(cfg)
 
 	testData := []byte(`{"message": "test message", "timestamp": "2024-01-15T10:30:45Z"}`)
-	err = service.StoreRawMessage("test-tenant", "test-dataset", "test-token", testData)
+	err = service.StoreRawMessage("test-tenant", "test-dataset", "test-token", testData, "ndjson")
 	if err != nil {
 		t.Fatalf("Failed to store raw message: %v", err)
 	}

@@ -279,7 +279,11 @@ func (p *Plugin) processRecord(record types.Record, shardID string) {
 
 	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
 	bearerToken := p.config.BearerToken
-	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+	dataHint := p.config.DataHint
+	if dataHint == "" {
+		dataHint = "raw" // default for Kinesis
+	}
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData, dataHint); err != nil {
 		log.Errorf("Failed to store Kinesis record to filesystem from shard %s: %v", shardID, err)
 		p.mu.Lock()
 		p.metrics.RecordsDropped++

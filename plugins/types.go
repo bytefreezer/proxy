@@ -27,7 +27,7 @@ type InputPlugin interface {
 
 // SpoolingInterface defines the interface plugins use for direct filesystem writes
 type SpoolingInterface interface {
-	StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte) error
+	StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error
 }
 
 // DataMessage represents raw data from any input source
