@@ -6,6 +6,7 @@ import (
 )
 
 // InputPlugin defines the interface that all input plugins must implement
+// All plugins now write directly to filesystem first (zero data loss architecture)
 type InputPlugin interface {
 	// Name returns the plugin name (e.g., "udp", "kafka", "nats")
 	Name() string
@@ -13,14 +14,20 @@ type InputPlugin interface {
 	// Configure initializes the plugin with config
 	Configure(config map[string]interface{}) error
 
-	// Start begins consuming data and sends to output channel
-	Start(ctx context.Context, output chan<- *DataMessage) error
+	// Start begins consuming data and writes directly to filesystem
+	// This method bypasses channels entirely for guaranteed data persistence
+	Start(ctx context.Context, spooler SpoolingInterface) error
 
 	// Stop gracefully shuts down the plugin
 	Stop() error
 
 	// Health returns plugin health status
 	Health() PluginHealth
+}
+
+// SpoolingInterface defines the interface plugins use for direct filesystem writes
+type SpoolingInterface interface {
+	StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte) error
 }
 
 // DataMessage represents raw data from any input source

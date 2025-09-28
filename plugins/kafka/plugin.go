@@ -12,7 +12,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Plugin implements the Kafka input plugin
+// Plugin implements the Kafka input plugin with direct filesystem writes
 type Plugin struct {
 	config        Config
 	consumer      sarama.ConsumerGroup
@@ -21,7 +21,7 @@ type Plugin struct {
 	wg            sync.WaitGroup
 	health        plugins.PluginHealth
 	mu            sync.RWMutex
-	output        chan<- *plugins.DataMessage
+	spooler       plugins.SpoolingInterface
 	metrics       PluginMetrics
 	consumerReady chan bool
 }
@@ -116,8 +116,8 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	return nil
 }
 
-// Start begins consuming Kafka messages
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+// Start begins consuming Kafka messages with direct filesystem writes
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -125,8 +125,13 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		return fmt.Errorf("plugin is already started")
 	}
 
+	// Set default data hint if not specified
+	if p.config.DataHint == "" {
+		p.config.DataHint = "raw"
+	}
+
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.metrics.StartTime = time.Now()
 
 	// Create Kafka consumer configuration
@@ -164,8 +169,8 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 	// Wait for consumer to be ready
 	select {
 	case <-p.consumerReady:
-		p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Kafka consumer active for topics: %v", p.config.Topics), "")
-		log.Infof("Kafka plugin started for topics %v", p.config.Topics)
+		p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Kafka consumer active with direct spooling for topics: %v", p.config.Topics), "")
+		log.Infof("Kafka plugin started with direct spooling for topics %v", p.config.Topics)
 	case <-time.After(30 * time.Second):
 		p.updateHealth(plugins.HealthStatusUnhealthy, "Timeout waiting for Kafka consumer to start", "")
 		return fmt.Errorf("timeout waiting for Kafka consumer to start")
@@ -350,15 +355,16 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 		dataMsg.Metadata[fmt.Sprintf("header_%s", string(header.Key))] = string(header.Value)
 	}
 
-	// Send to output channel
-	select {
-	case p.output <- dataMsg:
-		// Mark message as processed
-		session.MarkMessage(msg, "")
-	case <-p.ctx.Done():
-		return
-	default:
-		log.Warnf("Output channel full, dropping Kafka message from topic %s", msg.Topic)
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("Failed to store Kafka message to filesystem from topic %s: %v", msg.Topic, err)
 		p.metrics.MessagesDropped++
+		return
 	}
+
+	// Mark message as processed only after successful storage
+	session.MarkMessage(msg, "")
+
+	log.Debugf("Stored Kafka message from topic %s directly to filesystem: %d bytes", msg.Topic, len(msg.Value))
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Plugin implements the SQS input plugin
+// Plugin implements the SQS input plugin with direct filesystem writes
 type Plugin struct {
 	config   Config
 	client   *sqs.Client
@@ -26,7 +26,7 @@ type Plugin struct {
 	wg       sync.WaitGroup
 	health   plugins.PluginHealth
 	mu       sync.RWMutex
-	output   chan<- *plugins.DataMessage
+	spooler  plugins.SpoolingInterface
 	metrics  PluginMetrics
 }
 
@@ -152,16 +152,16 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	return nil
 }
 
-// Start begins consuming messages from SQS
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+// Start begins consuming messages from SQS with direct filesystem writes
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.health.Status = plugins.HealthStatusStarting
 	p.health.LastUpdated = time.Now()
 	p.mu.Unlock()
 
-	log.Infof("SQS plugin started with %d workers for queue %s", p.config.WorkerCount, p.config.QueueName)
+	log.Infof("SQS plugin started with direct spooling using %d workers for queue %s", p.config.WorkerCount, p.config.QueueName)
 
 	// Start message processing workers
 	for i := 0; i < p.config.WorkerCount; i++ {
@@ -169,7 +169,7 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		go p.messageWorker(i)
 	}
 
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Processing messages with %d workers", p.config.WorkerCount))
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Processing messages with direct spooling using %d workers", p.config.WorkerCount))
 	p.metrics.WorkersActive = p.config.WorkerCount
 
 	return nil
@@ -306,14 +306,6 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 		}
 	}
 
-	msg := &plugins.DataMessage{
-		Data:          formattedData,
-		TenantID:      p.config.TenantID,
-		DatasetID:     p.config.DatasetID,
-		DataHint:      p.config.DataHint,
-		Timestamp:     time.Now(), // SQS doesn't provide original timestamp
-		Metadata:      metadata,
-	}
 
 	// Update metrics
 	p.mu.Lock()
@@ -322,28 +314,27 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 	p.metrics.LastMessageTime = time.Now()
 	p.mu.Unlock()
 
-	// Send to output channel
-	select {
-	case p.output <- msg:
-		log.Debugf("SQS worker %d processed message: %d bytes", workerID, len(*message.Body))
-
-		// Delete message if configured to do so
-		if p.config.DeleteAfterProcess {
-			if err := p.deleteMessage(message); err != nil {
-				log.Errorf("SQS worker %d failed to delete message %s: %v", workerID, *message.MessageId, err)
-			} else {
-				p.mu.Lock()
-				p.metrics.MessagesDeleted++
-				p.mu.Unlock()
-			}
-		}
-	case <-p.ctx.Done():
-		return
-	default:
-		log.Warnf("SQS worker %d output channel full, dropping message", workerID)
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("SQS worker %d failed to store message to filesystem: %v", workerID, err)
 		p.mu.Lock()
 		p.metrics.MessagesDropped++
 		p.mu.Unlock()
+		return
+	}
+
+	log.Debugf("SQS worker %d stored message directly to filesystem: %d bytes", workerID, len(*message.Body))
+
+	// Delete message if configured to do so
+	if p.config.DeleteAfterProcess {
+		if err := p.deleteMessage(message); err != nil {
+			log.Errorf("SQS worker %d failed to delete message %s: %v", workerID, *message.MessageId, err)
+		} else {
+			p.mu.Lock()
+			p.metrics.MessagesDeleted++
+			p.mu.Unlock()
+		}
 	}
 }
 

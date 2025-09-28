@@ -14,7 +14,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Plugin implements the HTTP webhook input plugin
+// Plugin implements the HTTP webhook input plugin with direct filesystem writes
 type Plugin struct {
 	config  Config
 	server  *http.Server
@@ -23,7 +23,7 @@ type Plugin struct {
 	wg      sync.WaitGroup
 	health  plugins.PluginHealth
 	mu      sync.RWMutex
-	output  chan<- *plugins.DataMessage
+	spooler plugins.SpoolingInterface
 	metrics PluginMetrics
 }
 
@@ -126,8 +126,8 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	return nil
 }
 
-// Start begins the HTTP webhook server
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+// Start begins the HTTP webhook server with direct filesystem writes
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -135,8 +135,13 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		return fmt.Errorf("plugin is already started")
 	}
 
+	// Set default data hint if not specified
+	if p.config.DataHint == "" {
+		p.config.DataHint = "raw"
+	}
+
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.metrics.StartTime = time.Now()
 
 	// Create HTTP server
@@ -165,8 +170,8 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		}
 	}()
 
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("HTTP webhook server active on %s%s", p.server.Addr, p.config.Path), "")
-	log.Infof("HTTP plugin started on %s%s", p.server.Addr, p.config.Path)
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("HTTP webhook server active with direct spooling on %s%s", p.server.Addr, p.config.Path), "")
+	log.Infof("HTTP plugin started with direct spooling on %s%s", p.server.Addr, p.config.Path)
 
 	return nil
 }
@@ -344,18 +349,22 @@ func (p *Plugin) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Send to output channel
-	select {
-	case p.output <- dataMsg:
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	case <-p.ctx.Done():
-		http.Error(w, "Service shutting down", http.StatusServiceUnavailable)
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("Failed to store HTTP message to filesystem from %s: %v", r.RemoteAddr, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		p.mu.Lock()
+		p.metrics.RequestsRejected++
+		p.mu.Unlock()
 		return
-	default:
-		http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
-		log.Warnf("Output channel full, dropping HTTP request from %s", r.RemoteAddr)
 	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+
+	log.Debugf("Stored HTTP message from %s directly to filesystem (%d bytes)",
+		r.RemoteAddr, len(formattedData))
 }
 
 // healthHandler provides a simple health check endpoint

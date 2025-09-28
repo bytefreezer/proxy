@@ -33,7 +33,6 @@ type activeBatch struct {
 	BearerToken   string
 	DataHint      string
 	Messages      [][]byte
-	LineCount     int64
 	TotalBytes    int64
 	CreatedAt     time.Time
 	LastUpdated   time.Time
@@ -115,7 +114,6 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 
 	// Add message to batch (data should already be validated at input)
 	batch.Messages = append(batch.Messages, msg.Data)
-	batch.LineCount++
 	batch.TotalBytes += int64(len(msg.Data))
 	batch.LastUpdated = time.Now()
 
@@ -129,7 +127,7 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 // shouldFinalizeBatch determines if a batch should be finalized and returns the reason
 func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) string {
 	// Check line count limit (only if > 0, 0 = disabled)
-	if bp.config.Batching.MaxLines > 0 && batch.LineCount >= int64(bp.config.Batching.MaxLines) {
+	if bp.config.Batching.MaxLines > 0 && int64(len(batch.Messages)) >= int64(bp.config.Batching.MaxLines) {
 		return "line_limit_reached"
 	}
 
@@ -143,8 +141,11 @@ func (bp *BatchProcessor) shouldFinalizeBatch(batch *activeBatch) string {
 
 // finalizeBatch converts an active batch to a domain batch and sends it
 func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason string) {
+	// Calculate actual line count based on messages that made it through
+	actualLineCount := len(batch.Messages)
+
 	log.Debugf("Finalizing batch %s (%s): %d messages, %d bytes",
-		key, reason, batch.LineCount, batch.TotalBytes)
+		key, reason, actualLineCount, batch.TotalBytes)
 
 	// Concatenate all messages with newlines
 	var buffer bytes.Buffer
@@ -169,7 +170,7 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 		DatasetID:     batch.DatasetID,
 		DataHint:      batch.DataHint,
 		Data:          compressedData,
-		LineCount:     int(batch.LineCount),
+		LineCount:     actualLineCount, // Use actual count of messages that made it through
 		TotalBytes:    batch.TotalBytes, // Original uncompressed size
 		CreatedAt:     batch.CreatedAt,
 		BearerToken:   batch.BearerToken,
@@ -259,11 +260,12 @@ func (bp *BatchProcessor) GetBatchStats() map[string]interface{} {
 	totalBytes := int64(0)
 
 	for key, batch := range bp.batches {
-		totalMessages += batch.LineCount
+		batchMessages := int64(len(batch.Messages))
+		totalMessages += batchMessages
 		totalBytes += batch.TotalBytes
 
 		stats[fmt.Sprintf("batch_%s", key)] = map[string]interface{}{
-			"messages": batch.LineCount,
+			"messages": batchMessages,
 			"bytes":    batch.TotalBytes,
 			"age":      time.Since(batch.CreatedAt).Seconds(),
 		}

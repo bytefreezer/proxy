@@ -53,8 +53,8 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 	// Create upload channel for immediate upload notifications
 	uploadChannel := make(chan *domain.DataBatch, 1000)
 
-	// Create plugin manager with global configuration support
-	pluginManager := plugins.NewManagerWithGlobals(cfg.Inputs, inputChannel, plugins.GlobalRegistry, cfg.TenantID, cfg.BearerToken)
+	// Create plugin manager with global configuration support and direct filesystem writes
+	pluginManager := plugins.NewManagerWithGlobals(cfg.Inputs, spoolingService, plugins.GlobalRegistry, cfg.TenantID, cfg.BearerToken)
 
 	// Create batch processor (reuse existing batching logic)
 	batchProcessor := NewBatchProcessor(cfg)

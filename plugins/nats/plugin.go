@@ -13,7 +13,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// Plugin implements the NATS input plugin
+// Plugin implements the NATS input plugin with direct filesystem writes
 type Plugin struct {
 	config        Config
 	conn          *nats.Conn
@@ -23,7 +23,7 @@ type Plugin struct {
 	wg            sync.WaitGroup
 	health        plugins.PluginHealth
 	mu            sync.RWMutex
-	output        chan<- *plugins.DataMessage
+	spooler       plugins.SpoolingInterface
 	metrics       PluginMetrics
 }
 
@@ -115,8 +115,8 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	return nil
 }
 
-// Start begins consuming NATS messages
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+// Start begins consuming NATS messages with direct filesystem writes
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -124,8 +124,13 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		return fmt.Errorf("plugin is already started")
 	}
 
+	// Set default data hint if not specified
+	if p.config.DataHint == "" {
+		p.config.DataHint = "raw"
+	}
+
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.metrics.StartTime = time.Now()
 
 	// Create NATS connection options
@@ -187,8 +192,8 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		log.Infof("NATS plugin subscribed to subject: %s", subject)
 	}
 
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("NATS active on %s for subjects: %v", conn.ConnectedUrl(), p.config.Subjects), "")
-	log.Infof("NATS plugin started for subjects %v", p.config.Subjects)
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("NATS active with direct spooling on %s for subjects: %v", conn.ConnectedUrl(), p.config.Subjects), "")
+	log.Infof("NATS plugin started with direct spooling for subjects %v", p.config.Subjects)
 
 	return nil
 }
@@ -310,15 +315,16 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 		}
 	}
 
-	// Send to output channel
-	select {
-	case p.output <- dataMsg:
-	case <-p.ctx.Done():
-		return
-	default:
-		log.Warnf("Output channel full, dropping NATS message from subject %s", msg.Subject)
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("Failed to store NATS message to filesystem from subject %s: %v", msg.Subject, err)
 		p.mu.Lock()
 		p.metrics.MessagesDropped++
 		p.mu.Unlock()
+		return
 	}
+
+	log.Debugf("Stored NATS message from subject %s directly to filesystem (%d bytes)",
+		msg.Subject, len(formattedData))
 }

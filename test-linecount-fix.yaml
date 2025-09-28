@@ -29,7 +29,7 @@ inputs:
       enable_authentication: false
 
 # Global tenant configuration
-tenant_id: "linecount-test"
+tenant_id: "linecount-tenant"
 bearer_token: "test-token"
 
 # Bytefreezer-receiver configuration

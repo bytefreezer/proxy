@@ -9,11 +9,11 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Manager manages multiple input plugins and routes their data
+// Manager manages multiple input plugins with direct filesystem writes
 type Manager struct {
 	plugins    map[string]InputPlugin
 	configs    []PluginConfig
-	output     chan<- *DataMessage
+	spooler    SpoolingInterface
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -29,8 +29,8 @@ type PluginConfig struct {
 	Config map[string]interface{} `mapstructure:"config"`
 }
 
-// NewManager creates a new plugin manager
-func NewManager(configs []PluginConfig, output chan<- *DataMessage, registry *Registry) *Manager {
+// NewManager creates a new plugin manager with direct filesystem writes
+func NewManager(configs []PluginConfig, spooler SpoolingInterface, registry *Registry) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if registry == nil {
@@ -40,7 +40,7 @@ func NewManager(configs []PluginConfig, output chan<- *DataMessage, registry *Re
 	return &Manager{
 		plugins:    make(map[string]InputPlugin),
 		configs:    configs,
-		output:     output,
+		spooler:    spooler,
 		ctx:        ctx,
 		cancel:     cancel,
 		registry:   registry,
@@ -48,8 +48,8 @@ func NewManager(configs []PluginConfig, output chan<- *DataMessage, registry *Re
 	}
 }
 
-// NewManagerWithGlobals creates a new plugin manager with global configuration support
-func NewManagerWithGlobals(configs []PluginConfig, output chan<- *DataMessage, registry *Registry, globalTenantID, globalBearerToken string) *Manager {
+// NewManagerWithGlobals creates a new plugin manager with global configuration support and direct filesystem writes
+func NewManagerWithGlobals(configs []PluginConfig, spooler SpoolingInterface, registry *Registry, globalTenantID, globalBearerToken string) *Manager {
 	// Enrich plugin configs with global values when missing
 	enrichedConfigs := make([]PluginConfig, len(configs))
 	for i, config := range configs {
@@ -72,7 +72,7 @@ func NewManagerWithGlobals(configs []PluginConfig, output chan<- *DataMessage, r
 		}
 	}
 
-	return NewManager(enrichedConfigs, output, registry)
+	return NewManager(enrichedConfigs, spooler, registry)
 }
 
 // Start initializes and starts all configured plugins
@@ -112,8 +112,8 @@ func (m *Manager) startPlugin(config PluginConfig) error {
 		return fmt.Errorf("failed to configure plugin: %w", err)
 	}
 
-	// Start plugin
-	if err := plugin.Start(m.ctx, m.output); err != nil {
+	// Start plugin with direct filesystem writes
+	if err := plugin.Start(m.ctx, m.spooler); err != nil {
 		return fmt.Errorf("failed to start plugin: %w", err)
 	}
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Plugin implements the UDP input plugin
+// Plugin implements the UDP input plugin with direct filesystem writes
 type Plugin struct {
 	config  Config
 	conn    *net.UDPConn
@@ -23,7 +22,7 @@ type Plugin struct {
 	wg      sync.WaitGroup
 	health  plugins.PluginHealth
 	mu      sync.RWMutex
-	output  chan<- *plugins.DataMessage
+	spooler plugins.SpoolingInterface
 	metrics PluginMetrics
 }
 
@@ -38,8 +37,6 @@ type Config struct {
 	SyslogMode        string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424"
 	DataHint          string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "raw")
 	ReadBufferSize    int    `mapstructure:"read_buffer_size,omitempty"`
-	WorkerCount       int    `mapstructure:"worker_count,omitempty"`
-	ChannelBufferSize int    `mapstructure:"channel_buffer_size,omitempty"`
 }
 
 // PluginMetrics tracks UDP plugin metrics
@@ -99,12 +96,6 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	if p.config.ReadBufferSize == 0 {
 		p.config.ReadBufferSize = 65536 // 64KB default
 	}
-	if p.config.WorkerCount == 0 {
-		p.config.WorkerCount = 4
-	}
-	if p.config.ChannelBufferSize == 0 {
-		p.config.ChannelBufferSize = 10000
-	}
 
 	// Validate protocol
 	validProtocols := map[string]bool{
@@ -122,7 +113,7 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 }
 
 // Start begins consuming UDP data
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -136,7 +127,7 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 	}
 
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.metrics.StartTime = time.Now()
 
 	// Create UDP listener
@@ -159,26 +150,18 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		log.Warnf("Failed to set UDP read buffer size to %d: %v", p.config.ReadBufferSize, err)
 	}
 
-	p.updateHealth(plugins.HealthStatusStarting, "Starting UDP listener workers", "")
+	p.updateHealth(plugins.HealthStatusStarting, "Starting UDP listener with direct spooling", "")
 
-	// Start worker goroutines
-	messageChannel := make(chan *udpMessage, p.config.ChannelBufferSize)
-
-	// Start packet receiver
+	// Start packet reader with direct spooling (no channels, no drops)
 	p.wg.Add(1)
-	go p.packetReceiver(messageChannel)
+	go p.packetReaderWithSpooling()
 
-	// Start message processors
-	for i := 0; i < p.config.WorkerCount; i++ {
-		p.wg.Add(1)
-		go p.messageProcessor(messageChannel)
-	}
-
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("UDP listener active on %s:%d", p.config.Host, p.config.Port), "")
-	log.Infof("UDP plugin started on %s:%d with %d workers", p.config.Host, p.config.Port, p.config.WorkerCount)
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("UDP listener active with direct spooling on %s:%d", p.config.Host, p.config.Port), "")
+	log.Infof("UDP plugin started with direct spooling on %s:%d", p.config.Host, p.config.Port)
 
 	return nil
 }
+
 
 // Stop gracefully shuts down the UDP plugin
 func (p *Plugin) Stop() error {
@@ -229,16 +212,10 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError st
 	}
 }
 
-// udpMessage represents a received UDP packet with metadata
-type udpMessage struct {
-	Data []byte
-	From *net.UDPAddr
-}
 
-// packetReceiver reads UDP packets and forwards them to processing channel
-func (p *Plugin) packetReceiver(messageChannel chan<- *udpMessage) {
+// packetReaderWithSpooling reads UDP packets and writes directly to filesystem (zero data loss)
+func (p *Plugin) packetReaderWithSpooling() {
 	defer p.wg.Done()
-	defer close(messageChannel)
 
 	buffer := make([]byte, 65536) // 64KB buffer for UDP packets
 
@@ -247,68 +224,38 @@ func (p *Plugin) packetReceiver(messageChannel chan<- *udpMessage) {
 		case <-p.ctx.Done():
 			return
 		default:
-			// Set read deadline to prevent blocking indefinitely
+			// Set read deadline to allow checking for context cancellation
 			p.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 
-			n, addr, err := p.conn.ReadFromUDP(buffer)
+			n, clientAddr, err := p.conn.ReadFromUDP(buffer)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue // Timeout is expected, continue listening
+					continue // Timeout is expected, continue to check context
 				}
-				if strings.Contains(err.Error(), "use of closed network connection") {
-					return // Connection closed, normal shutdown
+				if p.ctx.Err() != nil {
+					return // Context cancelled
 				}
-				log.Errorf("UDP read error: %v", err)
-				p.metrics.PacketsDropped++
+				log.Errorf("Error reading UDP packet: %v", err)
 				continue
 			}
 
-			// Update metrics
-			p.metrics.PacketsReceived++
+			// Process message with direct spooling
 			if n > 0 {
-				p.metrics.BytesReceived += uint64(n) // #nosec G115 - n is always positive from ReadFromUDP
-			}
-			p.metrics.LastPacketTime = time.Now()
-
-			// Copy data to avoid buffer reuse issues
-			data := make([]byte, n)
-			copy(data, buffer[:n])
-
-			// Send to processing channel
-			select {
-			case messageChannel <- &udpMessage{Data: data, From: addr}:
-			case <-p.ctx.Done():
-				return
-			default:
-				// Channel is full, drop packet
-				p.metrics.PacketsDropped++
-				log.Warnf("UDP message channel full, dropping packet from %s", addr)
+				p.processMessageWithSpooling(buffer[:n], clientAddr)
 			}
 		}
 	}
 }
 
-// messageProcessor processes UDP messages and sends them to output
-func (p *Plugin) messageProcessor(messageChannel <-chan *udpMessage) {
-	defer p.wg.Done()
+// processMessageWithSpooling processes UDP message with direct filesystem write (zero data loss)
+func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr) {
+	// Update metrics
+	p.metrics.PacketsReceived++
+	p.metrics.BytesReceived += uint64(len(data))
+	p.metrics.LastPacketTime = time.Now()
 
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case msg, ok := <-messageChannel:
-			if !ok {
-				return // Channel closed
-			}
-			p.processMessage(msg)
-		}
-	}
-}
-
-// processMessage processes a single UDP message
-func (p *Plugin) processMessage(msg *udpMessage) {
 	// Minimal cleanup - only remove null bytes
-	payload := bytes.Trim(msg.Data, "\x00")
+	payload := bytes.Trim(data, "\x00")
 	if len(payload) == 0 {
 		return
 	}
@@ -320,43 +267,20 @@ func (p *Plugin) processMessage(msg *udpMessage) {
 		formatter := plugins.GetFormatter(p.config.DataHint)
 		formattedData, err = formatter.Format(payload)
 		if err != nil {
-			log.Warnf("Data formatting failed for UDP packet from %s (format: %s): %v", msg.From.IP.String(), p.config.DataHint, err)
+			log.Warnf("Data formatting failed for UDP packet from %s (format: %s): %v", clientAddr.IP.String(), p.config.DataHint, err)
 			// Continue with original payload if formatting fails
 			formattedData = payload
 		}
 	}
 
-	// Create data message for output
-	dataMsg := &plugins.DataMessage{
-		Data:          formattedData,
-		TenantID:      p.config.TenantID,
-		DatasetID:     p.config.DatasetID,
-		DataHint:      p.config.DataHint,
-		Timestamp:     time.Now(),
-		SourceIP:      msg.From.IP.String(),
-		Metadata: map[string]string{
-			"source_port": fmt.Sprintf("%d", msg.From.Port),
-			"protocol":    p.config.Protocol,
-			"plugin":      "udp",
-		},
-	}
-
-	// Add bearer token if configured
-	if p.config.BearerToken != "" {
-		dataMsg.Metadata["bearer_token"] = p.config.BearerToken
-	}
-
-	// Add syslog mode if applicable
-	if p.config.Protocol == "syslog" && p.config.SyslogMode != "" {
-		dataMsg.Metadata["syslog_mode"] = p.config.SyslogMode
-	}
-
-	// Send to output channel
-	select {
-	case p.output <- dataMsg:
-	case <-p.ctx.Done():
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("Failed to store UDP message to filesystem from %s: %v", clientAddr.IP.String(), err)
+		p.metrics.PacketsDropped++
 		return
-	default:
-		log.Warnf("Output channel full, dropping message from %s", msg.From)
 	}
+
+	log.Debugf("Stored UDP message from %s:%d directly to filesystem (%d bytes)",
+		clientAddr.IP.String(), clientAddr.Port, len(formattedData))
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
-// Plugin implements the Kinesis input plugin
+// Plugin implements the Kinesis input plugin with direct filesystem writes
 type Plugin struct {
 	config     Config
 	client     *kinesis.Client
@@ -25,7 +25,7 @@ type Plugin struct {
 	wg         sync.WaitGroup
 	health     plugins.PluginHealth
 	mu         sync.RWMutex
-	output     chan<- *plugins.DataMessage
+	spooler    plugins.SpoolingInterface
 	metrics    PluginMetrics
 	shardIters map[string]string // track shard iterators
 }
@@ -115,11 +115,11 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	return nil
 }
 
-// Start begins consuming data from Kinesis
-func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) error {
+// Start begins consuming data from Kinesis with direct filesystem writes
+func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) error {
 	p.mu.Lock()
 	p.ctx, p.cancel = context.WithCancel(ctx)
-	p.output = output
+	p.spooler = spooler
 	p.health.Status = plugins.HealthStatusStarting
 	p.health.LastUpdated = time.Now()
 	p.mu.Unlock()
@@ -131,7 +131,7 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		return fmt.Errorf("failed to get shards: %w", err)
 	}
 
-	log.Infof("Kinesis plugin started for stream %s with %d shards", p.config.StreamName, len(shards))
+	log.Infof("Kinesis plugin started with direct spooling for stream %s with %d shards", p.config.StreamName, len(shards))
 
 	// Start shard readers
 	for _, shard := range shards {
@@ -139,7 +139,7 @@ func (p *Plugin) Start(ctx context.Context, output chan<- *plugins.DataMessage) 
 		go p.readShard(&shard)
 	}
 
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Processing %d shards", len(shards)))
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("Processing %d shards with direct spooling", len(shards)))
 	p.metrics.ShardsActive = len(shards)
 
 	return nil
@@ -269,19 +269,6 @@ func (p *Plugin) processRecord(record types.Record, shardID string) {
 		}
 	}
 
-	msg := &plugins.DataMessage{
-		Data:          formattedData,
-		TenantID:      p.config.TenantID,
-		DatasetID:     p.config.DatasetID,
-		DataHint:      p.config.DataHint,
-		Timestamp:     *record.ApproximateArrivalTimestamp,
-		Metadata: map[string]string{
-			"kinesis_stream":      p.config.StreamName,
-			"kinesis_shard_id":    shardID,
-			"kinesis_sequence_number": *record.SequenceNumber,
-			"kinesis_partition_key":   *record.PartitionKey,
-		},
-	}
 
 	// Update metrics
 	p.mu.Lock()
@@ -290,18 +277,17 @@ func (p *Plugin) processRecord(record types.Record, shardID string) {
 	p.metrics.LastRecordTime = time.Now()
 	p.mu.Unlock()
 
-	// Send to output channel
-	select {
-	case p.output <- msg:
-		log.Debugf("Processed Kinesis record from shard %s: %d bytes", shardID, len(record.Data))
-	case <-p.ctx.Done():
-		return
-	default:
-		log.Warnf("Output channel full, dropping Kinesis record from shard %s", shardID)
+	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	bearerToken := p.config.BearerToken
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, formattedData); err != nil {
+		log.Errorf("Failed to store Kinesis record to filesystem from shard %s: %v", shardID, err)
 		p.mu.Lock()
 		p.metrics.RecordsDropped++
 		p.mu.Unlock()
+		return
 	}
+
+	log.Debugf("Stored Kinesis record from shard %s directly to filesystem: %d bytes", shardID, len(record.Data))
 }
 
 // updateHealth updates plugin health status
