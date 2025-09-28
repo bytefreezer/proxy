@@ -926,7 +926,7 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		DataHint:      dataHint,
 		CreatedAt:     time.Now(),
 		TotalBytes:    int64(len(data)),
-		LineCount:     strings.Count(string(data), "\n"), // Simple line count
+		LineCount:     s.countLines(data), // Count non-empty lines only
 	}
 
 	// Attempt upload
@@ -1722,17 +1722,15 @@ func (s *SpoolingService) countLines(data []byte) int {
 		dataToCount = data
 	}
 
-	// Count newline characters
+	// Count non-empty lines only
 	count := 0
-	for _, b := range dataToCount {
-		if b == '\n' {
+	lines := bytes.Split(dataToCount, []byte("\n"))
+
+	for _, line := range lines {
+		// Only count lines that have content (not just whitespace)
+		if len(bytes.TrimSpace(line)) > 0 {
 			count++
 		}
-	}
-
-	// If data doesn't end with newline, the last line still counts
-	if len(dataToCount) > 0 && dataToCount[len(dataToCount)-1] != '\n' {
-		count++
 	}
 
 	return count
