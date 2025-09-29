@@ -76,3 +76,4 @@ spooling:
   retry_timer: 10
   retry_max_attempts: 3
   retry_processors: 1
+  keep_src: true

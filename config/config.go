@@ -127,6 +127,7 @@ type Spooling struct {
 	RetryAttempts      int    `mapstructure:"retry_attempts"`
 	RetryIntervalSec   int    `mapstructure:"retry_interval_seconds"`
 	CleanupIntervalSec int    `mapstructure:"cleanup_interval_seconds"`
+	KeepSrc            bool   `mapstructure:"keep_src"`
 
 	// Organization settings
 	Organization       string `mapstructure:"organization"`          // "flat", "tenant_dataset", "date_tenant", "protocol_tenant"

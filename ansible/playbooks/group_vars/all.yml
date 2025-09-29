@@ -138,6 +138,7 @@ config:
     retry_attempts: 5
     retry_interval_seconds: 60
     cleanup_interval_seconds: 300
+    keep_src: true
   
   dev: false
 

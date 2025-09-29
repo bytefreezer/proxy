@@ -86,6 +86,7 @@ spooling:
   retry_attempts: {{ config.spooling.retry_attempts }}
   retry_interval_seconds: {{ config.spooling.retry_interval_seconds }}
   cleanup_interval_seconds: {{ config.spooling.cleanup_interval_seconds }}
+  keep_src: {{ config.spooling.keep_src | lower }}
 
 # Development mode
 dev: {{ config.dev | lower }}

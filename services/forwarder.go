@@ -6,7 +6,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -163,6 +165,14 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		log.Debugf("Successfully forwarded batch %s to %s (status: %d)",
 			batch.ID, url, resp.StatusCode)
+
+		// Preserve source files if keep_src is enabled
+		if f.config.Spooling.KeepSrc {
+			if err := f.preserveSource(batch, req.Header); err != nil {
+				log.Warnf("Failed to preserve source for batch %s: %v", batch.ID, err)
+			}
+		}
+
 		return nil
 	}
 
@@ -205,4 +215,81 @@ func extractDataHint(filename string) string {
 	}
 
 	return ""
+}
+
+// preserveSource saves the batch file and headers to {dataset}/src directory for debugging/audit
+func (f *HTTPForwarder) preserveSource(batch *domain.DataBatch, headers http.Header) error {
+	// Create src directory path: {spooldir}/{tenantid}/{dataset}/src/
+	srcDir := filepath.Join(f.config.Spooling.Directory, batch.TenantID, batch.DatasetID, "src")
+	if err := os.MkdirAll(srcDir, 0750); err != nil {
+		return fmt.Errorf("failed to create src directory %s: %w", srcDir, err)
+	}
+
+	// Get source file path (current location of the batch file in queue directory)
+	srcFile := batch.Filename
+	if !filepath.IsAbs(srcFile) {
+		// Batch files are located in the queue directory: {spooldir}/{tenantid}/{datasetid}/queue/{filename}
+		srcFile = filepath.Join(f.config.Spooling.Directory, batch.TenantID, batch.DatasetID, "queue", srcFile)
+	}
+
+	// Generate target filename in src directory
+	baseFilename := filepath.Base(batch.Filename)
+	targetFile := filepath.Join(srcDir, baseFilename)
+	headersFile := targetFile + ".headers"
+
+	// Copy the batch file to src directory
+	if err := f.copyFile(srcFile, targetFile); err != nil {
+		return fmt.Errorf("failed to copy batch file to src: %w", err)
+	}
+
+	// Create headers file with all HTTP headers sent to receiver
+	headersContent := f.formatHeaders(headers)
+	if err := os.WriteFile(headersFile, []byte(headersContent), 0600); err != nil {
+		return fmt.Errorf("failed to write headers file: %w", err)
+	}
+
+	log.Debugf("Preserved source files for batch %s: %s and %s", batch.ID, targetFile, headersFile)
+	return nil
+}
+
+// copyFile copies a file from src to dst with path validation
+func (f *HTTPForwarder) copyFile(src, dst string) error {
+	// Validate paths to prevent directory traversal
+	if !filepath.IsAbs(src) {
+		return fmt.Errorf("source path must be absolute: %s", src)
+	}
+	if !filepath.IsAbs(dst) {
+		return fmt.Errorf("destination path must be absolute: %s", dst)
+	}
+
+	// Clean paths to remove any .. elements
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	srcFile, err := os.Open(filepath.Clean(src))
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(filepath.Clean(dst))
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// formatHeaders formats HTTP headers for storage
+func (f *HTTPForwarder) formatHeaders(headers http.Header) string {
+	var lines []string
+	for key, values := range headers {
+		for _, value := range values {
+			lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+		}
+	}
+	sort.Strings(lines) // Sort for consistent output
+	return strings.Join(lines, "\n") + "\n"
 }
