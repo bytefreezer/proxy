@@ -135,25 +135,60 @@ When no `data_hint` is specified, the system defaults to `"raw"`, meaning no spe
 - **Example**: `MSH|^~\&|LAB|HOSPITAL|EMR|CLINIC|20250115103045||ORU^R01|12345|P|2.3`
 - **Processing**: HL7 segment parsing, field extraction, message validation
 
-### Binary Formats
+### Network Flow Formats (Parsed to NDJSON)
 
-#### **sflow** - Sampled Network Packet Data (BINARY)
-- **Description**: sFlow network monitoring protocol data
+**Note**: These formats are now handled by dedicated plugins that parse binary flow data into NDJSON format for downstream processing.
+
+#### **sflow** - sFlow Network Flow Monitoring
+- **Description**: sFlow v5 network flow data parsed to NDJSON
 - **Use Case**: Network traffic analysis, bandwidth monitoring
-- **Processing**: Binary sFlow packet parsing, sample extraction
-- **Note**: Binary format - requires specialized parsing
+- **Plugin**: Use `type: "sflow"` plugin (not UDP plugin)
+- **Processing**: Binary sFlow parsing via goflow2, output as NDJSON
+- **Data Hint**: `ndjson` (flows are automatically converted to JSON)
+- **Example Config**:
+  ```yaml
+  - type: "sflow"
+    name: "sflow-collector"
+    config:
+      port: 6343
+      dataset_id: "network-sflow"
+      protocol: "sflow"
+      data_hint: "ndjson"
+  ```
 
-#### **netflow** - NetFlow v5/v9 Cisco Flow Data (BINARY)
-- **Description**: Cisco NetFlow protocol for network flow monitoring
+#### **netflow** - NetFlow v5/v9 Network Flow Monitoring
+- **Description**: Cisco NetFlow v5/v9 flow data parsed to NDJSON
 - **Use Case**: Network traffic analysis, security monitoring
-- **Processing**: Binary NetFlow packet parsing, template handling
-- **Note**: Binary format - supports v5, v9, and IPFIX variants
+- **Plugin**: Use `type: "netflow"` plugin (not UDP plugin)
+- **Processing**: Binary NetFlow parsing via goflow2, output as NDJSON
+- **Data Hint**: `ndjson` (flows are automatically converted to JSON)
+- **Example Config**:
+  ```yaml
+  - type: "netflow"
+    name: "netflow-collector"
+    config:
+      port: 2055
+      dataset_id: "network-netflow"
+      protocol: "netflow"
+      data_hint: "ndjson"
+  ```
 
-#### **ipfix** - IP Flow Information Export (BINARY)
-- **Description**: IETF standard for flow information export
-- **Use Case**: Network monitoring, traffic engineering
-- **Processing**: Binary IPFIX parsing, template management
-- **Note**: Binary format - successor to NetFlow
+#### **ipfix** - IP Flow Information Export
+- **Description**: IPFIX (IP Flow Information Export) data parsed to NDJSON
+- **Use Case**: Standards-based network monitoring, traffic engineering
+- **Plugin**: Use `type: "ipfix"` plugin (not UDP plugin)
+- **Processing**: Binary IPFIX parsing via goflow2, output as NDJSON
+- **Data Hint**: `ndjson` (flows are automatically converted to JSON)
+- **Example Config**:
+  ```yaml
+  - type: "ipfix"
+    name: "ipfix-collector"
+    config:
+      port: 4739
+      dataset_id: "network-ipfix"
+      protocol: "ipfix"
+      data_hint: "ndjson"
+  ```
 
 ### Default Format
 

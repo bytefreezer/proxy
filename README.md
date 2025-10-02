@@ -20,7 +20,10 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 ### **Supported Input Plugins**
 | Plugin | Protocol | Use Cases |
 |--------|----------|-----------|
-| **UDP** | UDP/Syslog/NetFlow/sFlow | High-throughput streaming, network monitoring |
+| **UDP** | UDP/Syslog | High-throughput streaming, system logs |
+| **sFlow** | sFlow (parsed to NDJSON) | Network flow monitoring, traffic analysis |
+| **NetFlow** | NetFlow v5/v9 (parsed to NDJSON) | Network flow monitoring, Cisco devices |
+| **IPFIX** | IPFIX (parsed to NDJSON) | IP flow information export, standards-based flow monitoring |
 | **HTTP** | HTTP Webhooks | Lightweight data submission, API integrations |
 | **Kafka** | Apache Kafka | Message queue integration, event streaming |
 | **NATS** | NATS messaging | Pub/sub patterns, microservice communication |
@@ -28,18 +31,19 @@ ByteFreezer Proxy is a **universal data streaming gateway** designed for enterpr
 | **Kinesis** | AWS Kinesis | Real-time data streaming, AWS analytics |
 
 ### **Supported Data Formats**
-ByteFreezer Proxy is a **pure pass-through service** that forwards any line-based data without modification while preserving semantic file extensions:
+ByteFreezer Proxy supports both pass-through and parsed data formats:
 
-| Format | Data Hint | File Extension | Use Cases |
-|--------|-----------|----------------|-----------|
-| **NDJSON/JSON** | `ndjson`, `json` | `.ndjson` | Application logs, structured events |
-| **Syslog** | `syslog` | `.log` | System logs, network device logs |
-| **sFlow** | `sflow` | `.sflow` | Network flow monitoring, traffic analysis |
-| **NetFlow** | `netflow` | `.netflow` | Network flow monitoring, Cisco devices |
-| **CSV/TSV** | `csv`, `tsv` | `.csv`, `.tsv` | Metrics, tabular data exports |
-| **Apache/Nginx Logs** | `apache`, `nginx` | `.log` | Web server logs, access logs |
-| **Plain Text** | `raw` | `.raw` | Legacy logs, free-form messages |
-| **Any Line-Based Data** | Custom hints | Custom extensions | Custom formats, proprietary logs |
+| Format | Data Hint | File Extension | Processing | Use Cases |
+|--------|-----------|----------------|------------|-----------|
+| **NDJSON/JSON** | `ndjson`, `json` | `.ndjson` | Pass-through | Application logs, structured events |
+| **Syslog** | `syslog` | `.log` | Pass-through | System logs, network device logs |
+| **sFlow** | `ndjson` | `.ndjson` | Parsed | Network flow monitoring (via sflow plugin) |
+| **NetFlow** | `ndjson` | `.ndjson` | Parsed | Network flow monitoring (via netflow plugin) |
+| **IPFIX** | `ndjson` | `.ndjson` | Parsed | IP flow information (via ipfix plugin) |
+| **CSV/TSV** | `csv`, `tsv` | `.csv`, `.tsv` | Pass-through | Metrics, tabular data exports |
+| **Apache/Nginx Logs** | `apache`, `nginx` | `.log` | Pass-through | Web server logs, access logs |
+| **Plain Text** | `raw` | `.raw` | Pass-through | Legacy logs, free-form messages |
+| **Any Line-Based Data** | Custom hints | Custom extensions | Pass-through | Custom formats, proprietary logs |
 
 **Key Features**:
 - **Zero Data Loss**: Direct filesystem writes eliminate channel congestion
@@ -217,8 +221,9 @@ The `data_hint` parameter controls the file extension used for stored data files
 | `nginx` | `.log` | Nginx access logs | Web server logs |
 | `iis` | `.log` | IIS access logs | Microsoft web server logs |
 | `squid` | `.log` | Squid proxy logs | Proxy server logs |
-| `sflow` | `.sflow` | sFlow network data | Network monitoring, flow analysis |
-| `netflow` | `.netflow` | NetFlow network data | Network monitoring, traffic analysis |
+| `ndjson` (sflow plugin) | `.ndjson` | Parsed sFlow to JSON | Network monitoring, flow analysis (use sflow plugin) |
+| `ndjson` (netflow plugin) | `.ndjson` | Parsed NetFlow to JSON | Network monitoring, traffic analysis (use netflow plugin) |
+| `ndjson` (ipfix plugin) | `.ndjson` | Parsed IPFIX to JSON | IP flow monitoring (use ipfix plugin) |
 | `raw` | `.raw` | Raw binary or unstructured data | Binary protocols, custom formats |
 | *(custom)* | *(custom)* | Custom format ≤10 chars | Use data hint as extension |
 

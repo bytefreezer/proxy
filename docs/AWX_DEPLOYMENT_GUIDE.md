@@ -88,14 +88,15 @@ config:
         data_hint: "ndjson"
         worker_count: 4
 
-    # sFlow network monitoring (binary format)
-    - type: "udp"
+    # sFlow network monitoring (parsed to NDJSON)
+    - type: "sflow"
       name: "sflow-collector"
       config:
         host: "0.0.0.0"
         port: 6343
         dataset_id: "network-sflow"
-        data_hint: "sflow"
+        protocol: "sflow"
+        data_hint: "ndjson"
         worker_count: 4
 
     # System logs (syslog format)
