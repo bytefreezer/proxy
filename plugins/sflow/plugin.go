@@ -241,6 +241,26 @@ func (p *Plugin) packetReaderWithSpooling() {
 	}
 }
 
+// ExtendedFlowRecord adds IP extraction to sFlow flow records
+type ExtendedFlowRecord struct {
+	Header struct {
+		DataFormat uint32 `json:"data-format"`
+		Length     uint32 `json:"length"`
+	} `json:"header"`
+	Data struct {
+		Protocol       uint32 `json:"protocol"`
+		FrameLength    uint32 `json:"frame-length"`
+		Stripped       uint32 `json:"stripped"`
+		OriginalLength uint32 `json:"original-length"`
+		HeaderData     string `json:"header-data"`
+	} `json:"data"`
+	// Extracted fields
+	SrcIP   string `json:"src_ip,omitempty"`
+	DstIP   string `json:"dst_ip,omitempty"`
+	SrcPort uint16 `json:"src_port,omitempty"`
+	DstPort uint16 `json:"dst_port,omitempty"`
+}
+
 // processMessageWithSpooling processes sFlow message with direct filesystem write (zero data loss)
 func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr) {
 	// Update metrics
@@ -262,10 +282,10 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 
 	p.metrics.FlowsDecoded++
 
-	// Convert decoded packet to JSON
-	jsonData, err := json.Marshal(packet)
+	// Convert decoded packet to JSON with IP extraction
+	jsonData, err := p.extractFlowRecords(packet)
 	if err != nil {
-		log.Warnf("Failed to marshal sFlow message to JSON from %s: %v", clientAddr.IP.String(), err)
+		log.Warnf("Failed to extract flow records from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.PacketsDropped++
 		return
 	}
@@ -284,4 +304,112 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 
 	log.Debugf("Stored sFlow message from %s:%d as NDJSON directly to filesystem (%d bytes)",
 		clientAddr.IP.String(), clientAddr.Port, len(ndjsonData))
+}
+
+// extractFlowRecords processes the sFlow packet and extracts IP addresses from headers
+func (p *Plugin) extractFlowRecords(packet *sflowdec.Packet) ([]byte, error) {
+	// Create output structure
+	output := map[string]interface{}{
+		"version":         packet.Version,
+		"ip-version":      packet.IPVersion,
+		"agent-ip":        packet.AgentIP,
+		"sub-agent-id":    packet.SubAgentId,
+		"sequence-number": packet.SequenceNumber,
+		"uptime":          packet.Uptime,
+		"samples-count":   packet.SamplesCount,
+		"samples":         []map[string]interface{}{},
+	}
+
+	// Process each sample
+	for _, sample := range packet.Samples {
+		sampleData := make(map[string]interface{})
+
+		// Handle flow sample
+		if flowSample, ok := sample.(sflowdec.FlowSample); ok {
+			sampleData["header"] = flowSample.Header
+			sampleData["sampling-rate"] = flowSample.SamplingRate
+			sampleData["sample-pool"] = flowSample.SamplePool
+			sampleData["drops"] = flowSample.Drops
+			sampleData["input"] = flowSample.Input
+			sampleData["output"] = flowSample.Output
+			sampleData["flow-records-count"] = flowSample.FlowRecordsCount
+
+			// Process flow records and extract IPs
+			records := []map[string]interface{}{}
+			for _, record := range flowSample.Records {
+				recordData := map[string]interface{}{
+					"header": record.Header,
+					"data":   record.Data,
+				}
+
+				// Try to extract IPs if this is a raw record with SampledHeader
+				if rawData, ok := record.Data.(sflowdec.SampledHeader); ok {
+					ips := extractIPsFromHeader(rawData.HeaderData)
+					if ips != nil {
+						recordData["src_ip"] = ips["src_ip"]
+						recordData["dst_ip"] = ips["dst_ip"]
+						if ips["src_port"] != 0 {
+							recordData["src_port"] = ips["src_port"]
+						}
+						if ips["dst_port"] != 0 {
+							recordData["dst_port"] = ips["dst_port"]
+						}
+					}
+				}
+
+				records = append(records, recordData)
+			}
+			sampleData["records"] = records
+		}
+
+		output["samples"] = append(output["samples"].([]map[string]interface{}), sampleData)
+	}
+
+	return json.Marshal(output)
+}
+
+// extractIPsFromHeader extracts IP addresses and ports from raw packet header
+func extractIPsFromHeader(headerBytes []byte) map[string]interface{} {
+	// Skip Ethernet header (14 bytes) if present
+	offset := 0
+	if len(headerBytes) >= 14 {
+		// Check for IP ethertype (0x0800 for IPv4)
+		if len(headerBytes) > 13 && headerBytes[12] == 0x08 && headerBytes[13] == 0x00 {
+			offset = 14
+		} else if headerBytes[12] == 0x45 { // Direct IP packet (starts with 0x45 for IPv4)
+			offset = 0
+		} else {
+			offset = 14 // Assume Ethernet
+		}
+	}
+
+	if len(headerBytes) < offset+20 {
+		return nil // Not enough data for IP header
+	}
+
+	// Check for IPv4
+	if headerBytes[offset]>>4 == 4 {
+		srcIP := net.IPv4(headerBytes[offset+12], headerBytes[offset+13], headerBytes[offset+14], headerBytes[offset+15])
+		dstIP := net.IPv4(headerBytes[offset+16], headerBytes[offset+17], headerBytes[offset+18], headerBytes[offset+19])
+
+		result := map[string]interface{}{
+			"src_ip": srcIP.String(),
+			"dst_ip": dstIP.String(),
+		}
+
+		// Get IP header length and extract TCP/UDP ports if available
+		ihl := int(headerBytes[offset] & 0x0F) * 4
+		protocol := headerBytes[offset+9]
+
+		if len(headerBytes) >= offset+ihl+4 && (protocol == 6 || protocol == 17) { // TCP or UDP
+			srcPort := uint16(headerBytes[offset+ihl])<<8 | uint16(headerBytes[offset+ihl+1])
+			dstPort := uint16(headerBytes[offset+ihl+2])<<8 | uint16(headerBytes[offset+ihl+3])
+			result["src_port"] = srcPort
+			result["dst_port"] = dstPort
+		}
+
+		return result
+	}
+
+	return nil
 }
