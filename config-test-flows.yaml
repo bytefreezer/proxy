@@ -68,7 +68,7 @@ receiver:
 
 spooling:
   enabled: true
-  directory: "/var/spool/bytefreezer-proxy"
+  directory: "/tmp/bytefreezer-proxy-spool"
   max_size_bytes: 1073741824
   retry_attempts: 5
   retry_interval_seconds: 60

@@ -252,7 +252,8 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 	payload := bytes.NewBuffer(data)
 	packet := &sflowdec.Packet{}
 
-	err := sflowdec.DecodeMessage(payload, packet)
+	// Use DecodeMessageVersion which handles version detection
+	err := sflowdec.DecodeMessageVersion(payload, packet)
 	if err != nil {
 		log.Warnf("Failed to decode sFlow packet from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.PacketsDropped++
