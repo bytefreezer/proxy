@@ -1,0 +1,10 @@
+Authorization: Bearer test-token
+Content-Encoding: gzip
+Content-Type: application/octet-stream
+User-Agent: bytefreezer-proxy-keepsrc-test/0.0.2
+X-Proxy-Batch-Id: test--ndjson_data--1759172080969945976--ndjson
+X-Proxy-Created-At: 2025-09-29T11:54:46-07:00
+X-Proxy-Data-Hint: ndjson
+X-Proxy-Filename: test--ndjson_data--1759172080969945976--ndjson.gz
+X-Proxy-Line-Count: 1
+X-Proxy-Original-Bytes: 83

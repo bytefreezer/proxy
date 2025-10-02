@@ -75,6 +75,7 @@ spooling:
   retry_attempts: 5
   retry_interval_seconds: 60  # 1 minute
   cleanup_interval_seconds: 300  # 5 minutes
+  keep_src: false # If true, keep source files after successful upload
 
 # Development mode
 dev: false

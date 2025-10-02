@@ -61,7 +61,7 @@ func isReservedName(name string) bool {
 		// System directories
 		"tmp", "temp", "cache", "log", "logs", "var", "etc", "bin", "usr", "opt",
 		// Common protocol names that might cause confusion
-		"udp", "tcp", "http", "https", "ftp", "ssh", "syslog", "netflow", "sflow",
+		"udp", "tcp", "http", "https", "ftp", "ssh", "syslog",
 		// Application-specific reserved names
 		"proxy", "receiver", "piper", "api", "admin", "root", "system",
 		// Common metadata terms

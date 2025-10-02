@@ -66,6 +66,7 @@ spooling:
   retry_interval_seconds: 10
   cleanup_interval_seconds: 30
   keep_src: true
+  queue_processing_interval_seconds: 20
 
 # Development mode
 dev: false

@@ -305,7 +305,7 @@ func TestReservedNames(t *testing.T) {
 	reservedNames := []string{
 		"admin", "root", "system", "proxy", "api",
 		"tmp", "log", "var", "etc", "bin",
-		"udp", "tcp", "http", "syslog", "netflow",
+		"udp", "tcp", "http", "syslog",
 		"con", "prn", "aux", "nul", "com1", "lpt1",
 	}
 

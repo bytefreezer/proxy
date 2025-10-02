@@ -1106,8 +1106,8 @@ func (s *SpoolingService) cleanupWorker() {
 func (s *SpoolingService) batchProcessor() {
 	defer s.wg.Done()
 
-	// Process batches every 30 seconds (configurable)
-	ticker := time.NewTicker(30 * time.Second)
+	// Process batches every N seconds (configurable)
+	ticker := time.NewTicker(time.Duration(s.config.GetQueueProcessingInterval()) * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -1574,7 +1574,7 @@ func (s *SpoolingService) getTenantSize(tenantID string) (int64, error) {
 		searchPaths = s.getDateTenantPaths(tenantID)
 
 	case "protocol_tenant":
-		// Search in protocol directories: netflow/tenant1/, sflow/tenant1/, etc.
+		// Search in protocol directories
 		searchPaths = s.getProtocolTenantPaths(tenantID)
 	}
 
@@ -1624,7 +1624,7 @@ func (s *SpoolingService) getDateTenantPaths(tenantID string) []string {
 // getProtocolTenantPaths returns paths for protocol-based tenant organization
 func (s *SpoolingService) getProtocolTenantPaths(tenantID string) []string {
 	var paths []string
-	protocols := []string{"data", "netflow", "sflow", "syslog"} // Known protocols
+	protocols := []string{"data", "syslog"} // Known protocols
 
 	for _, protocol := range protocols {
 		path := filepath.Join(s.directory, protocol, tenantID)

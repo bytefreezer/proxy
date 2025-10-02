@@ -19,9 +19,12 @@ import (
 
 	// Import plugin packages to register them
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/http"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/ipfix"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kafka"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kinesis"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/nats"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/netflow"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/sflow"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/sqs"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/udp"
 )

@@ -127,7 +127,8 @@ type Spooling struct {
 	RetryAttempts      int    `mapstructure:"retry_attempts"`
 	RetryIntervalSec   int    `mapstructure:"retry_interval_seconds"`
 	CleanupIntervalSec int    `mapstructure:"cleanup_interval_seconds"`
-	KeepSrc            bool   `mapstructure:"keep_src"`
+	KeepSrc                      bool `mapstructure:"keep_src"`
+	QueueProcessingIntervalSec   int  `mapstructure:"queue_processing_interval_seconds"`
 
 	// Organization settings
 	Organization       string `mapstructure:"organization"`          // "flat", "tenant_dataset", "date_tenant", "protocol_tenant"
@@ -285,6 +286,14 @@ func (cfg *Config) GetRetryMaxConnsPerHost() int {
 	return cfg.Receiver.RetryMaxConnsPerHost
 }
 
+// GetQueueProcessingInterval returns the queue processing interval with default fallback
+func (cfg *Config) GetQueueProcessingInterval() int {
+	if cfg.Spooling.QueueProcessingIntervalSec <= 0 {
+		return 30 // Default to 30 seconds for backward compatibility
+	}
+	return cfg.Spooling.QueueProcessingIntervalSec
+}
+
 // TenantInfo represents tenant configuration details
 type TenantInfo struct {
 	TenantID  string            `json:"tenant_id"`
@@ -344,10 +353,10 @@ func validateMultiTenantConfig(cfg *Config) error {
 			protocol = "udp"
 		}
 		validProtocols := map[string]bool{
-			"udp": true, "syslog": true, "netflow": true, "sflow": true,
+			"udp": true, "syslog": true,
 		}
 		if !validProtocols[protocol] {
-			return fmt.Errorf("listener %d (port %d): invalid protocol '%s' (supported: udp, syslog, netflow, sflow)", i, listener.Port, protocol)
+			return fmt.Errorf("listener %d (port %d): invalid protocol '%s' (supported: udp, syslog)", i, listener.Port, protocol)
 		}
 
 		// Build tenant information

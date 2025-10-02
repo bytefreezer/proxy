@@ -87,11 +87,6 @@ const (
 	DataHintFIX       = "fix"       // FIX Protocol - Financial Information eXchange
 	DataHintHL7       = "hl7"       // HL7 v2 - Healthcare messaging standard
 
-	// Binary formats
-	DataHintSFlow     = "sflow"     // sFlow - Sampled network packet data (BINARY)
-	DataHintNetFlow   = "netflow"   // NetFlow v5/v9 - Cisco flow data (BINARY)
-	DataHintIPFIX     = "ipfix"     // IPFIX - IP Flow Information Export (BINARY)
-
 	// Default format
 	DataHintRaw       = "raw"       // Raw data - no specific format processing
 )
