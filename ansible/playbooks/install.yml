@@ -11,8 +11,8 @@
 
     - name: Fail if service already installed
       fail:
-        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
-      when: service_exists.stat.exists
+        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first or set force_reinstall=true."
+      when: service_exists.stat.exists and not force_reinstall
 
   tasks:
     - name: Create temporary directory for download
