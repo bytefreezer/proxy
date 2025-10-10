@@ -123,8 +123,15 @@ func main() {
 			timeout = 30 * time.Second // Default 30 seconds
 		}
 
-		// Determine instance API URL (proxy API endpoint)
-		instanceAPI := fmt.Sprintf("http://localhost:%d", cfg.Server.ApiPort)
+		// Get actual hostname
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+			hostname = "localhost"
+		}
+
+		// Determine instance API URL without protocol (proxy API endpoint)
+		instanceAPI := fmt.Sprintf("%s:%d", hostname, cfg.Server.ApiPort)
 
 		healthReportingService = services.NewHealthReportingService(
 			cfg.HealthReporting.ControlURL,
