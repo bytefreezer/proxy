@@ -93,7 +93,7 @@ spooling:
 health_reporting:
   enabled: {{ config.health_reporting.enabled | default(true) | lower }}
   control_url: "{{ config.health_reporting.control_url | default('http://localhost:8082') }}"
-  report_interval: "{{ config.health_reporting.report_interval | default('30s') }}"
+  report_interval: {{ config.health_reporting.report_interval | default(30) }}  # Interval in seconds
   timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
 
 # Development mode

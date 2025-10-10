@@ -167,7 +167,15 @@ config:
     cleanup_interval_seconds: 300
     keep_src: false
     queue_processing_interval_seconds: 20
-  
+
+  # Health reporting configuration
+  health_reporting:
+    enabled: true
+    control_url: "{{ bytefreezer_control_url | default('http://192.168.86.103:8082') }}"
+    report_interval: 30  # Interval in seconds
+    timeout_seconds: 10
+    register_on_startup: true
+
   dev: false
 
 # Download configuration for install.yml
