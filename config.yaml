@@ -79,3 +79,11 @@ spooling:
 
 # Development mode
 dev: false
+
+# Health reporting configuration for service registration and monitoring
+health_reporting:
+  enabled: true
+  control_url: "http://192.168.86.103:8082"
+  report_interval: "30s"
+  timeout_seconds: 10
+  register_on_startup: true

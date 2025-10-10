@@ -110,6 +110,44 @@ func main() {
 		log.Fatalf("Failed to initialize components: %v", err)
 	}
 
+	// Initialize health reporting service
+	var healthReportingService *services.HealthReportingService
+	if cfg.HealthReporting.Enabled && cfg.HealthReporting.ControlURL != "" {
+		reportInterval := time.Duration(cfg.HealthReporting.ReportInterval) * time.Second
+		if reportInterval <= 0 {
+			reportInterval = 5 * time.Minute // Default 5 minutes
+		}
+
+		timeout := time.Duration(cfg.HealthReporting.TimeoutSeconds) * time.Second
+		if timeout <= 0 {
+			timeout = 30 * time.Second // Default 30 seconds
+		}
+
+		// Determine instance API URL (proxy API endpoint)
+		instanceAPI := fmt.Sprintf("http://localhost:%d", cfg.Server.ApiPort)
+
+		healthReportingService = services.NewHealthReportingService(
+			cfg.HealthReporting.ControlURL,
+			"bytefreezer-proxy",
+			instanceAPI,
+			reportInterval,
+			timeout,
+		)
+
+		// Register service on startup if enabled
+		if cfg.HealthReporting.RegisterOnStartup {
+			if err := healthReportingService.RegisterService(); err != nil {
+				log.Warnf("Failed to register service on startup: %v", err)
+			}
+		}
+
+		// Start health reporting
+		healthReportingService.Start()
+		log.Infof("Health reporting service started - reporting to %s every %v", cfg.HealthReporting.ControlURL, reportInterval)
+	} else {
+		log.Info("Health reporting is disabled")
+	}
+
 	// Create services
 	svcs := services.NewServices(&cfg)
 
@@ -193,6 +231,13 @@ func main() {
 	// Shutdown services gracefully
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop health reporting service
+	if healthReportingService != nil {
+		go func() {
+			healthReportingService.Stop()
+		}()
+	}
 
 	// Stop spooling service
 	go func() {

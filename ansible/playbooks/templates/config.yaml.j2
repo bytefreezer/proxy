@@ -89,5 +89,12 @@ spooling:
   keep_src: {{ config.spooling.keep_src | lower }}
   queue_processing_interval_seconds: {{ config.spooling.queue_processing_interval_seconds | default(30) }}
 
+# Health reporting configuration
+health_reporting:
+  enabled: {{ config.health_reporting.enabled | default(true) | lower }}
+  control_url: "{{ config.health_reporting.control_url | default('http://localhost:8082') }}"
+  report_interval: "{{ config.health_reporting.report_interval | default('30s') }}"
+  timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
+
 # Development mode
 dev: {{ config.dev | lower }}

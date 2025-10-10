@@ -19,20 +19,21 @@ import (
 var k = koanf.New(".")
 
 type Config struct {
-	App          App                    `mapstructure:"app"`
-	Logging      LoggingConfig          `mapstructure:"logging"`
-	Server       Server                 `mapstructure:"server"`
-	Inputs       []plugins.PluginConfig `mapstructure:"inputs"` // New plugin-based input system
-	UDP          UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
-	Batching     Batching               `mapstructure:"batching"`
-	Receiver     Receiver               `mapstructure:"receiver"`
-	TenantID     string                 `mapstructure:"tenant_id"`
-	BearerToken  string                 `mapstructure:"bearer_token"`
-	SOC          SOCAlert               `mapstructure:"soc"`
-	Otel         Otel                   `mapstructure:"otel"`
-	Housekeeping Housekeeping           `mapstructure:"housekeeping"`
-	Spooling     Spooling               `mapstructure:"spooling"`
-	Dev          bool                   `mapstructure:"dev"`
+	App             App                    `mapstructure:"app"`
+	Logging         LoggingConfig          `mapstructure:"logging"`
+	Server          Server                 `mapstructure:"server"`
+	Inputs          []plugins.PluginConfig `mapstructure:"inputs"` // New plugin-based input system
+	UDP             UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
+	Batching        Batching               `mapstructure:"batching"`
+	Receiver        Receiver               `mapstructure:"receiver"`
+	TenantID        string                 `mapstructure:"tenant_id"`
+	BearerToken     string                 `mapstructure:"bearer_token"`
+	SOC             SOCAlert               `mapstructure:"soc"`
+	Otel            Otel                   `mapstructure:"otel"`
+	Housekeeping    Housekeeping           `mapstructure:"housekeeping"`
+	Spooling        Spooling               `mapstructure:"spooling"`
+	HealthReporting HealthReportingConfig  `mapstructure:"health_reporting"`
+	Dev             bool                   `mapstructure:"dev"`
 
 	// Runtime components
 	SOCAlertClient *alerts.SOCAlertClient `mapstructure:"-"`
@@ -135,6 +136,14 @@ type Spooling struct {
 	PerTenantLimits    bool   `mapstructure:"per_tenant_limits"`     // Apply size limits per tenant instead of globally
 	MaxFilesPerDataset int    `mapstructure:"max_files_per_dataset"` // Max files per dataset (0 = unlimited)
 	MaxAgeDays         int    `mapstructure:"max_age_days"`          // Max age in days before cleanup (0 = unlimited)
+}
+
+type HealthReportingConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	ControlURL         string `mapstructure:"control_url"`
+	ReportInterval     int    `mapstructure:"report_interval"`
+	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
+	RegisterOnStartup  bool   `mapstructure:"register_on_startup"`
 }
 
 func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
