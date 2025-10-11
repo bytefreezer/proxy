@@ -44,10 +44,12 @@ type ServiceRegistrationResponse struct {
 
 // HealthReportRequest represents a health report request
 type HealthReportRequest struct {
-	ServiceName string                 `json:"service_name"`
-	ServiceID   string                 `json:"service_id"`
-	Healthy     bool                   `json:"healthy"`
-	Metrics     map[string]interface{} `json:"metrics,omitempty"`
+	ServiceName   string                 `json:"service_name"`
+	ServiceID     string                 `json:"service_id"`
+	InstanceAPI   string                 `json:"instance_api"`
+	Healthy       bool                   `json:"healthy"`
+	Configuration map[string]interface{} `json:"configuration,omitempty"`
+	Metrics       map[string]interface{} `json:"metrics,omitempty"`
 }
 
 // HealthReportResponse represents a health report response
@@ -153,16 +155,18 @@ func (h *HealthReportingService) RegisterService() error {
 }
 
 // SendHealthReport sends a health report to the control service
-func (h *HealthReportingService) SendHealthReport(healthy bool, metrics map[string]interface{}) error {
+func (h *HealthReportingService) SendHealthReport(healthy bool, configuration map[string]interface{}, metrics map[string]interface{}) error {
 	if !h.enabled {
 		return nil
 	}
 
 	healthReq := HealthReportRequest{
-		ServiceName: h.serviceType,
-		ServiceID:   h.instanceID,
-		Healthy:     healthy,
-		Metrics:     metrics,
+		ServiceName:   h.serviceType,
+		ServiceID:     h.instanceID,
+		InstanceAPI:   h.instanceAPI,
+		Healthy:       healthy,
+		Configuration: configuration,
+		Metrics:       metrics,
 	}
 
 	reqBody, err := json.Marshal(healthReq)
@@ -196,11 +200,12 @@ func (h *HealthReportingService) reportingLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			// Generate health report with basic metrics
+			// Generate health report with configuration and metrics
 			healthy := h.isServiceHealthy()
+			configuration := h.config // Configuration updated on every report
 			metrics := h.generateMetrics()
 
-			if err := h.SendHealthReport(healthy, metrics); err != nil {
+			if err := h.SendHealthReport(healthy, configuration, metrics); err != nil {
 				log.Warnf("Failed to send health report: %v", err)
 			}
 
@@ -222,18 +227,16 @@ func (h *HealthReportingService) isServiceHealthy() bool {
 	return true
 }
 
-// generateMetrics generates service metrics including configuration
+// generateMetrics generates service runtime metrics (not configuration)
 func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 	metrics := map[string]interface{}{
 		"timestamp":         time.Now().Unix(),
-		"service_type":      h.serviceType,
-		"instance_id":       h.instanceID,
 		"last_health_check": time.Now().UTC().Format(time.RFC3339),
-	}
-
-	// Include configuration data in metrics
-	for k, v := range h.config {
-		metrics[k] = v
+		// Add runtime metrics here like:
+		// - active_connections
+		// - messages_processed
+		// - errors_count
+		// - memory_usage
 	}
 
 	return metrics
