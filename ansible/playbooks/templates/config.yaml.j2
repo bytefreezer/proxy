@@ -60,7 +60,7 @@ batching:
 soc:
   enabled: {{ config.soc.enabled | lower }}
   endpoint: "{{ config.soc.endpoint }}"
-  timeout: {{ config.soc.timeout }}
+  timeout_seconds: {{ config.soc.timeout_seconds }}
 
 # OpenTelemetry configuration
 otel:

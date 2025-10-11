@@ -30,6 +30,7 @@ type ServiceRegistrationRequest struct {
 	ServiceType   string                 `json:"service_type"`
 	InstanceID    string                 `json:"instance_id,omitempty"`
 	InstanceAPI   string                 `json:"instance_api"`
+	Status        string                 `json:"status,omitempty"`
 	Configuration map[string]interface{} `json:"configuration,omitempty"`
 }
 
@@ -115,6 +116,7 @@ func (h *HealthReportingService) RegisterService() error {
 		ServiceType:   h.serviceType,
 		InstanceID:    h.instanceID,
 		InstanceAPI:   h.instanceAPI,
+		Status:        "Starting",
 		Configuration: h.config, // Use full configuration data
 	}
 

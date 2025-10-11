@@ -142,7 +142,7 @@ config:
   soc:
     enabled: false
     endpoint: ""
-    timeout: 30
+    timeout_seconds: 30
   
   otel:
     enabled: false  # Disabled by default (enable for monitoring)

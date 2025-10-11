@@ -54,7 +54,7 @@ batching:
 soc:
   enabled: false
   endpoint: ""
-  timeout: 30
+  timeout_seconds: 30
 
 # OpenTelemetry configuration (disabled by default)
 otel:
@@ -84,6 +84,6 @@ dev: false
 health_reporting:
   enabled: true
   control_url: "http://192.168.86.103:8082"
-  report_interval: "30s"
+  report_interval: 30  # seconds
   timeout_seconds: 10
   register_on_startup: true
