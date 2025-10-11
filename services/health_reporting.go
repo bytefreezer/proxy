@@ -22,6 +22,7 @@ type HealthReportingService struct {
 	httpClient     *http.Client
 	enabled        bool
 	stopChan       chan bool
+	config         map[string]interface{} // Full configuration data to report
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -55,7 +56,7 @@ type HealthReportResponse struct {
 }
 
 // NewHealthReportingService creates a new health reporting service
-func NewHealthReportingService(controlURL, serviceType, instanceAPI string, reportInterval, timeout time.Duration) *HealthReportingService {
+func NewHealthReportingService(controlURL, serviceType, instanceAPI string, reportInterval, timeout time.Duration, config map[string]interface{}) *HealthReportingService {
 	// Get hostname for instance ID
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -74,6 +75,7 @@ func NewHealthReportingService(controlURL, serviceType, instanceAPI string, repo
 		},
 		enabled:  true,
 		stopChan: make(chan bool),
+		config:   config,
 	}
 }
 
@@ -110,13 +112,10 @@ func (h *HealthReportingService) RegisterService() error {
 	}
 
 	registrationReq := ServiceRegistrationRequest{
-		ServiceType: h.serviceType,
-		InstanceID:  h.instanceID,
-		InstanceAPI: h.instanceAPI,
-		Configuration: map[string]interface{}{
-			"service_type": h.serviceType,
-			"version":      "1.0.0", // TODO: Get from config
-		},
+		ServiceType:   h.serviceType,
+		InstanceID:    h.instanceID,
+		InstanceAPI:   h.instanceAPI,
+		Configuration: h.config, // Use full configuration data
 	}
 
 	reqBody, err := json.Marshal(registrationReq)
@@ -221,13 +220,19 @@ func (h *HealthReportingService) isServiceHealthy() bool {
 	return true
 }
 
-// generateMetrics generates basic service metrics
+// generateMetrics generates service metrics including configuration
 func (h *HealthReportingService) generateMetrics() map[string]interface{} {
-	return map[string]interface{}{
-		"timestamp":    time.Now().Unix(),
-		"service_type": h.serviceType,
-		"instance_id":  h.instanceID,
-		"uptime":       time.Since(time.Now()).Seconds(), // TODO: Track actual uptime
-		"version":      "1.0.0",                          // TODO: Get from config
+	metrics := map[string]interface{}{
+		"timestamp":         time.Now().Unix(),
+		"service_type":      h.serviceType,
+		"instance_id":       h.instanceID,
+		"last_health_check": time.Now().UTC().Format(time.RFC3339),
 	}
+
+	// Include configuration data in metrics
+	for k, v := range h.config {
+		metrics[k] = v
+	}
+
+	return metrics
 }

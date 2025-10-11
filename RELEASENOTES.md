@@ -1,5 +1,46 @@
 # ByteFreezer Proxy Release Notes
 
+## v3.0.0 - Comprehensive Health Reporting (2025-10-11)
+
+### Health Monitoring Enhancements
+
+#### 📊 Comprehensive Configuration Reporting
+- **Full Configuration Export**: Health reports now include complete service configuration with masked sensitive data
+- **Sensitive Data Masking**: Bearer tokens and sensitive fields are masked showing only first 2 and last 2 characters (e.g., "to****en")
+- **Comprehensive Metrics**: Health reports include all configuration sections (udp, batching, receiver, spooling, housekeeping, otel, soc)
+- **Service Capabilities**: Reports include service capability list for better service discovery
+- **Multi-Tenant Detection**: Reports whether service is in multi-tenant mode
+
+#### 🔧 Configuration Sections Reported
+- **Service Info**: service_type, version, git_commit, instance_id, instance_api, report_interval, timeout
+- **API**: port configuration
+- **Tenant Info**: tenant_id, bearer_token (masked)
+- **UDP**: all configuration including listener count, buffer sizes, batch settings, compression
+- **Batching**: enabled status, max_lines, max_bytes, timeout_seconds, compression settings
+- **Receiver**: base_url, timeout, upload_worker_count, connection pool settings
+- **Spooling**: all configuration including directory, max_size, retry settings, organization settings
+- **Housekeeping**: enabled status, interval_seconds
+- **OTEL**: enabled status, endpoint, service_name, prometheus_mode, metrics_port
+- **SOC**: enabled status, endpoint, timeout
+- **Multi-Tenant**: boolean flag indicating multi-tenant mode
+- **Capabilities**: udp_ingestion, multi_protocol, batching, spooling, http_forwarding, plugin_system
+
+### Implementation Details
+- `services/health_reporting.go:25`: Added `config map[string]interface{}` field to HealthReportingService struct
+- `services/health_reporting.go:59`: Updated NewHealthReportingService() signature to accept config parameter
+- `services/health_reporting.go:118`: Modified RegisterService() to use full configuration data
+- `services/health_reporting.go:223-238`: Modified generateMetrics() to include configuration in metrics
+- `main.go:304-395`: Added buildHealthConfiguration() function with sensitive data masking
+
+### Benefits
+- **Better Visibility**: Control service can see full configuration of all proxy instances
+- **Security**: Sensitive data (bearer tokens) are masked to prevent exposure
+- **Troubleshooting**: Configuration information helps diagnose issues across distributed instances
+- **Service Discovery**: Capabilities list enables dynamic service routing and orchestration
+- **Multi-Tenant Tracking**: Easy identification of multi-tenant vs single-tenant deployments
+
+---
+
 ## Latest Changes
 
 ### 🚀 Major Architecture Upgrade: Socket-to-Filesystem with Semantic File Extensions

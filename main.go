@@ -133,12 +133,16 @@ func main() {
 		// Determine instance API URL without protocol (proxy API endpoint)
 		instanceAPI := fmt.Sprintf("%s:%d", hostname, cfg.Server.ApiPort)
 
+		// Build configuration data with masked sensitive fields
+		configuration := buildHealthConfiguration(&cfg, instanceAPI)
+
 		healthReportingService = services.NewHealthReportingService(
 			cfg.HealthReporting.ControlURL,
 			"bytefreezer-proxy",
 			instanceAPI,
 			reportInterval,
 			timeout,
+			configuration,
 		)
 
 		// Register service on startup if enabled
@@ -294,5 +298,98 @@ func setLogLevel(levelStr string) {
 		log.SetMinLogLevel(log.MinLevelWarn)
 	case "error":
 		log.SetMinLogLevel(log.MinLevelError)
+	}
+}
+
+// buildHealthConfiguration builds comprehensive configuration for health reporting
+// with sensitive data masked
+func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string]interface{} {
+	maskSensitive := func(value string) string {
+		if value == "" {
+			return ""
+		}
+		if len(value) <= 4 {
+			return "****"
+		}
+		return value[:2] + "****" + value[len(value)-2:]
+	}
+
+	return map[string]interface{}{
+		"service_type":    "bytefreezer-proxy",
+		"version":         cfg.App.Version,
+		"git_commit":      cfg.App.GitCommit,
+		"instance_api":    instanceAPI,
+		"report_interval": cfg.HealthReporting.ReportInterval,
+		"timeout":         fmt.Sprintf("%ds", cfg.HealthReporting.TimeoutSeconds),
+		"api": map[string]interface{}{
+			"port": cfg.Server.ApiPort,
+		},
+		"tenant_id":    cfg.TenantID,
+		"bearer_token": maskSensitive(cfg.BearerToken),
+		"udp": map[string]interface{}{
+			"enabled":                cfg.UDP.Enabled,
+			"read_buffer_size_bytes": cfg.UDP.ReadBufferSizeBytes,
+			"max_batch_lines":        cfg.UDP.MaxBatchLines,
+			"max_batch_bytes":        cfg.UDP.MaxBatchBytes,
+			"batch_timeout_seconds":  cfg.UDP.BatchTimeoutSeconds,
+			"compression_level":      cfg.UDP.CompressionLevel,
+			"channel_buffer_size":    cfg.UDP.ChannelBufferSize,
+			"worker_count":           cfg.UDP.WorkerCount,
+			"listener_count":         len(cfg.UDP.Listeners),
+		},
+		"batching": map[string]interface{}{
+			"enabled":             cfg.Batching.Enabled,
+			"max_lines":           cfg.Batching.MaxLines,
+			"max_bytes":           cfg.Batching.MaxBytes,
+			"timeout_seconds":     cfg.Batching.TimeoutSeconds,
+			"compression_enabled": cfg.Batching.CompressionEnabled,
+			"compression_level":   cfg.Batching.CompressionLevel,
+		},
+		"receiver": map[string]interface{}{
+			"base_url":             cfg.Receiver.BaseURL,
+			"timeout_seconds":      cfg.Receiver.TimeoutSec,
+			"upload_worker_count":  cfg.Receiver.UploadWorkerCount,
+			"max_idle_conns":       cfg.Receiver.MaxIdleConns,
+			"max_conns_per_host":   cfg.Receiver.MaxConnsPerHost,
+		},
+		"spooling": map[string]interface{}{
+			"enabled":                         cfg.Spooling.Enabled,
+			"directory":                       cfg.Spooling.Directory,
+			"max_size_bytes":                  cfg.Spooling.MaxSizeBytes,
+			"retry_attempts":                  cfg.Spooling.RetryAttempts,
+			"retry_interval_seconds":          cfg.Spooling.RetryIntervalSec,
+			"cleanup_interval_seconds":        cfg.Spooling.CleanupIntervalSec,
+			"keep_src":                        cfg.Spooling.KeepSrc,
+			"queue_processing_interval_seconds": cfg.Spooling.QueueProcessingIntervalSec,
+			"organization":                    cfg.Spooling.Organization,
+			"per_tenant_limits":               cfg.Spooling.PerTenantLimits,
+			"max_files_per_dataset":           cfg.Spooling.MaxFilesPerDataset,
+			"max_age_days":                    cfg.Spooling.MaxAgeDays,
+		},
+		"housekeeping": map[string]interface{}{
+			"enabled":          cfg.Housekeeping.Enabled,
+			"interval_seconds": cfg.Housekeeping.IntervalSeconds,
+		},
+		"otel": map[string]interface{}{
+			"enabled":         cfg.Otel.Enabled,
+			"endpoint":        cfg.Otel.Endpoint,
+			"service_name":    cfg.Otel.ServiceName,
+			"prometheus_mode": cfg.Otel.PrometheusMode,
+			"metrics_port":    cfg.Otel.MetricsPort,
+		},
+		"soc": map[string]interface{}{
+			"enabled":  cfg.SOC.Enabled,
+			"endpoint": cfg.SOC.Endpoint,
+			"timeout":  cfg.SOC.Timeout,
+		},
+		"multi_tenant": cfg.IsMultiTenant(),
+		"capabilities": []string{
+			"udp_ingestion",
+			"multi_protocol",
+			"batching",
+			"spooling",
+			"http_forwarding",
+			"plugin_system",
+		},
 	}
 }
