@@ -95,6 +95,7 @@ health_reporting:
   control_url: "{{ config.health_reporting.control_url | default('http://localhost:8082') }}"
   report_interval: {{ config.health_reporting.report_interval | default(30) }}  # Interval in seconds
   timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
+  register_on_startup: {{ config.health_reporting.register_on_startup | default(true) | lower }}
 
 # Development mode
 dev: {{ config.dev | lower }}
