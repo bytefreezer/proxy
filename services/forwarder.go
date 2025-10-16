@@ -17,6 +17,44 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 )
 
+// UploadError represents an upload failure with retry information
+type UploadError struct {
+	StatusCode    int
+	Message       string
+	IsPermanent   bool // true if this error should not be retried
+	FailureReason string
+}
+
+func (e *UploadError) Error() string {
+	return e.Message
+}
+
+// isPermanentHTTPError determines if an HTTP status code represents a permanent failure
+func isPermanentHTTPError(statusCode int) bool {
+	switch statusCode {
+	case http.StatusBadRequest,          // 400 - Bad Request
+		http.StatusUnauthorized,         // 401 - Unauthorized (inactive tenant)
+		http.StatusForbidden,            // 403 - Forbidden
+		http.StatusNotFound,             // 404 - Not Found
+		http.StatusGone,                 // 410 - Gone (explicitly deactivated)
+		http.StatusRequestEntityTooLarge, // 413 - Payload Too Large
+		http.StatusUnprocessableEntity:  // 422 - Unprocessable Entity
+		return true
+	case http.StatusTooManyRequests: // 429 - Rate limited (transient, should retry)
+		return false
+	default:
+		// 5xx errors are transient (server errors, should retry)
+		if statusCode >= 500 && statusCode < 600 {
+			return false
+		}
+		// Other 4xx errors are permanent
+		if statusCode >= 400 && statusCode < 500 {
+			return true
+		}
+		return false
+	}
+}
+
 // HTTPForwarder handles HTTP forwarding to bytefreezer-receiver
 type HTTPForwarder struct {
 	config         *config.Config
@@ -181,9 +219,24 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	if bodyStr == "" {
 		bodyStr = "(empty response body)"
 	}
-	log.Warnf("Batch %s upload failed - %s returned HTTP %d: %s",
-		batch.ID, url, resp.StatusCode, bodyStr)
-	return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr)
+
+	// Determine if this is a permanent failure
+	isPermanent := isPermanentHTTPError(resp.StatusCode)
+	failureType := "transient"
+	if isPermanent {
+		failureType = "permanent"
+	}
+
+	log.Warnf("Batch %s upload failed (%s) - %s returned HTTP %d: %s",
+		batch.ID, failureType, url, resp.StatusCode, bodyStr)
+
+	// Return custom error with retry information
+	return &UploadError{
+		StatusCode:    resp.StatusCode,
+		Message:       fmt.Sprintf("HTTP request failed with status %d: %s", resp.StatusCode, bodyStr),
+		IsPermanent:   isPermanent,
+		FailureReason: fmt.Sprintf("HTTP %d from receiver: %s", resp.StatusCode, bodyStr),
+	}
 }
 
 // generateProxyFilename creates a filename in format: tenant--dataset--timestamp--extension.gz

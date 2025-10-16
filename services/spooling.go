@@ -31,6 +31,9 @@ type SpoolingService struct {
 	// Dedicated HTTP client for retry processing
 	retryForwarder *HTTPForwarder
 
+	// Tenant validation
+	tenantValidator *TenantValidator
+
 	// Runtime state
 	currentSize int64
 	mutex       sync.RWMutex
@@ -73,7 +76,8 @@ func NewSpoolingService(cfg *config.Config) *SpoolingService {
 		retryAttempts:   cfg.Spooling.RetryAttempts,
 		retryInterval:   time.Duration(cfg.Spooling.RetryIntervalSec) * time.Second,
 		cleanupInterval: time.Duration(cfg.Spooling.CleanupIntervalSec) * time.Second,
-		retryForwarder:  NewRetryHTTPForwarder(cfg), // Dedicated HTTP client for retry processing
+		retryForwarder:  NewRetryHTTPForwarder(cfg),          // Dedicated HTTP client for retry processing
+		tenantValidator: NewTenantValidator(&cfg.TenantValidation), // Layer 4: Proactive tenant validation
 		shutdown:        make(chan struct{}),
 		retryTrigger:    make(chan struct{}, 100), // Buffered channel to prevent blocking
 	}
@@ -969,11 +973,33 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		LineCount:     actualLineCount, // Use verified actual count
 	}
 
+	// Validate tenant is active before attempting upload (Layer 4 optimization)
+	if s.tenantValidator != nil && s.tenantValidator.IsEnabled() {
+		if !s.tenantValidator.IsActiveTenant(job.TenantID) {
+			log.Warnf("Tenant %s is inactive - skipping upload and moving to DLQ", job.TenantID)
+			// Move directly to DLQ for inactive tenants (no retry)
+			if moveErr := s.MoveQueueToDLQ(job.TenantID, job.DatasetID, job.BatchID, "tenant inactive or not found"); moveErr != nil {
+				log.Errorf("Failed to move queue file %s to DLQ: %v", fileName, moveErr)
+			}
+			return false
+		}
+	}
+
 	// Attempt upload
 	err = forwarder.ForwardBatch(batch)
 	if err != nil {
+		// Check if this is a permanent failure (don't retry)
+		if uploadErr, ok := err.(*UploadError); ok && uploadErr.IsPermanent {
+			log.Warnf("Queue file upload failed permanently for %s (HTTP %d) - moving directly to DLQ", fileName, uploadErr.StatusCode)
+			// Move directly to DLQ for permanent failures (no retry)
+			if moveErr := s.MoveQueueToDLQ(job.TenantID, job.DatasetID, job.BatchID, uploadErr.FailureReason); moveErr != nil {
+				log.Errorf("Failed to move queue file %s to DLQ: %v", fileName, moveErr)
+			}
+			return false
+		}
+
+		// Transient failure - move to retry queue
 		log.Warnf("Queue file upload failed for %s: %v - moving to retry", fileName, err)
-		// Move to retry directory with metadata
 		if moveErr := s.MoveQueueToRetry(job.TenantID, job.DatasetID, job.BatchID, err.Error(), "upload_failed"); moveErr != nil {
 			log.Errorf("Failed to move queue file %s to retry: %v", fileName, moveErr)
 		}
@@ -1032,7 +1058,17 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 
 	// Try to upload
 	err = forwarder.ForwardBatch(batch)
-	return err == nil
+	if err != nil {
+		// Check if this is a permanent failure
+		if uploadErr, ok := err.(*UploadError); ok && uploadErr.IsPermanent {
+			log.Warnf("Retry upload failed permanently for %s (HTTP %d) - will move to DLQ", metadata.ID, uploadErr.StatusCode)
+			// Return false so the retry processor moves it to DLQ
+			return false
+		}
+		// Transient failure - will retry again
+		return false
+	}
+	return true
 }
 
 // removeSuccessfulRetryFile removes a successfully uploaded retry file and its metadata
@@ -2626,6 +2662,112 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 
 	actualFilename := filepath.Base(srcDataFile)
 	log.Infof("Moved file %s to retry due to: %s", actualFilename, failureReason)
+	return nil
+}
+
+// MoveQueueToDLQ moves a batch file from queue directly to DLQ for permanent failures
+func (s *SpoolingService) MoveQueueToDLQ(tenantID, datasetID, batchID, failureReason string) error {
+	if !s.config.Spooling.Enabled {
+		return nil
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Create DLQ directory
+	dlqDir := filepath.Join(s.directory, tenantID, datasetID, "dlq")
+	if err := os.MkdirAll(dlqDir, 0750); err != nil {
+		return fmt.Errorf("failed to create DLQ directory: %w", err)
+	}
+
+	// Source paths in queue (no metadata in queue)
+	queueDir := filepath.Join(s.directory, tenantID, datasetID, "queue")
+
+	// Find the batch file
+	var srcDataFile string
+	files, err := os.ReadDir(queueDir)
+	if err != nil {
+		return fmt.Errorf("failed to read queue directory: %w", err)
+	}
+
+	for _, file := range files {
+		fileName := file.Name()
+		// New format: batchID.gz (batchID already includes extension)
+		if fileName == batchID+".gz" {
+			srcDataFile = filepath.Join(queueDir, fileName)
+			break
+		}
+	}
+
+	if srcDataFile == "" {
+		return fmt.Errorf("batch file %s not found in queue", batchID)
+	}
+
+	// Destination paths in DLQ
+	dstDataFile := filepath.Join(dlqDir, filepath.Base(srcDataFile))
+	dstMetaFile := filepath.Join(dlqDir, batchID+".meta")
+
+	// Move data file
+	if err := os.Rename(srcDataFile, dstDataFile); err != nil {
+		return fmt.Errorf("failed to move data file to DLQ: %w", err)
+	}
+
+	// Create metadata for DLQ (queue files don't have metadata)
+	fileInfo, err := os.Stat(dstDataFile)
+	if err != nil {
+		log.Warnf("Failed to get file info for %s: %v", dstDataFile, err)
+	}
+
+	// Read file to count lines
+	var lineCount int
+	if fileData, err := s.safeReadFile(dstDataFile); err != nil {
+		log.Warnf("Failed to read file for line counting %s: %v", dstDataFile, err)
+		lineCount = 0
+	} else {
+		lineCount = s.countLines(fileData)
+	}
+
+	// Get compressed size
+	var compressedSize int64
+	if fileInfo != nil {
+		compressedSize = fileInfo.Size()
+	}
+
+	// Get uncompressed size
+	uncompressedSize, err := s.getUncompressedSize(dstDataFile)
+	if err != nil {
+		log.Warnf("Failed to get uncompressed size for %s: %v", dstDataFile, err)
+		uncompressedSize = compressedSize // Fallback to compressed size
+	}
+
+	now := time.Now()
+	metadata := SpooledFile{
+		ID:               batchID,
+		TenantID:         tenantID,
+		DatasetID:        datasetID,
+		BearerToken:      "", // Will be filled from batch context if available
+		Filename:         dstDataFile,
+		CompressedSize:   compressedSize,      // Compressed size on disk
+		UncompressedSize: uncompressedSize,    // Original data size before compression
+		LineCount:        lineCount,           // Count lines from actual file data
+		CreatedAt:        now,
+		LastRetry:        now,
+		RetryCount:       0, // No retries for permanent failures
+		Status:           "dlq",
+		FailureReason:    failureReason,
+		TriggerReason:    "permanent_failure",
+	}
+
+	// Write metadata to DLQ directory
+	metaData, err := json.Marshal(metadata)
+	if err == nil {
+		if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
+			log.Warnf("Failed to write DLQ metadata for %s: %v", batchID, err)
+		}
+	}
+
+	actualFilename := filepath.Base(srcDataFile)
+	log.Infof("Moved file %s to DLQ due to permanent failure: %s", actualFilename, failureReason)
 	return nil
 }
 

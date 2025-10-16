@@ -92,10 +92,18 @@ spooling:
 # Health reporting configuration
 health_reporting:
   enabled: {{ config.health_reporting.enabled | default(true) | lower }}
-  control_url: "{{ config.health_reporting.control_url | default('http://localhost:8082') }}"
+  control_url: "{{ config.health_reporting.control_url | default('http://192.168.86.103:8082') }}"
   report_interval: {{ config.health_reporting.report_interval | default(30) }}  # Interval in seconds
   timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
   register_on_startup: {{ config.health_reporting.register_on_startup | default(true) | lower }}
+
+# Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
+tenant_validation:
+  enabled: {{ config.tenant_validation.enabled | default(true) | lower }}
+  control_url: "{{ config.tenant_validation.control_url | default(config.health_reporting.control_url | default('http://192.168.86.103:8082')) }}"
+  cache_ttl_seconds: {{ config.tenant_validation.cache_ttl_seconds | default(300) }}  # 5 minutes for active tenants
+  inactive_cache_ttl_seconds: {{ config.tenant_validation.inactive_cache_ttl_seconds | default(3600) }}  # 1 hour for inactive tenants (reduces API load)
+  timeout_seconds: {{ config.tenant_validation.timeout_seconds | default(5) }}
 
 # Development mode
 dev: {{ config.dev | lower }}

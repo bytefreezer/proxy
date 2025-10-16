@@ -31,9 +31,10 @@ type Config struct {
 	SOC             SOCAlert               `mapstructure:"soc"`
 	Otel            Otel                   `mapstructure:"otel"`
 	Housekeeping    Housekeeping           `mapstructure:"housekeeping"`
-	Spooling        Spooling               `mapstructure:"spooling"`
-	HealthReporting HealthReportingConfig  `mapstructure:"health_reporting"`
-	Dev             bool                   `mapstructure:"dev"`
+	Spooling         Spooling               `mapstructure:"spooling"`
+	HealthReporting  HealthReportingConfig  `mapstructure:"health_reporting"`
+	TenantValidation TenantValidationConfig `mapstructure:"tenant_validation"`
+	Dev              bool                   `mapstructure:"dev"`
 
 	// Runtime components
 	SOCAlertClient *alerts.SOCAlertClient `mapstructure:"-"`
@@ -144,6 +145,14 @@ type HealthReportingConfig struct {
 	ReportInterval     int    `mapstructure:"report_interval"`
 	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
 	RegisterOnStartup  bool   `mapstructure:"register_on_startup"`
+}
+
+type TenantValidationConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	ControlURL         string `mapstructure:"control_url"`
+	CacheTTLSec        int    `mapstructure:"cache_ttl_seconds"`         // TTL for active tenants
+	InactiveCacheTTLSec int    `mapstructure:"inactive_cache_ttl_seconds"` // TTL for inactive tenants (longer)
+	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
 }
 
 func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {

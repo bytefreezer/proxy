@@ -87,3 +87,11 @@ health_reporting:
   report_interval: 30  # seconds
   timeout_seconds: 10
   register_on_startup: true
+
+# Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
+tenant_validation:
+  enabled: true
+  control_url: "http://192.168.86.103:8082"
+  cache_ttl_seconds: 300  # 5 minutes for active tenants
+  inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
+  timeout_seconds: 5
