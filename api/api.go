@@ -40,7 +40,7 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 	// Configure OpenAPI schema
 	service.OpenAPISchema().SetTitle("ByteFreezer Proxy API")
 	service.OpenAPISchema().SetDescription("ByteFreezer Proxy UDP data collection and forwarding API")
-	service.OpenAPISchema().SetVersion("v2.0.0")
+	service.OpenAPISchema().SetVersion("v1.0.0")
 
 	// Apply defaults for decoder factory
 	service.DecoderFactory.ApplyDefaults = true
@@ -52,28 +52,28 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 	api := NewAPI(apiServer.Services, apiServer.Config)
 
 	// Health check endpoint
-	service.Get("/api/v2/health", api.HealthCheck())
+	service.Get("/api/v1/health", api.HealthCheck())
 
 	// Configuration endpoints
-	service.Get("/api/v2/config", api.GetConfig())
+	service.Get("/api/v1/config", api.GetConfig())
 
 	// Plugin schema endpoints
-	service.Get("/api/v2/plugins", api.GetPluginSchemas())
+	service.Get("/api/v1/plugins", api.GetPluginSchemas())
 
 	// DLQ management endpoints
-	service.Get("/api/v2/dlq/stats", api.GetDLQStats())
-	service.Get("/api/v2/dlq/files", api.ListDLQFiles())
-	service.Post("/api/v2/dlq/retry", api.RetryDLQFiles())
+	service.Get("/api/v1/dlq/stats", api.GetDLQStats())
+	service.Get("/api/v1/dlq/files", api.ListDLQFiles())
+	service.Post("/api/v1/dlq/retry", api.RetryDLQFiles())
 
 	// Connectivity test endpoints
-	service.Post("/api/v2/test/connectivity", api.TestConnectivity())
+	service.Post("/api/v1/test/connectivity", api.TestConnectivity())
 
 	// API documentation
-	service.Docs("/v2/docs", swgui.New)
+	service.Docs("/v1/docs", swgui.New)
 
 	// Root redirect to documentation
 	service.Router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/v2/docs", http.StatusFound)
+		http.Redirect(w, r, "/v1/docs", http.StatusFound)
 	})
 
 	return service
