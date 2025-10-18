@@ -288,3 +288,44 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 	log.Debugf("Stored UDP message from %s:%d directly to filesystem (%d bytes)",
 		clientAddr.IP.String(), clientAddr.Port, len(formattedData))
 }
+
+// Schema returns the UDP plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "udp",
+		DisplayName: "UDP Generic",
+		Description: "Generic UDP data receiver for raw UDP payloads. Outputs structured NDJSON with UDP metadata. Can serve as base for specialized protocols.",
+		Category:    "UDP-based (Generic)",
+		Transport:   "UDP",
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "host",
+				Type:        "string",
+				Required:    false,
+				Default:     "0.0.0.0",
+				Description: "Host address to bind to",
+				Placeholder: "0.0.0.0",
+				Group:       "Network",
+			},
+			{
+				Name:        "port",
+				Type:        "int",
+				Required:    true,
+				Description: "UDP port to listen on",
+				Validation:  "1-65535",
+				Placeholder: "5000",
+				Group:       "Network",
+			},
+			{
+				Name:        "read_buffer_size",
+				Type:        "int",
+				Required:    false,
+				Default:     65536,
+				Description: "UDP read buffer size in bytes (64KB default)",
+				Validation:  "min:1024,max:1048576",
+				Placeholder: "65536",
+				Group:       "Performance",
+			},
+		},
+	}
+}

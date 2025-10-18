@@ -3,6 +3,7 @@ package services
 import (
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
 )
 
 // Services holds all service instances and shared state
@@ -11,6 +12,7 @@ type Services struct {
 	ProxyStats      *domain.ProxyStats
 	SpoolingService *SpoolingService
 	MetricsService  *MetricsService
+	PluginRegistry  *plugins.Registry
 
 	// Service instances will be added here
 	// UDPListener  *udp.Listener
@@ -36,6 +38,7 @@ func NewServices(cfg *config.Config) *Services {
 		ProxyStats:      &domain.ProxyStats{},
 		SpoolingService: NewSpoolingService(cfg),
 		MetricsService:  metricsService,
+		PluginRegistry:  plugins.GetRegistry(),
 	}
 }
 

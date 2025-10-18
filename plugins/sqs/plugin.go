@@ -360,6 +360,101 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message string) {
 	p.health.LastUpdated = time.Now()
 }
 
+// Schema returns the SQS plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "sqs",
+		DisplayName: "AWS SQS",
+		Description: "AWS Simple Queue Service (SQS) consumer. Consumes messages from SQS queues and outputs structured NDJSON.",
+		Category:    "Message Queue",
+		Transport:   "AWS API",
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "queue_name",
+				Type:        "string",
+				Required:    true,
+				Description: "Name of the SQS queue (or use queue_url for direct URL)",
+				Placeholder: "my-queue",
+				Group:       "Connection",
+			},
+			{
+				Name:        "queue_url",
+				Type:        "string",
+				Required:    false,
+				Description: "Direct SQS queue URL (alternative to queue_name)",
+				Placeholder: "https://sqs.us-east-1.amazonaws.com/123456789/my-queue",
+				Group:       "Connection",
+			},
+			{
+				Name:        "region",
+				Type:        "string",
+				Required:    true,
+				Description: "AWS region (e.g., us-east-1, us-west-2)",
+				Placeholder: "us-east-1",
+				Group:       "Connection",
+			},
+			{
+				Name:        "poll_interval_seconds",
+				Type:        "int",
+				Required:    false,
+				Default:     5,
+				Description: "Polling interval in seconds",
+				Validation:  "min:1,max:60",
+				Placeholder: "5",
+				Group:       "Performance",
+			},
+			{
+				Name:        "max_messages",
+				Type:        "int",
+				Required:    false,
+				Default:     10,
+				Description: "Maximum messages per receive call (AWS limit: 10)",
+				Validation:  "min:1,max:10",
+				Placeholder: "10",
+				Group:       "Performance",
+			},
+			{
+				Name:        "visibility_timeout_seconds",
+				Type:        "int",
+				Required:    false,
+				Default:     30,
+				Description: "Message visibility timeout in seconds",
+				Validation:  "min:0,max:43200",
+				Placeholder: "30",
+				Group:       "Consumption",
+			},
+			{
+				Name:        "wait_time_seconds",
+				Type:        "int",
+				Required:    false,
+				Default:     20,
+				Description: "Long polling wait time in seconds (AWS limit: 20)",
+				Validation:  "min:0,max:20",
+				Placeholder: "20",
+				Group:       "Performance",
+			},
+			{
+				Name:        "delete_after_process",
+				Type:        "bool",
+				Required:    false,
+				Default:     true,
+				Description: "Delete messages after successful processing",
+				Group:       "Consumption",
+			},
+			{
+				Name:        "worker_count",
+				Type:        "int",
+				Required:    false,
+				Default:     3,
+				Description: "Number of concurrent polling workers",
+				Validation:  "min:1,max:10",
+				Placeholder: "3",
+				Group:       "Performance",
+			},
+		},
+	}
+}
+
 // Factory function for creating SQS plugin instances
 func NewSQSPlugin() plugins.InputPlugin {
 	return &Plugin{}

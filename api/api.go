@@ -57,6 +57,9 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 	// Configuration endpoints
 	service.Get("/api/v2/config", api.GetConfig())
 
+	// Plugin schema endpoints
+	service.Get("/api/v2/plugins", api.GetPluginSchemas())
+
 	// DLQ management endpoints
 	service.Get("/api/v2/dlq/stats", api.GetDLQStats())
 	service.Get("/api/v2/dlq/files", api.ListDLQFiles())

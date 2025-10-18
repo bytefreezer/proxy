@@ -383,7 +383,7 @@ func (p *Plugin) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	response := fmt.Sprintf(`{
 		"status": "%s",
-		"message": "%s", 
+		"message": "%s",
 		"requests_received": %d,
 		"bytes_received": %d,
 		"requests_rejected": %d,
@@ -392,4 +392,93 @@ func (p *Plugin) healthHandler(w http.ResponseWriter, r *http.Request) {
 		metrics.BytesReceived, metrics.RequestsRejected, health.LastUpdated.Format(time.RFC3339))
 
 	w.Write([]byte(response))
+}
+
+// Schema returns the HTTP plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "http",
+		DisplayName: "HTTP Webhook",
+		Description: "HTTP webhook receiver for ingesting data via HTTP POST requests. Outputs structured NDJSON with HTTP metadata.",
+		Category:    "HTTP-based",
+		Transport:   "TCP",
+		DefaultPort: 8080,
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "host",
+				Type:        "string",
+				Required:    false,
+				Default:     "0.0.0.0",
+				Description: "Host address to bind to",
+				Placeholder: "0.0.0.0",
+				Group:       "Network",
+			},
+			{
+				Name:        "port",
+				Type:        "int",
+				Required:    true,
+				Description: "Port to listen on",
+				Validation:  "1-65535",
+				Placeholder: "8080",
+				Group:       "Network",
+			},
+			{
+				Name:        "path",
+				Type:        "string",
+				Required:    false,
+				Default:     "/webhook",
+				Description: "HTTP endpoint path",
+				Placeholder: "/webhook",
+				Group:       "Network",
+			},
+			{
+				Name:        "max_payload_size",
+				Type:        "int",
+				Required:    false,
+				Default:     1048576,
+				Description: "Maximum payload size in bytes (1MB default)",
+				Validation:  "min:1024,max:104857600",
+				Placeholder: "1048576",
+				Group:       "Limits",
+			},
+			{
+				Name:        "max_lines_per_request",
+				Type:        "int",
+				Required:    false,
+				Default:     1000,
+				Description: "Maximum number of lines per request",
+				Validation:  "min:1,max:1000000",
+				Placeholder: "1000",
+				Group:       "Limits",
+			},
+			{
+				Name:        "read_timeout",
+				Type:        "int",
+				Required:    false,
+				Default:     30,
+				Description: "Read timeout in seconds",
+				Validation:  "min:1,max:300",
+				Placeholder: "30",
+				Group:       "Timeouts",
+			},
+			{
+				Name:        "write_timeout",
+				Type:        "int",
+				Required:    false,
+				Default:     30,
+				Description: "Write timeout in seconds",
+				Validation:  "min:1,max:300",
+				Placeholder: "30",
+				Group:       "Timeouts",
+			},
+			{
+				Name:        "enable_authentication",
+				Type:        "bool",
+				Required:    false,
+				Default:     false,
+				Description: "Enable bearer token authentication",
+				Group:       "Security",
+			},
+		},
+	}
 }

@@ -23,6 +23,9 @@ type InputPlugin interface {
 
 	// Health returns plugin health status
 	Health() PluginHealth
+
+	// Schema returns the plugin's configuration schema for dynamic UI generation
+	Schema() PluginSchema
 }
 
 // SpoolingInterface defines the interface plugins use for direct filesystem writes
@@ -90,3 +93,28 @@ const (
 	// Default format
 	DataHintRaw       = "raw"       // Raw data - no specific format processing
 )
+
+// PluginSchema defines the configuration schema for a plugin
+// This allows the UI to dynamically generate forms based on plugin capabilities
+type PluginSchema struct {
+	Name        string              `json:"name"`         // Plugin name (e.g., "http", "kafka")
+	DisplayName string              `json:"display_name"` // Human-readable name (e.g., "HTTP Webhook")
+	Description string              `json:"description"`  // Plugin description
+	Category    string              `json:"category"`     // Category (e.g., "HTTP-based", "Message Queue")
+	Transport   string              `json:"transport"`    // Transport protocol (e.g., "TCP", "UDP")
+	DefaultPort int                 `json:"default_port,omitempty"` // Default port if applicable
+	Fields      []PluginFieldSchema `json:"fields"`       // Configuration fields
+}
+
+// PluginFieldSchema defines a single configuration field
+type PluginFieldSchema struct {
+	Name        string      `json:"name"`                   // Field name (e.g., "port", "host")
+	Type        string      `json:"type"`                   // Field type: "string", "int", "bool", "[]string"
+	Required    bool        `json:"required"`               // Whether field is required
+	Default     interface{} `json:"default,omitempty"`      // Default value
+	Description string      `json:"description"`            // Field description
+	Validation  string      `json:"validation,omitempty"`   // Validation rule (e.g., "1-65535", "min:1,max:10")
+	Placeholder string      `json:"placeholder,omitempty"`  // Placeholder text for UI
+	Options     []string    `json:"options,omitempty"`      // Valid options for enum-like fields
+	Group       string      `json:"group,omitempty"`        // Field group for UI organization
+}

@@ -413,3 +413,56 @@ func extractIPsFromHeader(headerBytes []byte) map[string]interface{} {
 
 	return nil
 }
+
+// Schema returns the sFlow plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "sflow",
+		DisplayName: "sFlow v5/v6",
+		Description: "sFlow network flow collector with IP extraction. Decodes sFlow packets and outputs structured NDJSON with flow metadata.",
+		Category:    "UDP-based (Network Flow)",
+		Transport:   "UDP",
+		DefaultPort: 6343,
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "host",
+				Type:        "string",
+				Required:    false,
+				Default:     "0.0.0.0",
+				Description: "Host address to bind to",
+				Placeholder: "0.0.0.0",
+				Group:       "Network",
+			},
+			{
+				Name:        "port",
+				Type:        "int",
+				Required:    false,
+				Default:     6343,
+				Description: "UDP port to listen on (standard sFlow port: 6343)",
+				Validation:  "1-65535",
+				Placeholder: "6343",
+				Group:       "Network",
+			},
+			{
+				Name:        "read_buffer_size",
+				Type:        "int",
+				Required:    false,
+				Default:     65536,
+				Description: "UDP read buffer size in bytes (64KB default)",
+				Validation:  "min:1024,max:1048576",
+				Placeholder: "65536",
+				Group:       "Performance",
+			},
+			{
+				Name:        "worker_count",
+				Type:        "int",
+				Required:    false,
+				Default:     4,
+				Description: "Number of processing workers",
+				Validation:  "min:1,max:32",
+				Placeholder: "4",
+				Group:       "Performance",
+			},
+		},
+	}
+}

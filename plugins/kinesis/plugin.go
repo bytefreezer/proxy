@@ -303,6 +303,65 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message string) {
 	p.health.LastUpdated = time.Now()
 }
 
+// Schema returns the Kinesis plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "kinesis",
+		DisplayName: "AWS Kinesis Data Streams",
+		Description: "AWS Kinesis Data Streams consumer. Consumes records from Kinesis streams and outputs structured NDJSON.",
+		Category:    "Message Queue",
+		Transport:   "AWS API",
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "stream_name",
+				Type:        "string",
+				Required:    true,
+				Description: "Name of the Kinesis stream",
+				Placeholder: "my-stream",
+				Group:       "Connection",
+			},
+			{
+				Name:        "region",
+				Type:        "string",
+				Required:    true,
+				Description: "AWS region (e.g., us-east-1, us-west-2)",
+				Placeholder: "us-east-1",
+				Group:       "Connection",
+			},
+			{
+				Name:        "shard_iterator_type",
+				Type:        "string",
+				Required:    false,
+				Default:     "LATEST",
+				Description: "Starting position in the stream",
+				Options:     []string{"LATEST", "TRIM_HORIZON", "AT_TIMESTAMP"},
+				Placeholder: "LATEST",
+				Group:       "Consumption",
+			},
+			{
+				Name:        "poll_interval_seconds",
+				Type:        "int",
+				Required:    false,
+				Default:     5,
+				Description: "Polling interval in seconds",
+				Validation:  "min:1,max:60",
+				Placeholder: "5",
+				Group:       "Performance",
+			},
+			{
+				Name:        "max_records",
+				Type:        "int",
+				Required:    false,
+				Default:     100,
+				Description: "Maximum records per GetRecords call",
+				Validation:  "min:1,max:10000",
+				Placeholder: "100",
+				Group:       "Performance",
+			},
+		},
+	}
+}
+
 // Factory function for creating Kinesis plugin instances
 func NewKinesisPlugin() plugins.InputPlugin {
 	return &Plugin{}

@@ -13,7 +13,7 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/api"
 	"github.com/n0needt0/bytefreezer-proxy/config"
-	_ "github.com/n0needt0/bytefreezer-proxy/plugins"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
 	"github.com/n0needt0/go-goodies/log"
 
@@ -391,5 +391,55 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 			"http_forwarding",
 			"plugin_system",
 		},
+		"plugin_schemas": getPluginSchemas(),
 	}
+}
+
+// getPluginSchemas returns all registered plugin schemas for health reporting
+func getPluginSchemas() []map[string]interface{} {
+	schemas := plugins.GlobalRegistry.GetAllSchemas()
+	result := make([]map[string]interface{}, len(schemas))
+
+	for i, schema := range schemas {
+		fields := make([]map[string]interface{}, len(schema.Fields))
+		for j, field := range schema.Fields {
+			fieldMap := map[string]interface{}{
+				"name":        field.Name,
+				"type":        field.Type,
+				"required":    field.Required,
+				"description": field.Description,
+			}
+			if field.Default != nil {
+				fieldMap["default"] = field.Default
+			}
+			if field.Validation != "" {
+				fieldMap["validation"] = field.Validation
+			}
+			if field.Placeholder != "" {
+				fieldMap["placeholder"] = field.Placeholder
+			}
+			if len(field.Options) > 0 {
+				fieldMap["options"] = field.Options
+			}
+			if field.Group != "" {
+				fieldMap["group"] = field.Group
+			}
+			fields[j] = fieldMap
+		}
+
+		schemaMap := map[string]interface{}{
+			"name":         schema.Name,
+			"display_name": schema.DisplayName,
+			"description":  schema.Description,
+			"category":     schema.Category,
+			"transport":    schema.Transport,
+			"fields":       fields,
+		}
+		if schema.DefaultPort > 0 {
+			schemaMap["default_port"] = schema.DefaultPort
+		}
+		result[i] = schemaMap
+	}
+
+	return result
 }

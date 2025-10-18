@@ -67,6 +67,19 @@ func GetRegistry() *Registry {
 	return GlobalRegistry
 }
 
+// GetAllSchemas returns schemas for all registered plugins
+func (r *Registry) GetAllSchemas() []PluginSchema {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	schemas := make([]PluginSchema, 0, len(r.plugins))
+	for _, factory := range r.plugins {
+		plugin := factory()
+		schemas = append(schemas, plugin.Schema())
+	}
+	return schemas
+}
+
 // Register is a convenience function for registering plugins with the global registry
 func Register(name string, factory InputPluginFactory) error {
 	return GlobalRegistry.Register(name, factory)

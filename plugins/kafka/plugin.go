@@ -372,3 +372,70 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 
 	log.Debugf("Stored Kafka message from topic %s directly to filesystem: %d bytes", msg.Topic, len(msg.Value))
 }
+
+// Schema returns the Kafka plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "kafka",
+		DisplayName: "Apache Kafka",
+		Description: "Kafka message consumer. Subscribes to topics and outputs structured NDJSON with Kafka metadata (topic, partition, offset, headers).",
+		Category:    "Message Queue",
+		Transport:   "TCP",
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "brokers",
+				Type:        "[]string",
+				Required:    true,
+				Description: "List of Kafka broker addresses",
+				Placeholder: "localhost:9092,localhost:9093",
+				Group:       "Connection",
+			},
+			{
+				Name:        "topics",
+				Type:        "[]string",
+				Required:    true,
+				Description: "List of topics to subscribe to",
+				Placeholder: "topic1,topic2",
+				Group:       "Connection",
+			},
+			{
+				Name:        "group_id",
+				Type:        "string",
+				Required:    true,
+				Description: "Consumer group ID",
+				Placeholder: "bytefreezer-consumer",
+				Group:       "Connection",
+			},
+			{
+				Name:        "auto_offset_reset",
+				Type:        "string",
+				Required:    false,
+				Default:     "latest",
+				Description: "Offset reset behavior",
+				Options:     []string{"earliest", "latest"},
+				Placeholder: "latest",
+				Group:       "Consumption",
+			},
+			{
+				Name:        "session_timeout",
+				Type:        "int",
+				Required:    false,
+				Default:     30,
+				Description: "Session timeout in seconds",
+				Validation:  "min:6,max:300",
+				Placeholder: "30",
+				Group:       "Timeouts",
+			},
+			{
+				Name:        "heartbeat_interval",
+				Type:        "int",
+				Required:    false,
+				Default:     10,
+				Description: "Heartbeat interval in seconds",
+				Validation:  "min:1,max:100",
+				Placeholder: "10",
+				Group:       "Timeouts",
+			},
+		},
+	}
+}

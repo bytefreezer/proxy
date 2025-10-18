@@ -332,3 +332,87 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 	log.Debugf("Stored NATS message from subject %s directly to filesystem (%d bytes)",
 		msg.Subject, len(formattedData))
 }
+
+// Schema returns the NATS plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "nats",
+		DisplayName: "NATS Messaging",
+		Description: "NATS messaging subscriber. Subscribes to subjects and outputs structured NDJSON with NATS metadata (subject, headers, reply_to).",
+		Category:    "Message Queue",
+		Transport:   "TCP",
+		DefaultPort: 4222,
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "servers",
+				Type:        "[]string",
+				Required:    false,
+				Default:     []string{"nats://localhost:4222"},
+				Description: "List of NATS server URLs",
+				Placeholder: "nats://localhost:4222",
+				Group:       "Connection",
+			},
+			{
+				Name:        "subjects",
+				Type:        "[]string",
+				Required:    true,
+				Description: "List of subjects to subscribe to (supports wildcards: * and >)",
+				Placeholder: "events.>,logs.*",
+				Group:       "Connection",
+			},
+			{
+				Name:        "queue_group",
+				Type:        "string",
+				Required:    false,
+				Description: "Optional queue group for load balancing",
+				Placeholder: "workers",
+				Group:       "Connection",
+			},
+			{
+				Name:        "max_reconnect",
+				Type:        "int",
+				Required:    false,
+				Default:     -1,
+				Description: "Max reconnection attempts (-1 = unlimited)",
+				Placeholder: "-1",
+				Group:       "Resilience",
+			},
+			{
+				Name:        "reconnect_wait",
+				Type:        "int",
+				Required:    false,
+				Default:     2,
+				Description: "Reconnect wait time in seconds",
+				Validation:  "min:1,max:60",
+				Placeholder: "2",
+				Group:       "Resilience",
+			},
+			{
+				Name:        "timeout",
+				Type:        "int",
+				Required:    false,
+				Default:     10,
+				Description: "Connection timeout in seconds",
+				Validation:  "min:1,max:300",
+				Placeholder: "10",
+				Group:       "Timeouts",
+			},
+			{
+				Name:        "user_creds",
+				Type:        "string",
+				Required:    false,
+				Description: "Path to NATS user credentials file (.creds)",
+				Placeholder: "/path/to/nats.creds",
+				Group:       "Security",
+			},
+			{
+				Name:        "token",
+				Type:        "string",
+				Required:    false,
+				Description: "NATS authentication token",
+				Placeholder: "secret-token",
+				Group:       "Security",
+			},
+		},
+	}
+}

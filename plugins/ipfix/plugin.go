@@ -288,3 +288,56 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 	log.Debugf("Stored IPFIX message from %s:%d as NDJSON directly to filesystem (%d bytes)",
 		clientAddr.IP.String(), clientAddr.Port, len(ndjsonData))
 }
+
+// Schema returns the IPFIX plugin configuration schema
+func (p *Plugin) Schema() plugins.PluginSchema {
+	return plugins.PluginSchema{
+		Name:        "ipfix",
+		DisplayName: "IPFIX (RFC 7011)",
+		Description: "IPFIX flow collector. Decodes IPFIX packets (standardized successor to NetFlow v9) and outputs structured NDJSON.",
+		Category:    "UDP-based (Network Flow)",
+		Transport:   "UDP",
+		DefaultPort: 4739,
+		Fields: []plugins.PluginFieldSchema{
+			{
+				Name:        "host",
+				Type:        "string",
+				Required:    false,
+				Default:     "0.0.0.0",
+				Description: "Host address to bind to",
+				Placeholder: "0.0.0.0",
+				Group:       "Network",
+			},
+			{
+				Name:        "port",
+				Type:        "int",
+				Required:    false,
+				Default:     4739,
+				Description: "UDP port to listen on (standard IPFIX port: 4739)",
+				Validation:  "1-65535",
+				Placeholder: "4739",
+				Group:       "Network",
+			},
+			{
+				Name:        "read_buffer_size",
+				Type:        "int",
+				Required:    false,
+				Default:     65536,
+				Description: "UDP read buffer size in bytes (64KB default)",
+				Validation:  "min:1024,max:1048576",
+				Placeholder: "65536",
+				Group:       "Performance",
+			},
+			{
+				Name:        "worker_count",
+				Type:        "int",
+				Required:    false,
+				Default:     4,
+				Description: "Number of processing workers",
+				Validation:  "min:1,max:32",
+				Placeholder: "4",
+				Group:       "Performance",
+			},
+		},
+	}
+}

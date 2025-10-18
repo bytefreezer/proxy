@@ -1,0 +1,52 @@
+app:
+  name: bytefreezer-proxy
+  version: 0.0.2
+
+logging:
+  level: info
+  encoding: console
+
+server:
+  api_port: 8088
+
+# No inputs for API-only testing
+inputs: []
+
+tenant_id: "test-tenant"
+bearer_token: "test-token"
+
+receiver:
+  base_url: "http://localhost:8081/{tenantid}/{datasetid}"
+  timeout_seconds: 30
+  upload_worker_count: 5
+  max_idle_conns: 10
+  max_conns_per_host: 6
+
+batching:
+  enabled: false
+
+soc:
+  enabled: false
+
+otel:
+  enabled: false
+
+housekeeping:
+  enabled: false
+
+spooling:
+  enabled: true
+  directory: "/tmp/bytefreezer-proxy-spool"
+  max_size_bytes: 1073741824
+  retry_attempts: 5
+  retry_interval_seconds: 60
+  cleanup_interval_seconds: 300
+  keep_src: false
+
+dev: false
+
+health_reporting:
+  enabled: false
+
+tenant_validation:
+  enabled: false

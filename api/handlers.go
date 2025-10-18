@@ -774,3 +774,87 @@ func (api *API) TestConnectivity() usecase.Interactor {
 
 	return u
 }
+
+// PluginSchemasResponse represents the response containing all plugin schemas
+type PluginSchemasResponse struct {
+	Plugins []PluginSchemaAPI `json:"plugins"`
+	Count   int               `json:"count"`
+}
+
+// PluginSchemaAPI represents a plugin schema in the API
+type PluginSchemaAPI struct {
+	Name        string               `json:"name"`
+	DisplayName string               `json:"display_name"`
+	Description string               `json:"description"`
+	Category    string               `json:"category"`
+	Transport   string               `json:"transport"`
+	DefaultPort int                  `json:"default_port,omitempty"`
+	Fields      []PluginFieldSchemaAPI `json:"fields"`
+}
+
+// PluginFieldSchemaAPI represents a plugin field schema in the API
+type PluginFieldSchemaAPI struct {
+	Name        string      `json:"name"`
+	Type        string      `json:"type"`
+	Required    bool        `json:"required"`
+	Default     interface{} `json:"default,omitempty"`
+	Description string      `json:"description"`
+	Validation  string      `json:"validation,omitempty"`
+	Placeholder string      `json:"placeholder,omitempty"`
+	Options     []string    `json:"options,omitempty"`
+	Group       string      `json:"group,omitempty"`
+}
+
+// GetPluginSchemas returns schemas for all available plugins
+func (api *API) GetPluginSchemas() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *PluginSchemasResponse) error {
+		log.Debug("Retrieving plugin schemas from registry")
+
+		// Get plugin registry
+		registry := api.Services.PluginRegistry
+
+		// Get all plugin schemas
+		schemas := registry.GetAllSchemas()
+
+		// Convert to API format
+		output.Plugins = make([]PluginSchemaAPI, len(schemas))
+		for i, schema := range schemas {
+			// Convert fields
+			fields := make([]PluginFieldSchemaAPI, len(schema.Fields))
+			for j, field := range schema.Fields {
+				fields[j] = PluginFieldSchemaAPI{
+					Name:        field.Name,
+					Type:        field.Type,
+					Required:    field.Required,
+					Default:     field.Default,
+					Description: field.Description,
+					Validation:  field.Validation,
+					Placeholder: field.Placeholder,
+					Options:     field.Options,
+					Group:       field.Group,
+				}
+			}
+
+			output.Plugins[i] = PluginSchemaAPI{
+				Name:        schema.Name,
+				DisplayName: schema.DisplayName,
+				Description: schema.Description,
+				Category:    schema.Category,
+				Transport:   schema.Transport,
+				DefaultPort: schema.DefaultPort,
+				Fields:      fields,
+			}
+		}
+
+		output.Count = len(schemas)
+
+		log.Infof("Retrieved %d plugin schemas", output.Count)
+		return nil
+	})
+
+	u.SetTitle("Get Plugin Schemas")
+	u.SetDescription("Retrieve configuration schemas for all available input plugins")
+	u.SetTags("Plugins")
+
+	return u
+}
