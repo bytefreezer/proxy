@@ -14,28 +14,34 @@ server:
 # NEW: Plugin-based input configuration
 # This replaces the old UDP listeners section
 inputs:
-  # UDP Plugin for eBPF data (port 2056 standard)
-  - type: "udp"
-    name: "ebpf-udp-listener"
+  # eBPF Plugin for kernel telemetry (port 2056 standard)
+  - type: "ebpf"
+    name: "ebpf-listener"
     config:
       host: "0.0.0.0"
       port: 2056
       dataset_id: "ebpf-data"
-      protocol: "udp"
-      data_hint: "raw"                # eBPF data is binary/raw format
       read_buffer_size: 65536
       worker_count: 4
 
-  # Syslog UDP Plugin for system logs
-  - type: "udp"
-    name: "syslog-udp-listener"
+  # Syslog Plugin for system logs (port 514 standard)
+  - type: "syslog"
+    name: "syslog-listener"
     config:
       host: "0.0.0.0"
-      port: 2057
+      port: 514
       dataset_id: "syslog-data"
-      protocol: "syslog"
-      data_hint: "syslog"            # Enable syslog parsing downstream
-      syslog_mode: "rfc3164"
+      syslog_mode: "auto"            # Auto-detect RFC3164/RFC5424
+      read_buffer_size: 65536
+
+  # UDP Plugin for generic raw data
+  - type: "udp"
+    name: "generic-udp-listener"
+    config:
+      host: "0.0.0.0"
+      port: 5000
+      dataset_id: "udp-data"
+      read_buffer_size: 65536
 
   # Kafka Plugin (NEW!)
   - type: "kafka"

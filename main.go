@@ -18,6 +18,7 @@ import (
 	"github.com/n0needt0/go-goodies/log"
 
 	// Import plugin packages to register them
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/ebpf"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/http"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/ipfix"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/kafka"
@@ -26,6 +27,7 @@ import (
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/netflow"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/sflow"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/sqs"
+	_ "github.com/n0needt0/bytefreezer-proxy/plugins/syslog"
 	_ "github.com/n0needt0/bytefreezer-proxy/plugins/udp"
 )
 
