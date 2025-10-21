@@ -28,6 +28,9 @@ type Config struct {
 	Receiver        Receiver               `mapstructure:"receiver"`
 	TenantID        string                 `mapstructure:"tenant_id"`
 	BearerToken     string                 `mapstructure:"bearer_token"`
+	ControlURL      string                 `mapstructure:"control_url"` // Centralized control service URL
+	ConfigMode      string                 `mapstructure:"config_mode"` // local-only, control-only, hybrid (default: hybrid)
+	ConfigPolling   ConfigPollingConfig    `mapstructure:"config_polling"`
 	SOC             SOCAlert               `mapstructure:"soc"`
 	Otel            Otel                   `mapstructure:"otel"`
 	Housekeeping    Housekeeping           `mapstructure:"housekeeping"`
@@ -122,6 +125,14 @@ type Housekeeping struct {
 	IntervalSeconds int  `mapstructure:"intervalseconds"`
 }
 
+type ConfigPollingConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	IntervalSeconds int    `mapstructure:"interval_seconds"`
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	CacheDirectory  string `mapstructure:"cache_directory"` // Directory to cache config from control
+	RetryOnError    bool   `mapstructure:"retry_on_error"`  // Keep trying if control unreachable
+}
+
 type Spooling struct {
 	Enabled            bool   `mapstructure:"enabled"`
 	Directory          string `mapstructure:"directory"`
@@ -141,7 +152,6 @@ type Spooling struct {
 
 type HealthReportingConfig struct {
 	Enabled            bool   `mapstructure:"enabled"`
-	ControlURL         string `mapstructure:"control_url"`
 	ReportInterval     int    `mapstructure:"report_interval"`
 	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
 	RegisterOnStartup  bool   `mapstructure:"register_on_startup"`
@@ -149,7 +159,6 @@ type HealthReportingConfig struct {
 
 type TenantValidationConfig struct {
 	Enabled            bool   `mapstructure:"enabled"`
-	ControlURL         string `mapstructure:"control_url"`
 	CacheTTLSec        int    `mapstructure:"cache_ttl_seconds"`         // TTL for active tenants
 	InactiveCacheTTLSec int    `mapstructure:"inactive_cache_ttl_seconds"` // TTL for inactive tenants (longer)
 	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
@@ -238,6 +247,39 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	if cfg.Spooling.CleanupIntervalSec == 0 {
 		cfg.Spooling.CleanupIntervalSec = 300 // 5 minutes
+	}
+
+	// Config mode defaults
+	if cfg.ConfigMode == "" {
+		cfg.ConfigMode = "hybrid" // Default to hybrid mode
+	}
+
+	// Validate config mode
+	validModes := map[string]bool{
+		"local-only":   true,
+		"control-only": true,
+		"hybrid":       true,
+	}
+	if !validModes[cfg.ConfigMode] {
+		return fmt.Errorf("invalid config_mode '%s': must be 'local-only', 'control-only', or 'hybrid'", cfg.ConfigMode)
+	}
+
+	// Config polling defaults
+	if cfg.ConfigPolling.IntervalSeconds == 0 {
+		cfg.ConfigPolling.IntervalSeconds = 300 // 5 minutes default
+	}
+	if cfg.ConfigPolling.TimeoutSeconds == 0 {
+		cfg.ConfigPolling.TimeoutSeconds = 30 // 30 seconds default
+	}
+	if cfg.ConfigPolling.CacheDirectory == "" {
+		cfg.ConfigPolling.CacheDirectory = "/var/cache/bytefreezer-proxy"
+	}
+
+	// Enable polling by default for control-only and hybrid modes
+	if (cfg.ConfigMode == "control-only" || cfg.ConfigMode == "hybrid") && cfg.ControlURL != "" {
+		if !cfg.ConfigPolling.Enabled {
+			cfg.ConfigPolling.Enabled = true // Auto-enable for control-based modes
+		}
 	}
 
 	return nil

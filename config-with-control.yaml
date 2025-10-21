@@ -14,6 +14,7 @@ inputs: []
 
 tenant_id: "test-tenant"
 bearer_token: "test-token"
+control_url: "http://192.168.86.103:8082"
 
 receiver:
   base_url: "http://localhost:8081/{tenantid}/{datasetid}"
@@ -47,7 +48,6 @@ dev: false
 
 health_reporting:
   enabled: true
-  control_url: "http://192.168.86.103:8082"
   report_interval: 30
   timeout_seconds: 10
   register_on_startup: true

@@ -77,7 +77,7 @@ func NewSpoolingService(cfg *config.Config) *SpoolingService {
 		retryInterval:   time.Duration(cfg.Spooling.RetryIntervalSec) * time.Second,
 		cleanupInterval: time.Duration(cfg.Spooling.CleanupIntervalSec) * time.Second,
 		retryForwarder:  NewRetryHTTPForwarder(cfg),          // Dedicated HTTP client for retry processing
-		tenantValidator: NewTenantValidator(&cfg.TenantValidation), // Layer 4: Proactive tenant validation
+		tenantValidator: NewTenantValidator(&cfg.TenantValidation, cfg.ControlURL), // Layer 4: Proactive tenant validation
 		shutdown:        make(chan struct{}),
 		retryTrigger:    make(chan struct{}, 100), // Buffered channel to prevent blocking
 	}

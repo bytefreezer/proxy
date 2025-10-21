@@ -1,5 +1,116 @@
 # ByteFreezer Proxy Release Notes
 
+## v4.0.0 - Configuration Polling & Dynamic Reload (2025-10-21)
+
+### Configuration Management System
+
+#### 🔄 Configuration Polling from Control
+- **Three Operating Modes**: local-only, control-only, hybrid (default)
+- **Automatic Polling**: Fetches configuration from bytefreezer-control every 5 minutes (configurable)
+- **Local Caching**: Caches control configuration to `/var/cache/bytefreezer-proxy/{tenant}-{hostname}.json`
+- **Graceful Fallback**: Hybrid mode falls back to cached config if control unreachable
+- **Change Detection**: SHA256 hash-based comparison for efficient change detection
+
+#### 🔌 Dynamic Plugin Reload
+- **Zero-Downtime Reload**: Dynamically reloads plugins when configuration changes
+- **Port Conflict Detection**: Detects and resolves port conflicts (remote config takes precedence)
+- **Automatic Application**: New configurations applied automatically without restart
+- **Status Reporting**: Reports configuration application status back to control
+
+#### 📋 Configuration Modes
+
+**local-only**:
+- Uses only local config.yaml
+- Ignores control completely
+- Suitable for air-gapped environments
+
+**control-only**:
+- Fetches all configuration from control
+- Fails if control is unavailable
+- Suitable for fully centralized management
+
+**hybrid** (default):
+- Primary source: control
+- Fallback: local cached configuration
+- Best of both worlds - centralized with resilience
+
+#### 🛠️ Implementation Details
+
+**New Configuration Fields** (`config/config.go`):
+```yaml
+config_mode: "hybrid"  # local-only | control-only | hybrid
+
+config_polling:
+  enabled: true
+  interval_seconds: 300
+  timeout_seconds: 30
+  cache_directory: "/var/cache/bytefreezer-proxy"
+  retry_on_error: true
+```
+
+**New Services** (`services/`):
+- `config_polling.go`: ConfigPollingService for polling control
+- `plugin_service.go`: Added Reload() method for dynamic plugin reload
+- `services.go`: Added PluginService and ConfigPollingService fields
+
+**Key Features**:
+- Polls control API: `GET /api/v2/proxies/{instanceId}/config?tenant_id={tenantId}`
+- Saves config to: `/var/cache/bytefreezer-proxy/{tenant_id}-{instance_id}.json`
+- Reports application: `POST /api/v2/proxies/{instanceId}/config/applied`
+- Configuration versioning for tracking changes
+- Comprehensive logging for debugging
+
+#### 📊 Port Conflict Resolution
+When local and remote configs define plugins on the same port:
+```
+Port conflict: Port 2055: local 'sflow[sflow-listener]' vs remote 'ipfix-listener'
+- REMOTE TAKES PRECEDENCE
+```
+- Remote configuration always wins
+- Automatic plugin reload with new configuration
+- Detailed conflict logging for transparency
+
+#### 🔐 Security
+- Bearer token authentication for control API
+- Configuration hash verification (SHA256)
+- Cached config files: permissions 0600
+- Sensitive data never logged
+
+#### 📈 Observability
+**Startup Logs**:
+```
+Config polling service starting (mode: hybrid, interval: 5m0s)
+Loaded cached configuration (version 2) from /var/cache/...
+Config polling enabled - polling every 5m0s
+```
+
+**Config Change Logs**:
+```
+Configuration changed (version 2 -> 3)
+Applying new configuration (version 3)
+Reloading plugin service with new configuration
+Plugin service reloaded successfully with 3 plugins
+Configuration applied successfully (version 3)
+Reported config version 3 as applied to control
+```
+
+### Benefits
+- **Centralized Management**: Manage all proxy configurations from control
+- **High Availability**: Continues operating even if control is unavailable
+- **Zero Downtime**: Updates applied without restarting proxy
+- **Audit Trail**: All configuration changes tracked with version history
+- **Conflict Resolution**: Automatic detection and resolution of port conflicts
+- **Flexible Deployment**: Three modes support different operational requirements
+
+### Documentation
+- `CONFIG_POLLING_IMPLEMENTATION.md`: Comprehensive implementation guide
+- Architecture diagrams and flow charts
+- Testing scenarios for all three modes
+- API endpoint documentation
+- Troubleshooting guide
+
+---
+
 ## v3.0.0 - Comprehensive Health Reporting (2025-10-11)
 
 ### Health Monitoring Enhancements

@@ -157,6 +157,35 @@ func (ps *PluginService) Stop() error {
 	return nil
 }
 
+// Reload reloads the plugin service with new configuration
+func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
+	log.Info("Reloading plugin service with new configuration")
+
+	// Stop plugin manager to stop all running plugins
+	if err := ps.pluginManager.Stop(); err != nil {
+		log.Errorf("Error stopping plugin manager during reload: %v", err)
+		return fmt.Errorf("failed to stop plugins: %w", err)
+	}
+
+	// Create new plugin manager with updated configs
+	ps.pluginManager = plugins.NewManagerWithGlobals(
+		newInputConfigs,
+		ps.spoolingService,
+		plugins.GlobalRegistry,
+		ps.config.TenantID,
+		ps.config.BearerToken,
+	)
+
+	// Start new plugins
+	if err := ps.pluginManager.Start(); err != nil {
+		log.Errorf("Error starting new plugins during reload: %v", err)
+		return fmt.Errorf("failed to start new plugins: %w", err)
+	}
+
+	log.Infof("Plugin service reloaded successfully with %d plugins", len(newInputConfigs))
+	return nil
+}
+
 // processInputMessages processes messages from input plugins
 func (ps *PluginService) processInputMessages() {
 	defer ps.wg.Done()

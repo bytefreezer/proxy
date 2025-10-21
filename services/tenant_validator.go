@@ -14,6 +14,7 @@ import (
 // TenantValidator handles tenant validation with caching
 type TenantValidator struct {
 	config     *config.TenantValidationConfig
+	controlURL string
 	httpClient *http.Client
 	cache      map[string]*tenantCacheEntry
 	cacheMutex sync.RWMutex
@@ -32,8 +33,8 @@ type TenantResponse struct {
 }
 
 // NewTenantValidator creates a new tenant validator
-func NewTenantValidator(cfg *config.TenantValidationConfig) *TenantValidator {
-	if cfg == nil || !cfg.Enabled {
+func NewTenantValidator(cfg *config.TenantValidationConfig, controlURL string) *TenantValidator {
+	if cfg == nil || !cfg.Enabled || controlURL == "" {
 		return &TenantValidator{
 			enabled: false,
 		}
@@ -45,7 +46,8 @@ func NewTenantValidator(cfg *config.TenantValidationConfig) *TenantValidator {
 	}
 
 	return &TenantValidator{
-		config: cfg,
+		config:     cfg,
+		controlURL: controlURL,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -108,7 +110,7 @@ func (tv *TenantValidator) IsActiveTenant(tenantID string) bool {
 // fetchTenantStatus fetches tenant status from control API
 func (tv *TenantValidator) fetchTenantStatus(tenantID string) bool {
 	// Construct URL to control API tenant endpoint
-	url := fmt.Sprintf("%s/api/v1/tenants/%s", tv.config.ControlURL, tenantID)
+	url := fmt.Sprintf("%s/api/v1/tenants/%s", tv.controlURL, tenantID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

@@ -28,6 +28,7 @@ inputs:
 # Global tenant configuration (used as fallback for plugins)
 tenant_id: "customer-1"
 bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+control_url: "http://192.168.86.103:8082"
 
 # Bytefreezer-receiver configuration
 receiver:
@@ -83,7 +84,6 @@ dev: false
 # Health reporting configuration for service registration and monitoring
 health_reporting:
   enabled: true
-  control_url: "http://192.168.86.103:8082"
   report_interval: 30  # seconds
   timeout_seconds: 10
   register_on_startup: true
@@ -91,7 +91,6 @@ health_reporting:
 # Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
 tenant_validation:
   enabled: true
-  control_url: "http://192.168.86.103:8082"
   cache_ttl_seconds: 300  # 5 minutes for active tenants
   inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
   timeout_seconds: 5

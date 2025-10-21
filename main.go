@@ -114,7 +114,7 @@ func main() {
 
 	// Initialize health reporting service
 	var healthReportingService *services.HealthReportingService
-	if cfg.HealthReporting.Enabled && cfg.HealthReporting.ControlURL != "" {
+	if cfg.HealthReporting.Enabled && cfg.ControlURL != "" {
 		reportInterval := time.Duration(cfg.HealthReporting.ReportInterval) * time.Second
 		if reportInterval <= 0 {
 			reportInterval = 5 * time.Minute // Default 5 minutes
@@ -139,7 +139,7 @@ func main() {
 		configuration := buildHealthConfiguration(&cfg, instanceAPI)
 
 		healthReportingService = services.NewHealthReportingService(
-			cfg.HealthReporting.ControlURL,
+			cfg.ControlURL,
 			"bytefreezer-proxy",
 			instanceAPI,
 			reportInterval,
@@ -156,7 +156,7 @@ func main() {
 
 		// Start health reporting
 		healthReportingService.Start()
-		log.Infof("Health reporting service started - reporting to %s every %v", cfg.HealthReporting.ControlURL, reportInterval)
+		log.Infof("Health reporting service started - reporting to %s every %v", cfg.ControlURL, reportInterval)
 	} else {
 		log.Info("Health reporting is disabled")
 	}

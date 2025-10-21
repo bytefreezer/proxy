@@ -8,11 +8,13 @@ import (
 
 // Services holds all service instances and shared state
 type Services struct {
-	Config          *config.Config
-	ProxyStats      *domain.ProxyStats
-	SpoolingService *SpoolingService
-	MetricsService  *MetricsService
-	PluginRegistry  *plugins.Registry
+	Config               *config.Config
+	ProxyStats           *domain.ProxyStats
+	SpoolingService      *SpoolingService
+	MetricsService       *MetricsService
+	PluginRegistry       *plugins.Registry
+	PluginService        *PluginService        // Plugin service for dynamic reload
+	ConfigPollingService *ConfigPollingService // Config polling service
 
 	// Service instances will be added here
 	// UDPListener  *udp.Listener
