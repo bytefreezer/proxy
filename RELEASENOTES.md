@@ -21,6 +21,15 @@
   - `local-only`: Use only local config.yaml (air-gapped deployments)
   - `control-only`: Fetch config from Control with automatic fallback on error
 
+### API Improvements
+- **Enhanced /api/v1/config endpoint**: Added new fields to provide comprehensive configuration visibility
+  - Added `account_id`: Displays the configured account ID for multi-tenant polling
+  - Added `control_url`: Shows the Control service URL
+  - Added `config_mode`: Shows current configuration mode (local-only | control-only)
+  - Added `config_polling`: Shows configuration polling settings (enabled, intervals, cache directory, retry behavior)
+  - Remotely configured plugins from Control service are now visible in the plugins section
+  - Better visibility into whether proxy is using account-based or tenant-based polling
+
 ### Code Cleanup
 - **Removed legacy UDP configuration system**:
   - Removed `UDP` struct and `UDPListener` struct from config.go (lines 62-83)

@@ -59,16 +59,20 @@ type ProxyStatsResponse struct {
 
 // ConfigResponse represents the current system configuration
 type ConfigResponse struct {
-	App          AppConfig            `json:"app"`
-	Server       ServerConfig         `json:"server"`
-	Plugins      PluginsConfig        `json:"plugins"`
-	Receiver     ReceiverConfigMasked `json:"receiver"`
-	TenantID     string               `json:"tenant_id"`    // This will be masked
-	BearerToken  string               `json:"bearer_token"` // This will be masked
-	SOC          SOCConfig            `json:"soc"`
-	Otel         OtelConfig           `json:"otel"`
-	Housekeeping HousekeepingConfig   `json:"housekeeping"`
-	Dev          bool                 `json:"dev"`
+	App           AppConfig              `json:"app"`
+	Server        ServerConfig           `json:"server"`
+	Plugins       PluginsConfig          `json:"plugins"`
+	Receiver      ReceiverConfigMasked   `json:"receiver"`
+	AccountID     string                 `json:"account_id,omitempty"`     // Account ID for multi-tenant polling
+	TenantID      string                 `json:"tenant_id,omitempty"`      // This will be masked
+	BearerToken   string                 `json:"bearer_token"`             // This will be masked
+	ControlURL    string                 `json:"control_url,omitempty"`    // Control service URL
+	ConfigMode    string                 `json:"config_mode,omitempty"`    // local-only | control-only
+	ConfigPolling ConfigPollingResponse  `json:"config_polling,omitempty"` // Configuration polling settings
+	SOC           SOCConfig              `json:"soc"`
+	Otel          OtelConfig             `json:"otel"`
+	Housekeeping  HousekeepingConfig     `json:"housekeeping"`
+	Dev           bool                   `json:"dev"`
 }
 
 type AppConfig struct {
@@ -115,6 +119,14 @@ type OtelConfig struct {
 type HousekeepingConfig struct {
 	Enabled         bool `json:"enabled"`
 	IntervalSeconds int  `json:"interval_seconds"`
+}
+
+type ConfigPollingResponse struct {
+	Enabled         bool   `json:"enabled"`
+	IntervalSeconds int    `json:"interval_seconds"`
+	TimeoutSeconds  int    `json:"timeout_seconds"`
+	CacheDirectory  string `json:"cache_directory"`
+	RetryOnError    bool   `json:"retry_on_error"`
 }
 
 // DLQStatsResponse represents DLQ and spooling statistics
@@ -405,6 +417,18 @@ func (api *API) GetConfig() usecase.Interactor {
 		// Global tenant ID and bearer token (masked)
 		output.TenantID = maskSensitiveValue(cfg.TenantID)
 		output.BearerToken = maskSensitiveValue(cfg.BearerToken)
+
+		// Account and control configuration
+		output.AccountID = cfg.AccountID
+		output.ControlURL = cfg.ControlURL
+		output.ConfigMode = cfg.ConfigMode
+		output.ConfigPolling = ConfigPollingResponse{
+			Enabled:         cfg.ConfigPolling.Enabled,
+			IntervalSeconds: cfg.ConfigPolling.IntervalSeconds,
+			TimeoutSeconds:  cfg.ConfigPolling.TimeoutSeconds,
+			CacheDirectory:  cfg.ConfigPolling.CacheDirectory,
+			RetryOnError:    cfg.ConfigPolling.RetryOnError,
+		}
 
 		// SOC configuration
 		output.SOC = SOCConfig{
