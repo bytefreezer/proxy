@@ -11,76 +11,47 @@ logging:
   level: {{ config.logging.level }}
   encoding: {{ config.logging.encoding }}
 
-# API server configuration  
+# API server configuration
 server:
   api_port: {{ config.server.api_port }}
 
-# Plugin-based input configuration
-# Leave empty if using account-based configuration (plugins generated from Control)
-inputs:
-{% if config.inputs is defined and config.inputs | length > 0 %}
-{% for input in config.inputs %}
-  # {{ input.name }} - {{ input.type }} plugin
-  - type: "{{ input.type }}"
-    name: "{{ input.name }}"
-    config:
-{% for key, value in input.config.items() %}
-{% if value is string %}
-      {{ key }}: "{{ value }}"
-{% else %}
-      {{ key }}: {{ value }}
-{% endif %}
-{% endfor %}
-{% endfor %}
-{% else %}
-  []
-{% endif %}
+# Plugin-based input configuration (populated from Control)
+inputs: []
 
-# Account-based configuration (NEW in v4.1.0)
-# Use account_id to poll all tenants + datasets for an account
-# OR use tenant_id for legacy single-tenant mode
-{% if config.account_id is defined and config.account_id %}
+# Account-based configuration - proxy polls Control for all tenants + datasets
 account_id: "{{ config.account_id }}"
-{% endif %}
-{% if config.tenant_id is defined and config.tenant_id %}
-tenant_id: "{{ config.tenant_id }}"
-{% endif %}
 bearer_token: "{{ config.bearer_token }}"
-control_url: "{{ config.control_url | default('http://192.168.86.103:8082') }}"
+control_url: "{{ config.control_url }}"
+config_mode: "{{ config.config_mode }}"  # local-only | control-only
 
-# Configuration mode: local-only | control-only
-config_mode: "{{ config.config_mode | default('control-only') }}"
-
-# Configuration polling from Control (NEW in v4.1.0)
-{% if config.config_polling is defined %}
+# Configuration polling from Control
 config_polling:
-  enabled: {{ config.config_polling.enabled | default(true) | lower }}
-  interval_seconds: {{ config.config_polling.interval_seconds | default(60) }}
-  timeout_seconds: {{ config.config_polling.timeout_seconds | default(30) }}
-  cache_directory: "{{ config.config_polling.cache_directory | default('/var/cache/bytefreezer-proxy') }}"
-  retry_on_error: {{ config.config_polling.retry_on_error | default(true) | lower }}
-{% endif %}
+  enabled: {{ config.config_polling.enabled | lower }}
+  interval_seconds: {{ config.config_polling.interval_seconds }}
+  timeout_seconds: {{ config.config_polling.timeout_seconds }}
+  cache_directory: "{{ config.config_polling.cache_directory }}"
+  retry_on_error: {{ config.config_polling.retry_on_error | lower }}
 
 # Bytefreezer-receiver configuration
 receiver:
   base_url: "{{ config.receiver.base_url }}"
   timeout_seconds: {{ config.receiver.timeout_seconds }}
-  upload_worker_count: {{ config.receiver.upload_worker_count | default(5) }}    # Number of upload workers (aligned with receiver)
-  max_idle_conns: {{ config.receiver.max_idle_conns | default(10) }}        # HTTP connection pool size
-  max_conns_per_host: {{ config.receiver.max_conns_per_host | default(6) }}     # Max connections per host
+  upload_worker_count: {{ config.receiver.upload_worker_count }}    # Number of upload workers (aligned with receiver)
+  max_idle_conns: {{ config.receiver.max_idle_conns }}        # HTTP connection pool size
+  max_conns_per_host: {{ config.receiver.max_conns_per_host }}     # Max connections per host
 
   # Dedicated retry HTTP client configuration (defaults to same values as upload client)
-  # retry_max_idle_conns: {{ config.receiver.retry_max_idle_conns | default(10) }}      # HTTP connection pool size for retries (optional)
-  # retry_max_conns_per_host: {{ config.receiver.retry_max_conns_per_host | default(6) }}   # Max connections per host for retries (optional)
+  # retry_max_idle_conns: 10      # HTTP connection pool size for retries (optional)
+  # retry_max_conns_per_host: 6   # Max connections per host for retries (optional)
 
 # Batch processing configuration
 batching:
-  enabled: {{ config.batching.enabled | default(true) | lower }}
-  max_lines: {{ config.batching.max_lines | default(0) }}       # Max lines per batch (0 = disabled)
-  max_bytes: {{ config.batching.max_bytes | default(20971520) }}   # Max bytes per batch - 20MB (0 = disabled)
-  timeout_seconds: {{ config.batching.timeout_seconds | default(60) }}   # Timeout always takes priority
-  compression_enabled: {{ config.batching.compression_enabled | default(true) | lower }}
-  compression_level: {{ config.batching.compression_level | default(6) }}
+  enabled: {{ config.batching.enabled | lower }}
+  max_lines: {{ config.batching.max_lines }}          # Max lines per batch (0 = disabled)
+  max_bytes: {{ config.batching.max_bytes }}   # Max bytes per batch - 10MB (0 = disabled)
+  timeout_seconds: {{ config.batching.timeout_seconds }}
+  compression_enabled: {{ config.batching.compression_enabled | lower }}
+  compression_level: {{ config.batching.compression_level }}
 
 # SOC alerting configuration
 soc:
@@ -88,16 +59,11 @@ soc:
   endpoint: "{{ config.soc.endpoint }}"
   timeout_seconds: {{ config.soc.timeout_seconds }}
 
-# OpenTelemetry configuration
+# OpenTelemetry configuration (disabled by default)
 otel:
   enabled: {{ config.otel.enabled | lower }}
   service_name: "{{ config.otel.service_name }}"
   scrapeIntervalseconds: {{ config.otel.scrapeIntervalseconds }}
-  # Prometheus mode - expose metrics on HTTP endpoint for scraping
-  prometheus_mode: {{ config.otel.prometheus_mode | lower }}
-  metrics_port: {{ config.otel.metrics_port }}
-  # Bind to all interfaces for external scraping
-  metrics_host: "{{ config.otel.metrics_host }}"
 
 # Housekeeping configuration
 housekeeping:
@@ -108,26 +74,25 @@ housekeeping:
 spooling:
   enabled: {{ config.spooling.enabled | lower }}
   directory: "{{ config.spooling.directory }}"
-  max_size_bytes: {{ config.spooling.max_size_bytes }}
+  max_size_bytes: {{ config.spooling.max_size_bytes }}  # 1GB
   retry_attempts: {{ config.spooling.retry_attempts }}
-  retry_interval_seconds: {{ config.spooling.retry_interval_seconds }}
-  cleanup_interval_seconds: {{ config.spooling.cleanup_interval_seconds }}
+  retry_interval_seconds: {{ config.spooling.retry_interval_seconds }}  # 1 minute
+  cleanup_interval_seconds: {{ config.spooling.cleanup_interval_seconds }}  # 5 minutes
   keep_src: {{ config.spooling.keep_src | lower }}
-  queue_processing_interval_seconds: {{ config.spooling.queue_processing_interval_seconds | default(30) }}
 
-# Health reporting configuration
+# Health reporting configuration for service registration and monitoring
 health_reporting:
-  enabled: {{ config.health_reporting.enabled | default(true) | lower }}
-  report_interval: {{ config.health_reporting.report_interval | default(30) }}  # Interval in seconds
-  timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
-  register_on_startup: {{ config.health_reporting.register_on_startup | default(true) | lower }}
+  enabled: {{ config.health_reporting.enabled | lower }}
+  report_interval: {{ config.health_reporting.report_interval }}  # seconds
+  timeout_seconds: {{ config.health_reporting.timeout_seconds }}
+  register_on_startup: {{ config.health_reporting.register_on_startup | lower }}
 
 # Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
 tenant_validation:
-  enabled: {{ config.tenant_validation.enabled | default(true) | lower }}
-  cache_ttl_seconds: {{ config.tenant_validation.cache_ttl_seconds | default(300) }}  # 5 minutes for active tenants
-  inactive_cache_ttl_seconds: {{ config.tenant_validation.inactive_cache_ttl_seconds | default(3600) }}  # 1 hour for inactive tenants (reduces API load)
-  timeout_seconds: {{ config.tenant_validation.timeout_seconds | default(5) }}
+  enabled: {{ config.tenant_validation.enabled | lower }}
+  cache_ttl_seconds: {{ config.tenant_validation.cache_ttl_seconds }}  # 5 minutes for active tenants
+  inactive_cache_ttl_seconds: {{ config.tenant_validation.inactive_cache_ttl_seconds }}  # 1 hour for inactive tenants (reduces API load)
+  timeout_seconds: {{ config.tenant_validation.timeout_seconds }}
 
 # Development mode
 dev: {{ config.dev | lower }}

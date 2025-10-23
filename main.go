@@ -329,17 +329,6 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 		"account_id":   cfg.AccountID,
 		"tenant_id":    cfg.TenantID,
 		"bearer_token": maskSensitive(cfg.BearerToken),
-		"udp": map[string]interface{}{
-			"enabled":                cfg.UDP.Enabled,
-			"read_buffer_size_bytes": cfg.UDP.ReadBufferSizeBytes,
-			"max_batch_lines":        cfg.UDP.MaxBatchLines,
-			"max_batch_bytes":        cfg.UDP.MaxBatchBytes,
-			"batch_timeout_seconds":  cfg.UDP.BatchTimeoutSeconds,
-			"compression_level":      cfg.UDP.CompressionLevel,
-			"channel_buffer_size":    cfg.UDP.ChannelBufferSize,
-			"worker_count":           cfg.UDP.WorkerCount,
-			"listener_count":         len(cfg.UDP.Listeners),
-		},
 		"batching": map[string]interface{}{
 			"enabled":             cfg.Batching.Enabled,
 			"max_lines":           cfg.Batching.MaxLines,
@@ -385,7 +374,6 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 			"endpoint": cfg.SOC.Endpoint,
 			"timeout":  cfg.SOC.Timeout,
 		},
-		"multi_tenant": cfg.IsMultiTenant(),
 		"capabilities": []string{
 			"udp_ingestion",
 			"multi_protocol",

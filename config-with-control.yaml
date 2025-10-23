@@ -16,7 +16,7 @@ inputs: []
 account_id: "ejq73vgnw26p"
 bearer_token: "test-token"
 control_url: "http://192.168.86.103:8082"
-config_mode: "control-only"  # or "hybrid" for fallback to local config
+config_mode: "control-only"  # local-only | control-only
 
 # Configuration polling from Control
 config_polling:

@@ -30,94 +30,32 @@ logrotate:
 config:
   app:
     name: "bytefreezer-proxy"
-    version: "0.0.1"
-  
+    version: "0.0.2"
+
   logging:
     level: "info"
     encoding: "console"
-  
+
   server:
     api_port: 8088
-  
-  # Plugin-based input configuration
-  inputs:
-    # UDP Plugin for eBPF data on port 2056 (standard)
-    - type: "udp"
-      name: "ebpf-udp-listener"
-      config:
-        host: "0.0.0.0"
-        port: 2056
-        dataset_id: "ebpf-data"
-        protocol: "udp"
-        data_hint: "ndjson"       # Data format hint for eBPF data (creates .ndjson files)
-        read_buffer_size: 65536
-        worker_count: 4
 
-    # sFlow Plugin - Parses sFlow to NDJSON on port 2060
-    - type: "sflow"
-      name: "sflow-udp-listener"
-      config:
-        host: "0.0.0.0"
-        port: 2060
-        dataset_id: "sflow-data"
-        protocol: "sflow"
-        data_hint: "ndjson"       # sFlow data is parsed to NDJSON format
-        read_buffer_size: 65536
-        worker_count: 4
-    
-    # Optional: Additional plugins (uncomment as needed)
+  # Plugin-based input configuration (populated from Control)
+  inputs: []
 
-    # NetFlow Plugin - Parses NetFlow v5/v9 to NDJSON
-    # - type: "netflow"
-    #   name: "netflow-collector"
-    #   config:
-    #     host: "0.0.0.0"
-    #     port: 2055
-    #     dataset_id: "netflow-data"
-    #     protocol: "netflow"
-    #     data_hint: "ndjson"       # NetFlow data is parsed to NDJSON format
-    #     read_buffer_size: 65536
-    #     worker_count: 4
-
-    # IPFIX Plugin - Parses IPFIX to NDJSON
-    # - type: "ipfix"
-    #   name: "ipfix-collector"
-    #   config:
-    #     host: "0.0.0.0"
-    #     port: 4739
-    #     dataset_id: "ipfix-data"
-    #     protocol: "ipfix"
-    #     data_hint: "ndjson"       # IPFIX data is parsed to NDJSON format
-    #     read_buffer_size: 65536
-    #     worker_count: 4
-
-    # UDP Plugin for Syslog
-    # - type: "udp"
-    #   name: "syslog-udp-listener"
-    #   config:
-    #     host: "0.0.0.0"
-    #     port: 2057
-    #     dataset_id: "syslog-data"
-    #     data_hint: "syslog"        # Creates .log files
-    #     read_buffer_size: 65536
-    #     worker_count: 4
-    #
-    # HTTP Plugin for Webhooks
-    # - type: "http"
-    #   name: "webhook-endpoint"
-    #   config:
-    #     host: "0.0.0.0"
-    #     port: 8081
-    #     path: "/webhook"
-    #     dataset_id: "webhook-data"
-    #     data_hint: "ndjson"        # Creates .ndjson files
-    #     max_payload_size: 10485760
-    #     max_lines_per_request: 1000
-    #     enable_authentication: true
-  
-  # Global tenant configuration
-  tenant_id: "customer-1"
+  # Account-based configuration - proxy polls Control for all tenants + datasets
+  account_id: "ejq73vgnw26p"
+  tenant_id: "customer-1"  # Global tenant ID (fallback for plugins without tenant_id)
   bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+  control_url: "http://192.168.86.103:8082"
+  config_mode: "control-only"  # local-only | control-only
+
+  # Configuration polling from Control
+  config_polling:
+    enabled: true
+    interval_seconds: 60
+    timeout_seconds: 30
+    cache_directory: "/var/cache/bytefreezer-proxy"
+    retry_on_error: true
 
   receiver:
     base_url: "http://192.168.86.102:8082/{tenantid}/{datasetid}"
@@ -135,55 +73,52 @@ config:
     enabled: true
     max_lines: 0          # Max lines per batch (0 = disabled)
     max_bytes: 10485760   # Max bytes per batch - 10MB (0 = disabled)
-    timeout_seconds: 60   # 1 minute timeout
+    timeout_seconds: 60
     compression_enabled: true
     compression_level: 6
 
+  # SOC alerting configuration
   soc:
     enabled: false
     endpoint: ""
     timeout_seconds: 30
-  
+
+  # OpenTelemetry configuration (disabled by default)
   otel:
-    enabled: false  # Disabled by default (enable for monitoring)
+    enabled: false
     service_name: "bytefreezer-proxy"
     scrapeIntervalseconds: 15
-    # Prometheus mode - expose metrics on HTTP endpoint for scraping
-    prometheus_mode: true
-    metrics_port: 9090
-    # Bind to all interfaces for external scraping
-    metrics_host: "0.0.0.0"
-  
+
+  # Housekeeping configuration
   housekeeping:
     enabled: true
     intervalseconds: 60
-  
+
+  # Local spooling for failed uploads
   spooling:
     enabled: true
     directory: "{{ paths.spool_dir }}"
     max_size_bytes: 1073741824  # 1GB
     retry_attempts: 5
-    retry_interval_seconds: 60
-    cleanup_interval_seconds: 300
+    retry_interval_seconds: 60  # 1 minute
+    cleanup_interval_seconds: 300  # 5 minutes
     keep_src: false
-    queue_processing_interval_seconds: 20
 
-  # Health reporting configuration
+  # Health reporting configuration for service registration and monitoring
   health_reporting:
     enabled: true
-    control_url: "{{ bytefreezer_control_url | default('http://192.168.86.103:8082') }}"
-    report_interval: 30  # Interval in seconds
+    report_interval: 30  # seconds
     timeout_seconds: 10
     register_on_startup: true
 
   # Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
   tenant_validation:
     enabled: true
-    control_url: "{{ bytefreezer_control_url | default('http://192.168.86.103:8082') }}"
     cache_ttl_seconds: 300  # 5 minutes for active tenants
     inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
     timeout_seconds: 5
 
+  # Development mode
   dev: false
 
 # Download configuration for install.yml

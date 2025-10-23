@@ -13,7 +13,6 @@ import (
 
 	"github.com/n0needt0/bytefreezer-proxy/alerts"
 	"github.com/n0needt0/bytefreezer-proxy/plugins"
-	"github.com/n0needt0/go-goodies/log"
 )
 
 var k = koanf.New(".")
@@ -22,8 +21,7 @@ type Config struct {
 	App             App                    `mapstructure:"app"`
 	Logging         LoggingConfig          `mapstructure:"logging"`
 	Server          Server                 `mapstructure:"server"`
-	Inputs          []plugins.PluginConfig `mapstructure:"inputs"` // New plugin-based input system
-	UDP             UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
+	Inputs          []plugins.PluginConfig `mapstructure:"inputs"` // Plugin-based input system
 	Batching        Batching               `mapstructure:"batching"`
 	Receiver        Receiver               `mapstructure:"receiver"`
 	AccountID       string                 `mapstructure:"account_id"` // Account ID for multi-tenant polling
@@ -57,29 +55,6 @@ type LoggingConfig struct {
 
 type Server struct {
 	ApiPort int `mapstructure:"api_port"`
-}
-
-type UDP struct {
-	Enabled             bool   `mapstructure:"enabled"`
-	Host                string `mapstructure:"host"`
-	ReadBufferSizeBytes int    `mapstructure:"read_buffer_size_bytes"`
-	MaxBatchLines       int    `mapstructure:"max_batch_lines"`
-	MaxBatchBytes       int64  `mapstructure:"max_batch_bytes"`
-	BatchTimeoutSeconds int    `mapstructure:"batch_timeout_seconds"`
-	CompressionLevel    int    `mapstructure:"compression_level"`
-	// Compression is always enabled for raw data - removed EnableCompression field
-	ChannelBufferSize int           `mapstructure:"channel_buffer_size"` // Buffer size for UDP message channel
-	WorkerCount       int           `mapstructure:"worker_count"`        // Number of worker goroutines for processing
-	Listeners         []UDPListener `mapstructure:"listeners"`
-}
-
-type UDPListener struct {
-	Port        int    `mapstructure:"port"`
-	DatasetID   string `mapstructure:"dataset_id"`
-	TenantID    string `mapstructure:"tenant_id,omitempty"`    // Optional: override global tenant
-	BearerToken string `mapstructure:"bearer_token,omitempty"` // Optional: override global bearer token
-	Protocol    string `mapstructure:"protocol,omitempty"`     // "udp" (default) or "syslog"
-	SyslogMode  string `mapstructure:"syslog_mode,omitempty"`  // "rfc3164" (default) or "rfc5424"
 }
 
 type Batching struct {
@@ -186,19 +161,9 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 		return errors.Wrapf(err, "failed to unmarshal %s", cfgFile)
 	}
 
-	// Validate multi-tenant configuration
-	if err := validateMultiTenantConfig(cfg); err != nil {
-		return errors.Wrapf(err, "multi-tenant configuration validation failed")
-	}
-
-	// Validate tenant and dataset identifiers
+	// Validate plugin inputs and identifiers
 	if err := validateIdentifiers(cfg); err != nil {
 		return errors.Wrapf(err, "identifier validation failed")
-	}
-
-	// Set defaults
-	if cfg.UDP.BatchTimeoutSeconds == 0 {
-		cfg.UDP.BatchTimeoutSeconds = 30
 	}
 
 	// Batching defaults
@@ -220,18 +185,6 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	// RetryCount and RetryDelaySec are deprecated - file-level retry is used instead
 	// Keep RetryCount = 0 for single HTTP attempts only
-	if cfg.UDP.ReadBufferSizeBytes == 0 {
-		cfg.UDP.ReadBufferSizeBytes = 65536 // 64KB default
-	}
-	if cfg.UDP.CompressionLevel == 0 {
-		cfg.UDP.CompressionLevel = 6 // Default gzip compression level
-	}
-	if cfg.UDP.ChannelBufferSize == 0 {
-		cfg.UDP.ChannelBufferSize = 10000 // Default channel buffer size (10x larger)
-	}
-	if cfg.UDP.WorkerCount == 0 {
-		cfg.UDP.WorkerCount = 4 // Default number of worker goroutines
-	}
 
 	// Spooling defaults
 	if cfg.Spooling.Directory == "" {
@@ -354,148 +307,6 @@ func (cfg *Config) GetQueueProcessingInterval() int {
 	return cfg.Spooling.QueueProcessingIntervalSec
 }
 
-// TenantInfo represents tenant configuration details
-type TenantInfo struct {
-	TenantID  string            `json:"tenant_id"`
-	Ports     []int             `json:"ports"`
-	Datasets  map[string]string `json:"datasets"` // dataset_id -> protocol
-	PortCount int               `json:"port_count"`
-}
-
-// validateMultiTenantConfig validates the multi-tenant UDP listener configuration
-func validateMultiTenantConfig(cfg *Config) error {
-	if !cfg.UDP.Enabled {
-		return nil // Skip validation if UDP is disabled
-	}
-
-	portMap := make(map[int]bool)
-	tenantMap := make(map[string]*TenantInfo)
-	datasetMap := make(map[string]int) // Track which port each dataset is assigned to
-
-	for i, listener := range cfg.UDP.Listeners {
-		// Validate required fields
-		if listener.Port <= 0 || listener.Port > 65535 {
-			return fmt.Errorf("listener %d: invalid port %d (must be 1-65535)", i, listener.Port)
-		}
-
-		if listener.DatasetID == "" {
-			return fmt.Errorf("listener %d (port %d): dataset_id is required", i, listener.Port)
-		}
-
-		// Check for port conflicts
-		if portMap[listener.Port] {
-			return fmt.Errorf("listener %d (port %d): port already in use", i, listener.Port)
-		}
-		portMap[listener.Port] = true
-
-		// Check for dataset conflicts - same dataset on multiple ports not allowed
-		if existingPort, exists := datasetMap[listener.DatasetID]; exists {
-			return fmt.Errorf("listener %d (port %d): dataset_id '%s' is already configured on port %d. Each dataset must use a unique port to prevent data mixing",
-				i, listener.Port, listener.DatasetID, existingPort)
-		}
-		datasetMap[listener.DatasetID] = listener.Port
-
-		// Determine effective tenant ID
-		tenantID := cfg.GetEffectiveTenantID(listener)
-		if tenantID == "" {
-			return fmt.Errorf("listener %d (port %d): tenant_id must be specified either per-listener or globally", i, listener.Port)
-		}
-
-		// Validate bearer token is available
-		bearerToken := cfg.GetEffectiveBearerToken(listener)
-		if bearerToken == "" {
-			return fmt.Errorf("listener %d (port %d): bearer_token must be specified either per-listener or globally", i, listener.Port)
-		}
-
-		// Validate protocol
-		protocol := listener.Protocol
-		if protocol == "" {
-			protocol = "udp"
-		}
-		validProtocols := map[string]bool{
-			"udp": true, "syslog": true,
-		}
-		if !validProtocols[protocol] {
-			return fmt.Errorf("listener %d (port %d): invalid protocol '%s' (supported: udp, syslog)", i, listener.Port, protocol)
-		}
-
-		// Build tenant information
-		if tenantMap[tenantID] == nil {
-			tenantMap[tenantID] = &TenantInfo{
-				TenantID: tenantID,
-				Ports:    []int{},
-				Datasets: make(map[string]string),
-			}
-		}
-
-		tenant := tenantMap[tenantID]
-		tenant.Ports = append(tenant.Ports, listener.Port)
-		tenant.Datasets[listener.DatasetID] = protocol
-		tenant.PortCount++
-
-		// Check for dataset conflicts within tenant
-		for existingDataset, existingProtocol := range tenant.Datasets {
-			if existingDataset == listener.DatasetID && existingProtocol != protocol {
-				return fmt.Errorf("listener %d: dataset '%s' for tenant '%s' uses conflicting protocols ('%s' vs '%s')",
-					i, listener.DatasetID, tenantID, protocol, existingProtocol)
-			}
-		}
-	}
-
-	// Log multi-tenant summary
-	if len(tenantMap) > 1 {
-		log.Infof("Multi-tenant configuration detected: %d tenants across %d ports", len(tenantMap), len(portMap))
-		for tenantID, info := range tenantMap {
-			log.Infof("  Tenant '%s': %d ports, %d datasets", tenantID, info.PortCount, len(info.Datasets))
-		}
-	} else if len(tenantMap) == 1 {
-		for tenantID, info := range tenantMap {
-			log.Infof("Single-tenant configuration: tenant=%s ports=%d datasets=%d",
-				tenantID, info.PortCount, len(info.Datasets))
-		}
-	}
-
-	return nil
-}
-
-// GetTenantInfo returns information about all configured tenants
-func (cfg *Config) GetTenantInfo() map[string]*TenantInfo {
-	tenantMap := make(map[string]*TenantInfo)
-
-	for _, listener := range cfg.UDP.Listeners {
-		if listener.DatasetID == "" {
-			continue // Skip inactive listeners
-		}
-
-		tenantID := cfg.GetEffectiveTenantID(listener)
-
-		protocol := listener.Protocol
-		if protocol == "" {
-			protocol = "udp"
-		}
-
-		if tenantMap[tenantID] == nil {
-			tenantMap[tenantID] = &TenantInfo{
-				TenantID: tenantID,
-				Ports:    []int{},
-				Datasets: make(map[string]string),
-			}
-		}
-
-		tenant := tenantMap[tenantID]
-		tenant.Ports = append(tenant.Ports, listener.Port)
-		tenant.Datasets[listener.DatasetID] = protocol
-		tenant.PortCount++
-	}
-
-	return tenantMap
-}
-
-// IsMultiTenant returns true if multiple tenants are configured
-func (cfg *Config) IsMultiTenant() bool {
-	return len(cfg.GetTenantInfo()) > 1
-}
-
 // validateIdentifiers validates all tenant and dataset identifiers in the configuration
 func validateIdentifiers(cfg *Config) error {
 	// Always validate global tenant ID (required for plugin system)
@@ -506,36 +317,7 @@ func validateIdentifiers(cfg *Config) error {
 		return fmt.Errorf("global tenant_id: %w", err)
 	}
 
-	// Validate legacy UDP listener identifiers if UDP is enabled
-	if cfg.UDP.Enabled {
-		for i, listener := range cfg.UDP.Listeners {
-			if listener.DatasetID == "" {
-				continue // Skip validation for inactive listeners
-			}
-
-			// Validate dataset ID
-			if err := ValidateDatasetID(listener.DatasetID); err != nil {
-				return fmt.Errorf("UDP listener %d dataset_id: %w", i, err)
-			}
-
-			// Validate listener-specific tenant ID if present
-			if listener.TenantID != "" {
-				if err := ValidateTenantID(listener.TenantID); err != nil {
-					return fmt.Errorf("UDP listener %d tenant_id: %w", i, err)
-				}
-			}
-
-			// Get effective tenant ID and validate the pair
-			effectiveTenantID := cfg.GetEffectiveTenantID(listener)
-			if effectiveTenantID != "" {
-				if err := ValidateIdentifierPair(effectiveTenantID, listener.DatasetID); err != nil {
-					return fmt.Errorf("UDP listener %d: %w", i, err)
-				}
-			}
-		}
-	}
-
-	// Always validate plugin inputs for duplicate dataset names and port conflicts
+	// Validate plugin inputs for duplicate dataset names and port conflicts
 	if err := validatePluginInputs(cfg); err != nil {
 		return fmt.Errorf("plugin input validation failed: %w", err)
 	}
@@ -636,20 +418,4 @@ func validatePluginInputs(cfg *Config) error {
 	}
 
 	return nil
-}
-
-// GetEffectiveBearerToken returns the bearer token for a listener (listener-specific or global fallback)
-func (cfg *Config) GetEffectiveBearerToken(listener UDPListener) string {
-	if listener.BearerToken != "" {
-		return listener.BearerToken
-	}
-	return cfg.BearerToken
-}
-
-// GetEffectiveTenantID returns the tenant ID for a listener (listener-specific or global fallback)
-func (cfg *Config) GetEffectiveTenantID(listener UDPListener) string {
-	if listener.TenantID != "" {
-		return listener.TenantID
-	}
-	return cfg.TenantID
 }

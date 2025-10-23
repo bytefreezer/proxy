@@ -17,8 +17,28 @@
   - `control-only`: Fetch config from Control with automatic fallback on error
 
 ### Code Cleanup
+- **Removed legacy UDP configuration system**:
+  - Removed `UDP` struct and `UDPListener` struct from config.go (lines 62-83)
+  - Removed `validateMultiTenantConfig()`, `GetTenantInfo()`, `IsMultiTenant()` functions
+  - Removed `GetEffectiveBearerToken()` and `GetEffectiveTenantID()` helper functions
+  - Removed UDP-specific validation from `validateIdentifiers()`
+  - Removed UDP default values from `LoadConfig()`
+  - Removed UDP section from health report configuration in main.go
+  - Removed unused log import from config.go
+  - All UDP functionality now provided through UDP plugin system
 - Removed all "legacy" and "hybrid" terminology from config polling service
-- Updated Ansible templates and examples to remove hybrid mode references
+- **Consolidated Ansible configuration**:
+  - Merged AWX_EXTRA_VARS_EXAMPLE.yml into group_vars/all.yml
+  - Removed AWX_EXTRA_VARS_EXAMPLE.yml file (no longer needed)
+  - Removed hardcoded plugins from all.yml (now uses empty inputs: [])
+  - Updated config.yaml.j2 template to exactly match config.yaml structure
+  - Removed conditional logic and defaults from template (now uses direct values from all.yml)
+  - Removed health_reporting.control_url and tenant_validation.control_url (use global control_url)
+  - Updated version references from v4.1.0 to v4.2.0
+  - Clarified tenant_id as "global fallback" instead of "legacy mode"
+  - Simplified configuration comments for better clarity
+- **Updated example configurations**:
+  - Updated config-with-control.yaml to remove hybrid mode reference
 - Improved documentation clarity for configuration modes
 
 ### Migration Guide
