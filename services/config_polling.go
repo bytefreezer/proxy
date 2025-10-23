@@ -750,12 +750,18 @@ func (s *ConfigPollingService) datasetsToPluginConfigs(config ControlConfigurati
 		tenant := tenantWithDatasets.Tenant
 
 		for _, dataset := range tenantWithDatasets.Datasets {
-			// Only process active datasets with stream source type
-			if !dataset.Active || dataset.Config.Source.Type != "stream" {
+			// Only process active datasets
+			if !dataset.Active {
 				continue
 			}
 
-			// Extract plugin configuration from dataset source custom fields
+			// Skip datasets without a source type
+			if dataset.Config.Source.Type == "" {
+				log.Debugf("Dataset %s has no source.type, skipping", dataset.ID)
+				continue
+			}
+
+			// Extract plugin configuration from dataset source fields
 			pluginConfig := s.datasetToPluginConfig(tenant, dataset)
 			if pluginConfig != nil {
 				pluginConfigs = append(pluginConfigs, pluginConfig)
@@ -769,27 +775,23 @@ func (s *ConfigPollingService) datasetsToPluginConfigs(config ControlConfigurati
 
 // datasetToPluginConfig converts a single dataset to a plugin configuration
 func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Dataset) map[string]interface{} {
-	// Dataset source custom fields should contain plugin configuration
-	// Example structure in dataset.Config.Source.Custom:
+	// Use source.type as the plugin type (e.g., "ebpf", "sflow", "netflow")
+	// Example dataset structure:
 	// {
-	//   "plugin_type": "sflow",
-	//   "port": 2066,
-	//   "protocol": "sflow",
-	//   "data_hint": "ndjson",
-	//   "read_buffer_size": 65536,
-	//   "worker_count": 4
+	//   "source": {
+	//     "type": "ebpf",
+	//     "custom": {
+	//       "host": "0.0.0.0",
+	//       "port": 2056,
+	//       "worker_count": 4,
+	//       "read_buffer_size": 65536
+	//     }
+	//   }
 	// }
 
-	custom := dataset.Config.Source.Custom
-	if custom == nil {
-		log.Warnf("Dataset %s has no source.custom configuration, skipping", dataset.ID)
-		return nil
-	}
-
-	// Extract plugin type
-	pluginType, ok := custom["plugin_type"].(string)
-	if !ok || pluginType == "" {
-		log.Warnf("Dataset %s has no plugin_type in source.custom, skipping", dataset.ID)
+	pluginType := dataset.Config.Source.Type
+	if pluginType == "" {
+		log.Warnf("Dataset %s has empty source.type, skipping", dataset.ID)
 		return nil
 	}
 
@@ -798,16 +800,16 @@ func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Data
 		"type": pluginType,
 		"name": fmt.Sprintf("%s-%s", dataset.Name, tenant.Name),
 		"config": map[string]interface{}{
-			"tenant_id":   tenant.ID,
-			"dataset_id":  dataset.ID,
+			"tenant_id":    tenant.ID,
+			"dataset_id":   dataset.ID,
 			"bearer_token": s.bearerToken,
 		},
 	}
 
-	// Copy all custom fields to plugin config (except plugin_type which we already used)
+	// Copy all custom fields to plugin config if they exist
 	config := pluginConfig["config"].(map[string]interface{})
-	for key, value := range custom {
-		if key != "plugin_type" {
+	if dataset.Config.Source.Custom != nil {
+		for key, value := range dataset.Config.Source.Custom {
 			config[key] = value
 		}
 	}
@@ -817,7 +819,7 @@ func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Data
 		config["host"] = "0.0.0.0"
 	}
 
-	log.Debugf("Created plugin config for dataset %s (tenant %s): type=%s, port=%v",
+	log.Infof("Created plugin config for dataset %s (tenant %s): type=%s, port=%v",
 		dataset.ID, tenant.ID, pluginType, config["port"])
 
 	return pluginConfig

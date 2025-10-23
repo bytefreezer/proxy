@@ -21,18 +21,21 @@
 6. Reports applied configuration back to Control for each tenant
 
 **Dataset-to-Plugin Conversion**:
-- Dataset `source.custom` contains plugin-specific configuration
-- Required field: `plugin_type` (e.g., "sflow", "netflow", "ipfix")
-- Plugin config includes: `tenant_id`, `dataset_id`, port, protocol, etc.
-- Example dataset source.custom:
+- Dataset `source.type` is used as the plugin type (e.g., "ebpf", "sflow", "netflow")
+- Dataset `source.custom` contains plugin-specific parameters
+- Plugin config includes: `tenant_id`, `dataset_id`, plus all fields from `source.custom`
+- Example dataset configuration:
   ```json
   {
-    "plugin_type": "sflow",
-    "port": 2066,
-    "protocol": "sflow",
-    "data_hint": "ndjson",
-    "read_buffer_size": 65536,
-    "worker_count": 4
+    "source": {
+      "type": "ebpf",
+      "custom": {
+        "host": "0.0.0.0",
+        "port": 2056,
+        "worker_count": 4,
+        "read_buffer_size": 65536
+      }
+    }
   }
   ```
 
