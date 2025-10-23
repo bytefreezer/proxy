@@ -309,12 +309,23 @@ func (cfg *Config) GetQueueProcessingInterval() int {
 
 // validateIdentifiers validates all tenant and dataset identifiers in the configuration
 func validateIdentifiers(cfg *Config) error {
-	// Always validate global tenant ID (required for plugin system)
-	if cfg.TenantID == "" {
-		return fmt.Errorf("tenant_id is required")
-	}
-	if err := ValidateTenantID(cfg.TenantID); err != nil {
-		return fmt.Errorf("global tenant_id: %w", err)
+	// tenant_id is optional when using account-based polling
+	// tenant_id is required as global fallback when NOT using account-based polling
+	if cfg.AccountID == "" {
+		// Not using account-based polling - tenant_id is required
+		if cfg.TenantID == "" {
+			return fmt.Errorf("tenant_id is required when account_id is not configured")
+		}
+		if err := ValidateTenantID(cfg.TenantID); err != nil {
+			return fmt.Errorf("global tenant_id: %w", err)
+		}
+	} else {
+		// Using account-based polling - tenant_id is optional but validate if present
+		if cfg.TenantID != "" {
+			if err := ValidateTenantID(cfg.TenantID); err != nil {
+				return fmt.Errorf("global tenant_id: %w", err)
+			}
+		}
 	}
 
 	// Validate plugin inputs for duplicate dataset names and port conflicts
@@ -367,6 +378,9 @@ func validatePluginInputs(cfg *Config) error {
 		}
 
 		// Validate identifiers
+		if effectiveTenantID == "" {
+			return fmt.Errorf("plugin input %d (%s): tenant_id is required in plugin config or as global tenant_id", i, input.Type)
+		}
 		if err := ValidateTenantID(effectiveTenantID); err != nil {
 			return fmt.Errorf("plugin input %d (%s) tenant_id: %w", i, input.Type, err)
 		}

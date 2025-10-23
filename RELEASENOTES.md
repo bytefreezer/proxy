@@ -9,6 +9,11 @@
   - Default config_mode changed from `hybrid` to `control-only`
 
 ### Configuration Improvements
+- **Made tenant_id optional for account-based polling**: tenant_id is now only required when account_id is not configured
+  - When using `account_id`: tenant_id is optional (each dataset has its own tenant_id)
+  - When NOT using `account_id`: tenant_id is required as global fallback for plugins
+  - Updated validation logic to check account_id before requiring tenant_id
+  - Clearer error messages guide users on when tenant_id is needed
 - **Removed hardcoded plugins**: Example config file no longer includes hardcoded plugin configurations
   - Plugins should be configured via Control API or local config as needed
 - **Clarified TenantID usage**: Updated comments to reflect that `tenant_id` is the global fallback for plugins, not a deprecated field
