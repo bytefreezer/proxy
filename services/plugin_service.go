@@ -41,9 +41,10 @@ type PluginService struct {
 // NewPluginService creates a new plugin service
 func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingService *SpoolingService) (*PluginService, error) {
 
-	if len(cfg.Inputs) == 0 {
-		return nil, fmt.Errorf("no input plugins configured")
-	}
+	// Allow starting with zero plugins - they may be loaded dynamically from Control
+	// if len(cfg.Inputs) == 0 {
+	// 	return nil, fmt.Errorf("no input plugins configured")
+	// }
 
 	ctx, cancel := context.WithCancel(context.Background())
 

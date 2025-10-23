@@ -14,6 +14,13 @@
   - Proxy now starts even with zero local plugins - waits for remote config from Control
   - **Testing**: Verify with `curl http://<control>/api/v2/proxy/config?account_id=<your_account_id>` and proxy logs
 
+- **FIXED: Plugin service validation prevented zero-input startup** (plugin_service.go:44-46)
+  - **Impact**: Proxy crashed at startup when no local plugins were configured in config.yaml
+  - **Symptom**: Error "no input plugins configured" even when using control-only mode
+  - **Root Cause**: NewPluginService() validation required at least one local input plugin
+  - **Fix**: Removed validation check - plugin service can now start with zero plugins
+  - **Result**: Proxy starts successfully with empty local config and waits for remote plugins from Control
+
 ### Breaking Changes
 - **Removed hybrid mode**: Configuration mode now supports only `local-only` or `control-only`
   - `control-only` mode provides automatic fallback to tenant-based polling when account_id is not configured
