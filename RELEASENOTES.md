@@ -46,8 +46,15 @@
   - Added `control_url`: Shows the Control service URL
   - Added `config_mode`: Shows current configuration mode (local-only | control-only)
   - Added `config_polling`: Shows configuration polling settings (enabled, intervals, cache directory, retry behavior)
-  - Remotely configured plugins from Control service are now visible in the plugins section
   - Better visibility into whether proxy is using account-based or tenant-based polling
+
+- **FIXED: Plugins section now shows RUNNING plugins** (/api/v1/config endpoint)
+  - **Impact**: Config endpoint previously showed only local config.yaml plugins (always empty in control-only mode)
+  - **Symptom**: `"total_plugins": 0` even when plugins were running and processing data
+  - **Root Cause**: GetConfig handler used cfg.Inputs instead of querying PluginService for active plugins
+  - **Fix**: Added GetConfigs() method to plugin manager and service, updated API handler to use running plugins
+  - **Result**: Config endpoint now shows all active plugins with their full configurations (tenant_id, dataset_id, port, etc.)
+  - Sensitive fields (bearer_token, password, secret, token) are masked as "***MASKED***"
 
 ### Code Cleanup
 - **Removed legacy UDP configuration system**:

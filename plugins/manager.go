@@ -226,3 +226,13 @@ func (m *Manager) GetPluginCount() int {
 	defer m.mu.RUnlock()
 	return len(m.plugins)
 }
+
+// GetConfigs returns the current plugin configurations
+func (m *Manager) GetConfigs() []PluginConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	// Return a copy to avoid external modifications
+	configsCopy := make([]PluginConfig, len(m.configs))
+	copy(configsCopy, m.configs)
+	return configsCopy
+}

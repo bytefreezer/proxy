@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/n0needt0/bytefreezer-proxy/config"
+	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/bytefreezer-proxy/services"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -380,9 +381,19 @@ func (api *API) GetConfig() usecase.Interactor {
 			ApiPort: cfg.Server.ApiPort,
 		}
 
-		// Plugin configuration
+		// Plugin configuration - get from running PluginService if available
 		var pluginDetails []PluginConfigDetail
-		for _, input := range cfg.Inputs {
+		var pluginConfigs []plugins.PluginConfig
+
+		// Try to get running plugin configs from PluginService
+		if api.Services.PluginService != nil {
+			pluginConfigs = api.Services.PluginService.GetPluginConfigs()
+		} else {
+			// Fallback to config file if PluginService not available
+			pluginConfigs = cfg.Inputs
+		}
+
+		for _, input := range pluginConfigs {
 			// Create a sanitized copy of the config (mask sensitive values)
 			sanitizedConfig := make(map[string]interface{})
 			for key, value := range input.Config {
@@ -402,7 +413,7 @@ func (api *API) GetConfig() usecase.Interactor {
 		}
 
 		output.Plugins = PluginsConfig{
-			TotalPlugins:  len(cfg.Inputs),
+			TotalPlugins:  len(pluginConfigs),
 			PluginDetails: pluginDetails,
 		}
 

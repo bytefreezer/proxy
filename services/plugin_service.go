@@ -401,6 +401,14 @@ func (ps *PluginService) GetActivePlugins() []string {
 	return ps.pluginManager.ListPlugins()
 }
 
+// GetPluginConfigs returns the current plugin configurations
+func (ps *PluginService) GetPluginConfigs() []plugins.PluginConfig {
+	if ps.pluginManager == nil {
+		return []plugins.PluginConfig{}
+	}
+	return ps.pluginManager.GetConfigs()
+}
+
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
 func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
 	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)
