@@ -2,6 +2,18 @@
 
 ## v4.2.0 - Configuration Cleanup (2025-10-23)
 
+### Critical Bug Fixes
+- **FIXED: Config polling service was never started** (main.go)
+  - **Impact**: Proxies in control-only mode were not fetching plugin configurations from Control API
+  - **Symptom**: Datasets configured in Control were not creating corresponding input plugins on proxy
+  - **Root Cause**: ConfigPollingService code existed but was never initialized or started in main.go
+  - **Fix**: Added config polling service initialization with dynamic plugin reload callback
+  - **Result**: Proxies now automatically fetch and load plugins from Control based on account/tenant datasets
+  - Added `onConfigChange` callback that converts dataset configs to plugins and triggers reload
+  - Added graceful shutdown for config polling service
+  - Proxy now starts even with zero local plugins - waits for remote config from Control
+  - **Testing**: Verify with `curl http://<control>/api/v2/proxy/config?account_id=<your_account_id>` and proxy logs
+
 ### Breaking Changes
 - **Removed hybrid mode**: Configuration mode now supports only `local-only` or `control-only`
   - `control-only` mode provides automatic fallback to tenant-based polling when account_id is not configured

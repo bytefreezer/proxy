@@ -193,43 +193,106 @@ func main() {
 		apiServer.Serve(address, router)
 	}()
 
-	// Use plugin system for input processing
+	// Create HTTP forwarder (always needed for plugin system)
+	forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
+
+	// Create plugin service with spooling support (even if no local inputs - may get remote inputs)
 	var pluginService *services.PluginService
+	var err error
+	pluginService, err = services.NewPluginService(&cfg, forwarder, svcs.SpoolingService)
+	if err != nil {
+		log.Fatalf("Failed to create plugin service: %v", err)
+	}
 
-	if len(cfg.Inputs) > 0 {
-		log.Infof("Starting plugin system with %d input plugins", len(cfg.Inputs))
+	// Store plugin service in svcs for access by config polling
+	svcs.PluginService = pluginService
 
-		// Create HTTP forwarder
-		forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
+	// Initialize config polling service if control-only mode is enabled
+	if cfg.ConfigMode == "control-only" && cfg.ControlURL != "" && cfg.ConfigPolling.Enabled {
+		log.Infof("Initializing config polling service (mode: %s, account_id: %s)",
+			cfg.ConfigMode, cfg.AccountID)
 
-		// Create plugin service with spooling support
-		var err error
-		pluginService, err = services.NewPluginService(&cfg, forwarder, svcs.SpoolingService)
-		if err != nil {
-			log.Fatalf("Failed to create plugin service: %v", err)
+		// Create callback to handle config changes from Control
+		onConfigChange := func(remoteConfig *services.ControlProxyConfig) error {
+			log.Infof("Applying configuration change from Control: %d plugin configs",
+				len(remoteConfig.PluginConfigs))
+
+			// Convert map[string]interface{} plugin configs to plugins.PluginConfig
+			newPluginConfigs := make([]plugins.PluginConfig, 0, len(remoteConfig.PluginConfigs))
+			for _, pc := range remoteConfig.PluginConfigs {
+				// Extract fields from map
+				pluginType, _ := pc["type"].(string)
+				pluginName, _ := pc["name"].(string)
+				pluginConfig, _ := pc["config"].(map[string]interface{})
+
+				if pluginType == "" || pluginName == "" {
+					log.Warnf("Skipping invalid plugin config: missing type or name")
+					continue
+				}
+
+				newPluginConfigs = append(newPluginConfigs, plugins.PluginConfig{
+					Type:   pluginType,
+					Name:   pluginName,
+					Config: pluginConfig,
+				})
+			}
+
+			// Merge with local configs (local configs from config.yaml)
+			allConfigs := append([]plugins.PluginConfig{}, cfg.Inputs...)
+			allConfigs = append(allConfigs, newPluginConfigs...)
+
+			log.Infof("Reloading plugins: %d local + %d remote = %d total",
+				len(cfg.Inputs), len(newPluginConfigs), len(allConfigs))
+
+			// Reload plugin service with merged configs
+			if err := pluginService.Reload(allConfigs); err != nil {
+				return fmt.Errorf("failed to reload plugins: %w", err)
+			}
+
+			return nil
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := pluginService.Start(); err != nil {
-				log.Errorf("Plugin service failed: %v", err)
-				// Send SOC alert
-				if cfg.SOCAlertClient != nil {
-					cfg.SOCAlertClient.SendAlert("high", "Plugin Service Failed",
-						"Input plugin system failed to start", err.Error())
-				}
-			}
-		}()
+		// Create config polling service
+		configPollingService, err := services.NewConfigPollingService(&cfg, onConfigChange)
+		if err != nil {
+			log.Fatalf("Failed to create config polling service: %v", err)
+		}
 
+		// Store in services
+		svcs.ConfigPollingService = configPollingService
+
+		// Start config polling (will perform initial poll immediately)
+		configPollingService.Start()
+		log.Info("Config polling service started")
+	} else {
+		log.Infof("Config polling disabled (mode: %s, control_url: %s, polling_enabled: %v)",
+			cfg.ConfigMode, cfg.ControlURL, cfg.ConfigPolling.Enabled)
+	}
+
+	// Start plugin service
+	if len(cfg.Inputs) > 0 {
+		log.Infof("Starting plugin system with %d local input plugins", len(cfg.Inputs))
 		pluginTypes := make([]string, len(cfg.Inputs))
 		for i, input := range cfg.Inputs {
 			pluginTypes[i] = input.Type
 		}
-		log.Infof("Plugin system started with input types: %v", pluginTypes)
+		log.Infof("Local plugin types: %v", pluginTypes)
 	} else {
-		log.Info("No input plugins configured. Please configure inputs in the configuration file.")
+		log.Info("No local input plugins configured - waiting for remote configuration from Control")
 	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := pluginService.Start(); err != nil {
+			log.Errorf("Plugin service failed: %v", err)
+			// Send SOC alert
+			if cfg.SOCAlertClient != nil {
+				cfg.SOCAlertClient.SendAlert("high", "Plugin Service Failed",
+					"Input plugin system failed to start", err.Error())
+			}
+		}
+	}()
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -258,6 +321,14 @@ func main() {
 			log.Errorf("Error stopping spooling service: %v", err)
 		}
 	}()
+
+	// Stop config polling service
+	if svcs.ConfigPollingService != nil {
+		go func() {
+			svcs.ConfigPollingService.Stop()
+			log.Info("Config polling service stopped")
+		}()
+	}
 
 	// Stop input systems
 	if pluginService != nil {
