@@ -291,7 +291,7 @@ func (s *ConfigPollingService) pollConfiguration() error {
 		return s.pollAccountConfiguration()
 	}
 
-	// Legacy tenant-based polling
+	// Tenant-based polling (fallback when no account_id configured)
 	return s.pollTenantConfiguration()
 }
 
@@ -392,7 +392,7 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 	return nil
 }
 
-// pollTenantConfiguration fetches config for a single tenant (legacy mode)
+// pollTenantConfiguration fetches config for a single tenant (fallback mode)
 func (s *ConfigPollingService) pollTenantConfiguration() error {
 	// Check if we should skip due to backoff
 	if s.shouldBackoff() {

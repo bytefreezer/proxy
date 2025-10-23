@@ -1,5 +1,33 @@
 # ByteFreezer Proxy Release Notes
 
+## v4.2.0 - Configuration Cleanup (2025-10-23)
+
+### Breaking Changes
+- **Removed hybrid mode**: Configuration mode now supports only `local-only` or `control-only`
+  - `control-only` mode provides automatic fallback to tenant-based polling when account_id is not configured
+  - Removed `hybrid` as a valid config_mode value
+  - Default config_mode changed from `hybrid` to `control-only`
+
+### Configuration Improvements
+- **Removed hardcoded plugins**: Example config file no longer includes hardcoded plugin configurations
+  - Plugins should be configured via Control API or local config as needed
+- **Clarified TenantID usage**: Updated comments to reflect that `tenant_id` is the global fallback for plugins, not a deprecated field
+- **Simplified config modes**: Only two modes supported:
+  - `local-only`: Use only local config.yaml (air-gapped deployments)
+  - `control-only`: Fetch config from Control with automatic fallback on error
+
+### Code Cleanup
+- Removed all "legacy" and "hybrid" terminology from config polling service
+- Updated Ansible templates and examples to remove hybrid mode references
+- Improved documentation clarity for configuration modes
+
+### Migration Guide
+If you were using `config_mode: "hybrid"`:
+- Change to `config_mode: "control-only"` - this provides the same fallback behavior
+- Ensure `retry_on_error: true` is set in `config_polling` section for automatic retry
+
+---
+
 ## v4.1.0 - Account-Based Configuration Polling (2025-10-23)
 
 ### Multi-Tenant Configuration Management

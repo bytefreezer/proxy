@@ -48,8 +48,8 @@ tenant_id: "{{ config.tenant_id }}"
 bearer_token: "{{ config.bearer_token }}"
 control_url: "{{ config.control_url | default('http://192.168.86.103:8082') }}"
 
-# Configuration mode: local-only, control-only, or hybrid
-config_mode: "{{ config.config_mode | default('hybrid') }}"
+# Configuration mode: local-only | control-only
+config_mode: "{{ config.config_mode | default('control-only') }}"
 
 # Configuration polling from Control (NEW in v4.1.0)
 {% if config.config_polling is defined %}

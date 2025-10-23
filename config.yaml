@@ -2,7 +2,7 @@ app:
   name: bytefreezer-proxy
   version: 0.0.2
 
-# Logging configuration   
+# Logging configuration
 logging:
   level: info
   encoding: console
@@ -11,14 +11,14 @@ logging:
 server:
   api_port: 8088
 
-# Plugin-based input configuration (leave empty - will be populated from Control)
+# Plugin-based input configuration (populated from Control)
 inputs: []
 
-# Account-based configuration - proxy will poll Control for all tenants + datasets
+# Account-based configuration - proxy polls Control for all tenants + datasets
 account_id: "ejq73vgnw26p"
 bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
 control_url: "http://192.168.86.103:8082"
-config_mode: "control-only"  # local-only | control-only | hybrid
+config_mode: "control-only"  # local-only | control-only
 
 # Configuration polling from Control
 config_polling:

@@ -49,10 +49,9 @@ config:
   # Control service URL
   control_url: "http://192.168.86.103:8082"
 
-  # Configuration mode: local-only, control-only, or hybrid
+  # Configuration mode: local-only or control-only
   # - local-only: Use only local config.yaml (air-gapped)
-  # - control-only: Fetch all config from Control (fail if unavailable)
-  # - hybrid: Primary Control, fallback to cached config
+  # - control-only: Fetch config from Control with local fallback on error
   config_mode: "control-only"
 
   # Configuration polling settings

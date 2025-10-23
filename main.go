@@ -326,6 +326,7 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 		"api": map[string]interface{}{
 			"port": cfg.Server.ApiPort,
 		},
+		"account_id":   cfg.AccountID,
 		"tenant_id":    cfg.TenantID,
 		"bearer_token": maskSensitive(cfg.BearerToken),
 		"udp": map[string]interface{}{
