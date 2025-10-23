@@ -1,5 +1,220 @@
 # ByteFreezer Proxy Release Notes
 
+## v4.1.0 - Account-Based Configuration Polling (2025-10-23)
+
+### Multi-Tenant Configuration Management
+
+#### 🏢 Account-Based Configuration Mode (NEW)
+- **Account-Level Polling**: Proxy polls Control for all tenants + datasets in an account
+- **Dynamic Plugin Generation**: Automatically converts dataset configurations to plugin configs
+- **Multi-Tenant Support**: Single proxy instance can serve multiple tenants from one account
+- **Backwards Compatible**: Legacy single-tenant mode still supported via `tenant_id`
+
+#### 🔄 Configuration Flow
+
+**New Account Mode**:
+1. Proxy starts with `account_id`, `bearer_token`, `control_url` in config
+2. Polls Control: `GET /api/v2/proxy/config?account_id={accountID}`
+3. Receives all tenants + datasets for the account
+4. Converts datasets to plugin configurations dynamically
+5. Applies plugin configs and starts listeners
+6. Reports applied configuration back to Control for each tenant
+
+**Dataset-to-Plugin Conversion**:
+- Dataset `source.custom` contains plugin-specific configuration
+- Required field: `plugin_type` (e.g., "sflow", "netflow", "ipfix")
+- Plugin config includes: `tenant_id`, `dataset_id`, port, protocol, etc.
+- Example dataset source.custom:
+  ```json
+  {
+    "plugin_type": "sflow",
+    "port": 2066,
+    "protocol": "sflow",
+    "data_hint": "ndjson",
+    "read_buffer_size": 65536,
+    "worker_count": 4
+  }
+  ```
+
+#### 📋 Configuration Modes
+
+**New Account Mode**:
+```yaml
+account_id: "your-account-id"
+bearer_token: "your-bearer-token"
+control_url: "http://control:8080"
+config_mode: "control-only"  # or hybrid
+```
+
+**Legacy Tenant Mode** (still supported):
+```yaml
+tenant_id: "your-tenant-id"
+bearer_token: "your-bearer-token"
+control_url: "http://control:8080"
+config_mode: "hybrid"
+```
+
+#### 🛠️ Implementation Details
+
+**New Configuration Field** (`config/config.go:29`):
+```go
+AccountID string `mapstructure:"account_id"` // Account ID for multi-tenant polling
+```
+
+**New Types** (`services/config_polling.go:102-152`):
+- `ControlConfiguration` - Tenants + datasets response from Control
+- `TenantWithDatasets` - Tenant with its datasets
+- `Tenant` - Tenant metadata
+- `Dataset` - Dataset configuration including source.custom plugin config
+
+**Key Methods** (`services/config_polling.go`):
+- `pollAccountConfiguration()` - Polls Control for account config (line 286-360)
+- `datasetsToPluginConfigs()` - Converts datasets to plugin configs (line 691-714)
+- `datasetToPluginConfig()` - Converts single dataset to plugin config (line 716-770)
+- `reportConfigAppliedForTenant()` - Reports applied config per tenant (line 779-830)
+
+**Security** (`services/config_polling.go:749`):
+- Proxy bearer token automatically included in plugin configs
+- Secure path validation prevents cache directory traversal
+
+#### 📊 Example Workflow
+
+1. **Control Setup**:
+   - Create account: `account-123`
+   - Create tenant: `tenant-A` (belongs to `account-123`)
+   - Create dataset: `sflow-data` with source.custom containing plugin config
+
+2. **Proxy Setup**:
+   ```yaml
+   account_id: "account-123"
+   bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+   control_url: "http://192.168.86.103:8082"
+   config_mode: "control-only"
+   ```
+
+3. **Runtime**:
+   - Proxy polls Control every 5 minutes (configurable)
+   - Gets all tenants and datasets for `account-123`
+   - Creates sFlow listener on port 2066 for `sflow-data` dataset
+   - Data received on port 2066 tagged with `tenant-A` and `sflow-data`
+   - Spooled to `/var/spool/bytefreezer-proxy/tenant-A/sflow-data/`
+
+#### 🔧 Files Modified
+
+**Proxy**:
+- `config/config.go` - Added AccountID field (line 29)
+- `services/config_polling.go` - Account-based polling + conversion logic (680+ lines modified)
+
+**Control**:
+- `api/api.go` - Added `/api/v2/proxy/config` endpoint (line 155)
+- `api/proxy_config_handlers.go` - GetProxyConfiguration handler (lines 285-340)
+
+### 🛡️ DDoS Prevention for Inactive Accounts
+
+#### Exponential Backoff & Circuit Breaker
+
+Prevents inactive proxy instances from overwhelming Control with continuous polling requests.
+
+**Problem Solved**:
+- Proxy with invalid/expired bearer token would poll Control every 60 seconds indefinitely
+- Inactive accounts would create unnecessary Control load
+- No mechanism to back off when account is deactivated
+
+**Solution**:
+- **Exponential Backoff**: Automatically increases polling interval on auth failures
+- **Circuit Breaker**: Stops polling after 5 consecutive failures
+- **Auto-Recovery**: Immediately resets backoff when account becomes active
+
+#### Backoff Schedule
+
+| Failure Count | Backoff Time | Status |
+|---------------|--------------|--------|
+| 1st failure | 1 minute | Active polling with backoff |
+| 2nd failure | 2 minutes | Active polling with backoff |
+| 3rd failure | 4 minutes | Active polling with backoff |
+| 4th failure | 8 minutes | Active polling with backoff |
+| 5th+ failure | 16 → 30 min (max) | Circuit breaker opened |
+
+#### Triggers
+
+Backoff activates on these HTTP status codes:
+- **401 Unauthorized** - Invalid or expired bearer token
+- **403 Forbidden** - Account lacks permissions
+- **404 Not Found** - Account ID doesn't exist in Control
+
+#### Behavior
+
+**During Backoff**:
+```
+WARN[0120] Polling failed (status 401), backing off for 1m0s (failure 1/5)
+WARN[0180] Polling failed (status 401), backing off for 2m0s (failure 2/5)
+...
+WARN[0300] Circuit breaker opened after 5 consecutive auth failures (backoff: 16m0s)
+```
+
+**On Recovery**:
+```
+INFO[0360] Polling succeeded, resetting backoff (was: 5 failures, 16m0s backoff)
+```
+
+**Fallback to Cached Config**:
+- Proxy continues using last known good configuration from cache
+- Plugins remain running during backoff period
+- No service interruption for data collection
+
+#### Implementation Details
+
+**New Fields** (`services/config_polling.go:173-180`):
+```go
+consecutiveFailures int           // Count of consecutive auth failures
+currentBackoff      time.Duration // Current backoff duration
+maxBackoff          time.Duration // Maximum backoff (30 minutes)
+circuitOpen         bool          // Circuit breaker state
+lastAuthError       time.Time     // Last auth error timestamp
+```
+
+**Key Methods** (`services/config_polling.go:844-922`):
+- `shouldBackoff()` - Checks if currently in backoff period (line 844)
+- `recordFailure(statusCode)` - Records failure and calculates backoff (line 861)
+- `recordSuccess()` - Resets backoff on successful poll (line 898)
+- `getEffectiveInterval()` - Returns current polling interval (line 913)
+
+**Integration**:
+- Both `pollAccountConfiguration()` and `pollTenantConfiguration()` check backoff before polling
+- Backoff state tracked separately per proxy instance
+- Thread-safe with mutex protection
+
+#### Configuration
+
+Maximum backoff time is hardcoded to 30 minutes:
+```go
+maxBackoff: 30 * time.Minute
+```
+
+Future enhancement: Make this configurable via `config_polling.max_backoff_seconds`
+
+#### Benefits
+
+✅ **Prevents DDoS**: Inactive proxies don't hammer Control indefinitely
+✅ **Automatic Recovery**: No manual intervention needed when account reactivated
+✅ **Graceful Degradation**: Service continues with cached config during backoff
+✅ **Observable**: Clear log messages indicate backoff state and reason
+✅ **Progressive**: Backoff increases gradually, allowing quick recovery for transient errors
+
+### Deployment Notes
+
+**Migrating from Tenant Mode to Account Mode**:
+1. Update proxy config: replace `tenant_id` with `account_id`
+2. Ensure all datasets have `source.custom` with `plugin_type`
+3. Restart proxy
+4. Proxy will poll for all tenants in the account
+
+**Dataset Configuration Requirements**:
+- `source.type` must be `"stream"` for plugin generation
+- `source.custom.plugin_type` must be set (e.g., "sflow", "netflow")
+- `source.custom` should contain all plugin-specific fields (port, protocol, etc.)
+- Dataset must be `active: true`
+
 ## v4.0.0 - Configuration Polling & Dynamic Reload (2025-10-21)
 
 ### Configuration Management System

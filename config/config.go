@@ -26,7 +26,8 @@ type Config struct {
 	UDP             UDP                    `mapstructure:"udp"`    // Legacy UDP config (deprecated)
 	Batching        Batching               `mapstructure:"batching"`
 	Receiver        Receiver               `mapstructure:"receiver"`
-	TenantID        string                 `mapstructure:"tenant_id"`
+	AccountID       string                 `mapstructure:"account_id"` // Account ID for polling all tenants (NEW)
+	TenantID        string                 `mapstructure:"tenant_id"`  // Legacy single-tenant mode (deprecated when using AccountID)
 	BearerToken     string                 `mapstructure:"bearer_token"`
 	ControlURL      string                 `mapstructure:"control_url"` // Centralized control service URL
 	ConfigMode      string                 `mapstructure:"config_mode"` // local-only, control-only, hybrid (default: hybrid)

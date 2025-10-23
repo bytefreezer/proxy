@@ -16,7 +16,9 @@ server:
   api_port: {{ config.server.api_port }}
 
 # Plugin-based input configuration
+# Leave empty if using account-based configuration (plugins generated from Control)
 inputs:
+{% if config.inputs is defined and config.inputs | length > 0 %}
 {% for input in config.inputs %}
   # {{ input.name }} - {{ input.type }} plugin
   - type: "{{ input.type }}"
@@ -30,11 +32,34 @@ inputs:
 {% endif %}
 {% endfor %}
 {% endfor %}
+{% else %}
+  []
+{% endif %}
 
-# Global tenant configuration
+# Account-based configuration (NEW in v4.1.0)
+# Use account_id to poll all tenants + datasets for an account
+# OR use tenant_id for legacy single-tenant mode
+{% if config.account_id is defined and config.account_id %}
+account_id: "{{ config.account_id }}"
+{% endif %}
+{% if config.tenant_id is defined and config.tenant_id %}
 tenant_id: "{{ config.tenant_id }}"
+{% endif %}
 bearer_token: "{{ config.bearer_token }}"
 control_url: "{{ config.control_url | default('http://192.168.86.103:8082') }}"
+
+# Configuration mode: local-only, control-only, or hybrid
+config_mode: "{{ config.config_mode | default('hybrid') }}"
+
+# Configuration polling from Control (NEW in v4.1.0)
+{% if config.config_polling is defined %}
+config_polling:
+  enabled: {{ config.config_polling.enabled | default(true) | lower }}
+  interval_seconds: {{ config.config_polling.interval_seconds | default(60) }}
+  timeout_seconds: {{ config.config_polling.timeout_seconds | default(30) }}
+  cache_directory: "{{ config.config_polling.cache_directory | default('/var/cache/bytefreezer-proxy') }}"
+  retry_on_error: {{ config.config_polling.retry_on_error | default(true) | lower }}
+{% endif %}
 
 # Bytefreezer-receiver configuration
 receiver:

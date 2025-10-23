@@ -11,24 +11,22 @@ logging:
 server:
   api_port: 8088
 
-# Plugin-based input configuration
-inputs:
-  # UDP Plugin for eBPF data on port 2056
-  - type: "udp"
-    name: "ebpf-udp-listener"
-    config:
-      host: "0.0.0.0"
-      port: 2056
-      dataset_id: "ebpf-data"
-      protocol: "udp"
-      data_hint: "ndjson"       # Data format hint for downstream processing
-      read_buffer_size: 65536
-      worker_count: 4
+# Plugin-based input configuration (leave empty - will be populated from Control)
+inputs: []
 
-# Global tenant configuration (used as fallback for plugins)
-tenant_id: "customer-1"
+# Account-based configuration - proxy will poll Control for all tenants + datasets
+account_id: "ejq73vgnw26p"
 bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
 control_url: "http://192.168.86.103:8082"
+config_mode: "control-only"  # local-only | control-only | hybrid
+
+# Configuration polling from Control
+config_polling:
+  enabled: true
+  interval_seconds: 60  # Poll every 60 seconds
+  timeout_seconds: 30
+  cache_directory: "/var/cache/bytefreezer-proxy"
+  retry_on_error: true
 
 # Bytefreezer-receiver configuration
 receiver:

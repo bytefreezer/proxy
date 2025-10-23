@@ -1,0 +1,133 @@
+# AWX Extra Variables for ByteFreezer Proxy v4.1.0+
+# Copy this file content to AWX Job Template "EXTRA VARIABLES" field
+
+# Service configuration
+service:
+  name: bytefreezer-proxy
+
+# File paths
+paths:
+  binary_path: /usr/local/bin/bytefreezer-proxy
+  config_dir: /etc/bytefreezer-proxy
+  config_path: /etc/bytefreezer-proxy/config.yaml
+  log_dir: /var/log/bytefreezer-proxy
+  spool_dir: /var/spool/bytefreezer-proxy
+  service_path: /etc/systemd/system/bytefreezer-proxy.service
+  logrotate_path: /etc/logrotate.d/bytefreezer-proxy
+
+# Download configuration
+download:
+  url: "https://github.com/your-org/bytefreezer-proxy/releases/download/v4.1.0/bytefreezer-proxy-linux-amd64.tar.gz"
+
+# Force reinstall (optional)
+force_reinstall: false
+
+# Application configuration
+config:
+  app:
+    name: bytefreezer-proxy
+    version: "4.1.0"
+
+  logging:
+    level: info
+    encoding: console
+
+  server:
+    api_port: 8088
+
+  # Leave inputs empty for account-based configuration
+  # Proxy will poll Control and generate plugin configs dynamically
+  inputs: []
+
+  # ===== ACCOUNT-BASED CONFIGURATION (NEW in v4.1.0) =====
+  # Use account_id to poll all tenants + datasets for an account
+  account_id: "ejq73vgnw26p"
+
+  # Bearer token for authentication with Control
+  bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+
+  # Control service URL
+  control_url: "http://192.168.86.103:8082"
+
+  # Configuration mode: local-only, control-only, or hybrid
+  # - local-only: Use only local config.yaml (air-gapped)
+  # - control-only: Fetch all config from Control (fail if unavailable)
+  # - hybrid: Primary Control, fallback to cached config
+  config_mode: "control-only"
+
+  # Configuration polling settings
+  config_polling:
+    enabled: true
+    interval_seconds: 60        # Poll every 60 seconds
+    timeout_seconds: 30
+    cache_directory: "/var/cache/bytefreezer-proxy"
+    retry_on_error: true
+
+  # ===== LEGACY SINGLE-TENANT MODE (Optional) =====
+  # If using legacy mode, set tenant_id instead of account_id
+  # tenant_id: "customer-1"
+
+  # ===== RECEIVER CONFIGURATION =====
+  receiver:
+    base_url: "http://192.168.86.103:8083/{tenantid}/{datasetid}"
+    timeout_seconds: 30
+    upload_worker_count: 5
+    max_idle_conns: 10
+    max_conns_per_host: 6
+
+  # ===== BATCHING CONFIGURATION =====
+  batching:
+    enabled: true
+    max_lines: 0                # 0 = disabled
+    max_bytes: 10485760         # 10MB
+    timeout_seconds: 60
+    compression_enabled: true
+    compression_level: 6
+
+  # ===== SOC ALERTING =====
+  soc:
+    enabled: false
+    endpoint: ""
+    timeout_seconds: 30
+
+  # ===== OPENTELEMETRY / PROMETHEUS =====
+  otel:
+    enabled: true
+    service_name: "bytefreezer-proxy"
+    scrapeIntervalseconds: 15
+    prometheus_mode: true
+    metrics_port: 9090
+    metrics_host: "0.0.0.0"
+
+  # ===== HOUSEKEEPING =====
+  housekeeping:
+    enabled: true
+    intervalseconds: 300        # 5 minutes
+
+  # ===== SPOOLING =====
+  spooling:
+    enabled: true
+    directory: "/var/spool/bytefreezer-proxy"
+    max_size_bytes: 10737418240 # 10GB
+    retry_attempts: 5
+    retry_interval_seconds: 60
+    cleanup_interval_seconds: 300
+    queue_processing_interval_seconds: 30
+    keep_src: false
+
+  # ===== HEALTH REPORTING =====
+  health_reporting:
+    enabled: true
+    report_interval: 30
+    timeout_seconds: 10
+    register_on_startup: true
+
+  # ===== TENANT VALIDATION =====
+  tenant_validation:
+    enabled: true
+    cache_ttl_seconds: 300
+    inactive_cache_ttl_seconds: 3600
+    timeout_seconds: 5
+
+  # ===== DEVELOPMENT MODE =====
+  dev: false

@@ -99,6 +99,58 @@ type SOCSettings struct {
 	Timeout  int    `json:"timeout,omitempty"`
 }
 
+// ControlConfiguration represents the full configuration from control (account-based polling)
+type ControlConfiguration struct {
+	Tenants []TenantWithDatasets `json:"tenants"`
+	Count   int                  `json:"count"`
+}
+
+// TenantWithDatasets represents a tenant and its datasets
+type TenantWithDatasets struct {
+	Tenant   Tenant    `json:"tenant"`
+	Datasets []Dataset `json:"datasets"`
+}
+
+// Tenant represents a tenant from control
+type Tenant struct {
+	ID          string                 `json:"id"`
+	AccountID   string                 `json:"account_id"`
+	Name        string                 `json:"name"`
+	DisplayName string                 `json:"display_name"`
+	Description string                 `json:"description"`
+	Active      bool                   `json:"active"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Config      map[string]interface{} `json:"config"`
+}
+
+// Dataset represents a dataset from control
+type Dataset struct {
+	ID          string        `json:"id"`
+	TenantID    string        `json:"tenant_id"`
+	Name        string        `json:"name"`
+	DisplayName string        `json:"display_name"`
+	Description string        `json:"description"`
+	Active      bool          `json:"active"`
+	Status      string        `json:"status"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+	Config      DatasetConfig `json:"config"`
+}
+
+// DatasetConfig represents dataset configuration from control
+type DatasetConfig struct {
+	Source      SourceConfig               `json:"source"`
+	Destination map[string]interface{}     `json:"destination"`
+	Custom      map[string]interface{}     `json:"custom,omitempty"`
+}
+
+// SourceConfig represents dataset source configuration
+type SourceConfig struct {
+	Type   string                 `json:"type"`   // stream, api, file, database
+	Custom map[string]interface{} `json:"custom"` // Plugin-specific configuration
+}
+
 // ConfigPollingService polls control for configuration updates
 type ConfigPollingService struct {
 	cfg             *config.Config
@@ -117,6 +169,14 @@ type ConfigPollingService struct {
 	stopChan     chan struct{}
 	httpClient   *http.Client
 	onConfigChange func(*ControlProxyConfig) error // Callback for config changes
+
+	// Exponential backoff and circuit breaker
+	consecutiveFailures int
+	currentBackoff      time.Duration
+	maxBackoff          time.Duration
+	backoffMutex        sync.RWMutex
+	circuitOpen         bool
+	lastAuthError       time.Time
 }
 
 // NewConfigPollingService creates a new configuration polling service
@@ -164,7 +224,11 @@ func NewConfigPollingService(cfg *config.Config, onConfigChange func(*ControlPro
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		onConfigChange: onConfigChange,
+		onConfigChange:      onConfigChange,
+		maxBackoff:          30 * time.Minute, // Maximum backoff time for inactive accounts
+		consecutiveFailures: 0,
+		currentBackoff:      0,
+		circuitOpen:         false,
 	}, nil
 }
 
@@ -221,20 +285,35 @@ func (s *ConfigPollingService) pollingLoop() {
 func (s *ConfigPollingService) pollConfiguration() error {
 	log.Debugf("Polling configuration from control: %s", s.controlURL)
 
-	// Build request URL
-	url := fmt.Sprintf("%s/api/v2/proxies/%s/config?tenant_id=%s", s.controlURL, s.instanceID, s.cfg.TenantID)
+	// Determine polling mode
+	if s.cfg.AccountID != "" {
+		// Account-based polling (new): fetch all tenants + datasets for account
+		return s.pollAccountConfiguration()
+	}
+
+	// Legacy tenant-based polling
+	return s.pollTenantConfiguration()
+}
+
+// pollAccountConfiguration fetches tenants + datasets for an account and converts to plugin configs
+func (s *ConfigPollingService) pollAccountConfiguration() error {
+	// Check if we should skip due to backoff
+	if s.shouldBackoff() {
+		log.Debugf("Skipping poll due to backoff (next retry in %v)", s.getEffectiveInterval())
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/v2/proxy/config?account_id=%s", s.controlURL, s.cfg.AccountID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add authorization header
 	if s.bearerToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.bearerToken))
 	}
 
-	// Make request
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		if s.cfg.ConfigPolling.RetryOnError {
@@ -245,26 +324,49 @@ func (s *ConfigPollingService) pollConfiguration() error {
 	}
 	defer resp.Body.Close()
 
-	// Check response status
-	if resp.StatusCode == http.StatusNotFound {
-		log.Warnf("Proxy instance not configured in control yet (404)")
-		return nil // Not an error - just not configured yet
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+
+		// Record failure for auth errors and account not found
+		s.recordFailure(resp.StatusCode)
+
+		// Try cached config for some error types
+		if resp.StatusCode == http.StatusUnauthorized ||
+		   resp.StatusCode == http.StatusForbidden ||
+		   resp.StatusCode == http.StatusNotFound {
+			log.Warnf("Control returned status %d (inactive/unauthorized account), using cached config if available", resp.StatusCode)
+			_ = s.loadCachedConfig() // Ignore error, we'll return the original error
+		}
+
 		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
-	var remoteConfig ControlProxyConfig
-	if err := json.NewDecoder(resp.Body).Decode(&remoteConfig); err != nil {
+	// Parse tenants + datasets response
+	var controlConfig ControlConfiguration
+	if err := json.NewDecoder(resp.Body).Decode(&controlConfig); err != nil {
 		return fmt.Errorf("failed to decode config response: %w", err)
+	}
+
+	log.Infof("Received configuration for account %s: %d tenants, %d total datasets",
+		s.cfg.AccountID, controlConfig.Count, s.countTotalDatasets(controlConfig))
+
+	// Record successful poll (resets backoff)
+	s.recordSuccess()
+
+	// Convert datasets to plugin configs
+	pluginConfigs := s.datasetsToPluginConfigs(controlConfig)
+
+	// Create synthetic ControlProxyConfig for compatibility with existing code
+	configVersion := int(time.Now().Unix())
+	remoteConfig := ControlProxyConfig{
+		PluginConfigs: pluginConfigs,
+		ConfigVersion: configVersion,
+		ConfigHash:    s.calculatePluginConfigsHash(pluginConfigs),
 	}
 
 	// Check if config has changed
 	if s.hasConfigChanged(&remoteConfig) {
-		log.Infof("Configuration changed (version %d -> %d)", s.getConfigVersion(), remoteConfig.ConfigVersion)
+		log.Infof("Configuration changed, applying %d plugin configs", len(pluginConfigs))
 
 		// Apply the new configuration
 		if err := s.applyConfiguration(&remoteConfig); err != nil {
@@ -277,7 +379,90 @@ func (s *ConfigPollingService) pollConfiguration() error {
 			log.Errorf("Failed to cache configuration: %v", err)
 		}
 
-		// Report back to control that config was applied
+		// Report back to control for each tenant
+		for _, tenantWithDatasets := range controlConfig.Tenants {
+			if err := s.reportConfigAppliedForTenant(tenantWithDatasets.Tenant.ID, configVersion, pluginConfigs); err != nil {
+				log.Errorf("Failed to report config applied for tenant %s: %v", tenantWithDatasets.Tenant.ID, err)
+			}
+		}
+	} else {
+		log.Debugf("Configuration unchanged (hash %s)", remoteConfig.ConfigHash)
+	}
+
+	return nil
+}
+
+// pollTenantConfiguration fetches config for a single tenant (legacy mode)
+func (s *ConfigPollingService) pollTenantConfiguration() error {
+	// Check if we should skip due to backoff
+	if s.shouldBackoff() {
+		log.Debugf("Skipping poll due to backoff (next retry in %v)", s.getEffectiveInterval())
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/v2/proxies/%s/config?tenant_id=%s", s.controlURL, s.instanceID, s.cfg.TenantID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if s.bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.bearerToken))
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		if s.cfg.ConfigPolling.RetryOnError {
+			log.Warnf("Control unreachable, using cached config: %v", err)
+			return s.loadCachedConfig()
+		}
+		return fmt.Errorf("failed to poll control: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		log.Warnf("Proxy instance not configured in control yet (404)")
+		s.recordFailure(resp.StatusCode)
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+
+		// Record failure for auth errors
+		s.recordFailure(resp.StatusCode)
+
+		// Try cached config for some error types
+		if resp.StatusCode == http.StatusUnauthorized ||
+		   resp.StatusCode == http.StatusForbidden {
+			log.Warnf("Control returned status %d (unauthorized tenant), using cached config if available", resp.StatusCode)
+			_ = s.loadCachedConfig() // Ignore error, we'll return the original error
+		}
+
+		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var remoteConfig ControlProxyConfig
+	if err := json.NewDecoder(resp.Body).Decode(&remoteConfig); err != nil {
+		return fmt.Errorf("failed to decode config response: %w", err)
+	}
+
+	// Record successful poll (resets backoff)
+	s.recordSuccess()
+
+	if s.hasConfigChanged(&remoteConfig) {
+		log.Infof("Configuration changed (version %d -> %d)", s.getConfigVersion(), remoteConfig.ConfigVersion)
+
+		if err := s.applyConfiguration(&remoteConfig); err != nil {
+			log.Errorf("Failed to apply configuration: %v", err)
+			return err
+		}
+
+		if err := s.cacheConfiguration(&remoteConfig); err != nil {
+			log.Errorf("Failed to cache configuration: %v", err)
+		}
+
 		if err := s.reportConfigApplied(remoteConfig.ConfigVersion); err != nil {
 			log.Errorf("Failed to report config applied: %v", err)
 		}
@@ -546,4 +731,234 @@ func CalculateConfigHash(pluginConfigs []plugins.PluginConfig, proxySettings int
 	data, _ := json.Marshal(combined)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
+}
+
+// countTotalDatasets counts total datasets across all tenants
+func (s *ConfigPollingService) countTotalDatasets(config ControlConfiguration) int {
+	total := 0
+	for _, tenant := range config.Tenants {
+		total += len(tenant.Datasets)
+	}
+	return total
+}
+
+// datasetsToPluginConfigs converts datasets from control to plugin configurations
+func (s *ConfigPollingService) datasetsToPluginConfigs(config ControlConfiguration) []map[string]interface{} {
+	pluginConfigs := []map[string]interface{}{}
+
+	for _, tenantWithDatasets := range config.Tenants {
+		tenant := tenantWithDatasets.Tenant
+
+		for _, dataset := range tenantWithDatasets.Datasets {
+			// Only process active datasets with stream source type
+			if !dataset.Active || dataset.Config.Source.Type != "stream" {
+				continue
+			}
+
+			// Extract plugin configuration from dataset source custom fields
+			pluginConfig := s.datasetToPluginConfig(tenant, dataset)
+			if pluginConfig != nil {
+				pluginConfigs = append(pluginConfigs, pluginConfig)
+			}
+		}
+	}
+
+	log.Infof("Converted %d datasets to %d plugin configs", s.countTotalDatasets(config), len(pluginConfigs))
+	return pluginConfigs
+}
+
+// datasetToPluginConfig converts a single dataset to a plugin configuration
+func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Dataset) map[string]interface{} {
+	// Dataset source custom fields should contain plugin configuration
+	// Example structure in dataset.Config.Source.Custom:
+	// {
+	//   "plugin_type": "sflow",
+	//   "port": 2066,
+	//   "protocol": "sflow",
+	//   "data_hint": "ndjson",
+	//   "read_buffer_size": 65536,
+	//   "worker_count": 4
+	// }
+
+	custom := dataset.Config.Source.Custom
+	if custom == nil {
+		log.Warnf("Dataset %s has no source.custom configuration, skipping", dataset.ID)
+		return nil
+	}
+
+	// Extract plugin type
+	pluginType, ok := custom["plugin_type"].(string)
+	if !ok || pluginType == "" {
+		log.Warnf("Dataset %s has no plugin_type in source.custom, skipping", dataset.ID)
+		return nil
+	}
+
+	// Build plugin config
+	pluginConfig := map[string]interface{}{
+		"type": pluginType,
+		"name": fmt.Sprintf("%s-%s", dataset.Name, tenant.Name),
+		"config": map[string]interface{}{
+			"tenant_id":   tenant.ID,
+			"dataset_id":  dataset.ID,
+			"bearer_token": s.bearerToken,
+		},
+	}
+
+	// Copy all custom fields to plugin config (except plugin_type which we already used)
+	config := pluginConfig["config"].(map[string]interface{})
+	for key, value := range custom {
+		if key != "plugin_type" {
+			config[key] = value
+		}
+	}
+
+	// Set defaults if not provided
+	if _, ok := config["host"]; !ok {
+		config["host"] = "0.0.0.0"
+	}
+
+	log.Debugf("Created plugin config for dataset %s (tenant %s): type=%s, port=%v",
+		dataset.ID, tenant.ID, pluginType, config["port"])
+
+	return pluginConfig
+}
+
+// calculatePluginConfigsHash calculates hash for plugin configs
+func (s *ConfigPollingService) calculatePluginConfigsHash(pluginConfigs []map[string]interface{}) string {
+	data, _ := json.Marshal(pluginConfigs)
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+// reportConfigAppliedForTenant reports to control that config was applied for a specific tenant
+func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, configVersion int, pluginConfigs []map[string]interface{}) error {
+	// Filter plugin configs for this tenant
+	tenantPluginConfigs := []map[string]interface{}{}
+	for _, pc := range pluginConfigs {
+		if configMap, ok := pc["config"].(map[string]interface{}); ok {
+			if tid, ok := configMap["tenant_id"].(string); ok && tid == tenantID {
+				tenantPluginConfigs = append(tenantPluginConfigs, pc)
+			}
+		}
+	}
+
+	// Build report payload
+	reportPayload := map[string]interface{}{
+		"instance_id":    s.instanceID,
+		"tenant_id":      tenantID,
+		"instance_api":   fmt.Sprintf("%s:8081", s.instanceID), // Default API port
+		"config_mode":    s.cfg.ConfigMode,
+		"plugin_configs": tenantPluginConfigs,
+		"proxy_settings": map[string]interface{}{}, // Empty for now
+	}
+
+	url := fmt.Sprintf("%s/api/v2/proxies/%s/config", s.controlURL, s.instanceID)
+	payload, err := json.Marshal(reportPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal report payload: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create report request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if s.bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.bearerToken))
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to report config applied: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Infof("Reported config applied to control for tenant %s: %d plugin configs", tenantID, len(tenantPluginConfigs))
+	return nil
+}
+
+// shouldBackoff checks if we're currently in a backoff period
+func (s *ConfigPollingService) shouldBackoff() bool {
+	s.backoffMutex.RLock()
+	defer s.backoffMutex.RUnlock()
+
+	if s.circuitOpen {
+		// Check if enough time has passed to retry
+		if time.Since(s.lastAuthError) < s.currentBackoff {
+			return true
+		}
+		// Circuit breaker timeout expired, allow retry
+		return false
+	}
+
+	return false
+}
+
+// recordFailure records a polling failure and calculates exponential backoff
+func (s *ConfigPollingService) recordFailure(statusCode int) {
+	s.backoffMutex.Lock()
+	defer s.backoffMutex.Unlock()
+
+	// Only apply backoff for authentication errors (401, 403) or not found (404)
+	// These indicate inactive/invalid accounts that shouldn't hammer Control
+	if statusCode != http.StatusUnauthorized &&
+	   statusCode != http.StatusForbidden &&
+	   statusCode != http.StatusNotFound {
+		return
+	}
+
+	s.consecutiveFailures++
+	s.lastAuthError = time.Now()
+
+	// Exponential backoff: 1min → 2min → 4min → 8min → 16min → 30min (max)
+	if s.consecutiveFailures == 1 {
+		s.currentBackoff = 1 * time.Minute
+	} else {
+		s.currentBackoff = s.currentBackoff * 2
+		if s.currentBackoff > s.maxBackoff {
+			s.currentBackoff = s.maxBackoff
+		}
+	}
+
+	// Open circuit breaker after 5 consecutive auth failures
+	if s.consecutiveFailures >= 5 {
+		s.circuitOpen = true
+		log.Warnf("Circuit breaker opened after %d consecutive auth failures (backoff: %v)",
+			s.consecutiveFailures, s.currentBackoff)
+	} else {
+		log.Warnf("Polling failed (status %d), backing off for %v (failure %d/5)",
+			statusCode, s.currentBackoff, s.consecutiveFailures)
+	}
+}
+
+// recordSuccess resets backoff counters after successful poll
+func (s *ConfigPollingService) recordSuccess() {
+	s.backoffMutex.Lock()
+	defer s.backoffMutex.Unlock()
+
+	if s.consecutiveFailures > 0 || s.circuitOpen {
+		log.Infof("Polling succeeded, resetting backoff (was: %d failures, %v backoff)",
+			s.consecutiveFailures, s.currentBackoff)
+	}
+
+	s.consecutiveFailures = 0
+	s.currentBackoff = 0
+	s.circuitOpen = false
+}
+
+// getEffectiveInterval returns the polling interval to use (normal or backoff)
+func (s *ConfigPollingService) getEffectiveInterval() time.Duration {
+	s.backoffMutex.RLock()
+	defer s.backoffMutex.RUnlock()
+
+	if s.circuitOpen && s.currentBackoff > 0 {
+		return s.currentBackoff
+	}
+	return s.pollingInterval
 }
