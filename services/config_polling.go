@@ -881,7 +881,48 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	log.Infof("Reported config applied to control for tenant %s: %d plugin configs", tenantID, len(tenantPluginConfigs))
+	log.Infof("Reported config to control for tenant %s: %d plugin configs", tenantID, len(tenantPluginConfigs))
+
+	// Now mark this config version as applied
+	return s.markConfigAppliedForTenant(tenantID, configVersion)
+}
+
+// markConfigAppliedForTenant marks a configuration version as applied for a specific tenant
+func (s *ConfigPollingService) markConfigAppliedForTenant(tenantID string, configVersion int) error {
+	url := fmt.Sprintf("%s/api/v2/proxies/%s/config/applied", s.controlURL, s.instanceID)
+
+	payload := map[string]interface{}{
+		"tenant_id":      tenantID,
+		"config_version": configVersion,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if s.bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.bearerToken))
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to mark config applied: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Debugf("Marked config version %d as applied for tenant %s", configVersion, tenantID)
 	return nil
 }
 
