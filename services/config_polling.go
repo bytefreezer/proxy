@@ -881,10 +881,18 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 		return fmt.Errorf("control returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	log.Infof("Reported config to control for tenant %s: %d plugin configs", tenantID, len(tenantPluginConfigs))
+	// Parse response to get the actual config_version assigned by control
+	var response struct {
+		ConfigVersion int `json:"config_version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("failed to parse upsert response: %w", err)
+	}
 
-	// Now mark this config version as applied
-	return s.markConfigAppliedForTenant(tenantID, configVersion)
+	log.Infof("Reported config to control for tenant %s: %d plugin configs (version %d)", tenantID, len(tenantPluginConfigs), response.ConfigVersion)
+
+	// Now mark this config version as applied, using the version returned from control
+	return s.markConfigAppliedForTenant(tenantID, response.ConfigVersion)
 }
 
 // markConfigAppliedForTenant marks a configuration version as applied for a specific tenant
