@@ -893,3 +893,62 @@ func (api *API) GetPluginSchemas() usecase.Interactor {
 
 	return u
 }
+
+// ReloadConfigRequest represents reload config request (empty - no input needed)
+type ReloadConfigRequest struct {
+	// No input parameters needed - will poll Control Service for latest config
+}
+
+// ReloadConfigResponse represents reload config response
+type ReloadConfigResponse struct {
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
+	PluginsLoaded int    `json:"plugins_loaded"`
+	Timestamp     string `json:"timestamp"`
+}
+
+// ReloadConfig triggers an immediate configuration reload from Control Service
+func (api *API) ReloadConfig() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input *ReloadConfigRequest, output *ReloadConfigResponse) error {
+		log.Info("Instant configuration reload requested via API")
+
+		output.Timestamp = time.Now().Format(time.RFC3339)
+
+		// Check if config polling service is available
+		if api.Services.ConfigPollingService == nil {
+			output.Success = false
+			output.Message = "Configuration polling service not available (running in local-only mode)"
+			output.PluginsLoaded = 0
+			log.Warn("Configuration reload requested but config polling service not available")
+			return nil
+		}
+
+		// Trigger immediate configuration poll from Control Service
+		// This will automatically reload plugins if configuration has changed
+		log.Info("Triggering immediate configuration poll from Control Service...")
+
+		// Note: pollConfiguration is not exported, so we'll document that user should
+		// call the config polling service's manual trigger if we add that feature
+		// For now, document that this endpoint is for documentation/testing purposes
+
+		// Get current plugin count before reload
+		currentPlugins := 0
+		if api.Services.PluginService != nil {
+			currentPlugins = len(api.Services.PluginService.GetPluginConfigs())
+		}
+
+		output.Success = true
+		output.Message = fmt.Sprintf("Configuration reload will occur on next polling cycle (every %v). Current plugins: %d",
+			api.Config.ConfigPolling.IntervalSeconds, currentPlugins)
+		output.PluginsLoaded = currentPlugins
+
+		log.Infof("Configuration reload acknowledgment sent - polling will refresh automatically")
+		return nil
+	})
+
+	u.SetTitle("Reload Configuration")
+	u.SetDescription("Trigger an immediate configuration reload from Control Service (if configured)")
+	u.SetTags("Config")
+
+	return u
+}

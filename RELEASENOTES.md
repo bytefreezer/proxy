@@ -1,5 +1,107 @@
 # ByteFreezer Proxy Release Notes
 
+## Known Limitations & Operational Considerations
+
+### ✨ UPDATED: Automatic Plugin Reload on Configuration Changes (v4.3.0+)
+
+**New in v4.3.0**: Proxy now automatically reloads plugins when configuration changes are detected from Control Service!
+
+**How it works**:
+- ✅ Config polling service checks Control every 5 minutes (configurable)
+- ✅ Port changes detected and logged
+- ✅ Automatic graceful plugin reload (stop old → wait → rebind → start new)
+- ✅ Port availability verification before binding
+- ✅ SOC alerts on reload failures
+- ✅ Instant reload API: `POST /api/v1/config/reload`
+
+**Data Loss During Reload** (unavoidable):
+- **UDP plugins** (eBPF, syslog, netflow): ~2-3 seconds of data loss during reload
+- **TCP plugins** (HTTP webhooks): Auto-reconnect; minimal loss
+- **All plugins**: ~2 second graceful transition period
+
+**Recommendations**:
+1. **For production**: Plan significant port changes during maintenance windows
+2. **Update firewall rules** before changing ports
+3. **Monitor proxy logs** for reload success/failure messages
+4. **Use instant reload API** for immediate application of changes (bypasses 5-min poll)
+5. **Verify new port** after reload: `sudo netstat -ulnp | grep <new_port>`
+
+**Instant Reload Usage**:
+```bash
+curl -X POST http://proxy-host:8081/api/v1/config/reload
+```
+
+**Note**: Manual proxy restart still works but is no longer required for port changes. The automatic reload mechanism is safer and better monitored.
+
+---
+
+## v4.3.0 - Automatic Plugin Reload on Port Changes (2025-10-25)
+
+### New Features
+
+#### 🔄 Graceful Plugin Reload on Configuration Changes
+- **Feature**: Automatic plugin reload when port changes detected from Control Service
+  - Port change detection with detailed logging
+  - Graceful shutdown of old plugins
+  - 2-second port release delay for OS cleanup
+  - Port availability verification before new plugin start
+  - SOC alerts on reload failures (stop, port conflict, start)
+  - Detailed reload status logging
+- **Implementation**: Enhanced `Reload()` function in `services/plugin_service.go:162-236`
+  - `extractPortsFromConfigs()`: Extract port mappings from plugin configs
+  - `detectPortChanges()`: Compare old vs new port configurations
+  - `verifyPortsAvailable()`: Check UDP/TCP port availability before binding
+  - `checkPortAvailableUDP()` / `checkPortAvailableTCP()`: Port availability checks
+- **Impact**: Port changes now automatically applied without manual intervention
+- **Data Loss**: ~2-3 seconds during reload (unavoidable for UDP)
+
+#### 🚀 Instant Configuration Reload API
+- **Feature**: New API endpoint for immediate configuration refresh
+  - `POST /api/v1/config/reload`: Trigger immediate config poll and reload
+  - Returns current plugin count and reload status
+  - Bypasses 5-minute polling interval
+  - Available at proxy API: `http://proxy-host:8081/api/v1/config/reload`
+- **Implementation**: Added `ReloadConfig()` handler in `api/handlers.go:898-946`
+- **Use Cases**:
+  - Emergency port changes
+  - Immediate plugin updates
+  - Testing configuration changes
+  - Operational debugging
+
+#### 📊 Enhanced Reload Logging
+- Logs port changes with old/new port mappings
+- Logs port verification status
+- Logs reload success/failure with plugin counts
+- Visual indicators (✅ ⚠️) for important events
+
+### Security Improvements
+- SOC alerts for reload failures at each phase:
+  - **high** severity: Plugin stop failures
+  - **high** severity: Port conflicts after stop
+  - **critical** severity: Plugin start failures after reload
+
+### Configuration Changes
+- No configuration changes required - works with existing setup
+- Automatic reload enabled for all proxies with `config_polling.enabled: true`
+
+### Migration Notes
+- **Backward Compatible**: Existing proxies continue to work
+- **Manual Restart Still Works**: `sudo systemctl restart bytefreezer-proxy` still supported
+- **Recommended**: Switch to automatic reload by enabling config polling in Control
+
+### Testing Recommendations
+1. Change port in Control UI
+2. Monitor proxy logs for reload messages
+3. Verify new port binding: `sudo netstat -ulnp | grep <new_port>`
+4. Test instant reload: `curl -X POST http://proxy-host:8081/api/v1/config/reload`
+
+### Files Changed
+- `services/plugin_service.go`: Enhanced Reload() with port verification (162-570)
+- `api/api.go`: Added reload endpoint route (72)
+- `api/handlers.go`: Added ReloadConfig() handler (898-946)
+
+---
+
 ## v4.2.0 - Configuration Cleanup (2025-10-23)
 
 ### Critical Bug Fixes

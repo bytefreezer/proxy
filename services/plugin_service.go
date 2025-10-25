@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -159,14 +160,53 @@ func (ps *PluginService) Stop() error {
 }
 
 // Reload reloads the plugin service with new configuration
+// Includes port change detection, verification, and error handling
 func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 	log.Info("Reloading plugin service with new configuration")
 
+	// Extract ports from old and new configs for comparison
+	oldPorts := extractPortsFromConfigs(ps.pluginManager.GetConfigs())
+	newPorts := extractPortsFromConfigs(newInputConfigs)
+
+	// Detect port changes
+	portChanges := detectPortChanges(oldPorts, newPorts)
+	if len(portChanges) > 0 {
+		log.Infof("Port changes detected during reload:")
+		for _, change := range portChanges {
+			log.Infof("  - %s", change)
+		}
+	}
+
 	// Stop plugin manager to stop all running plugins
+	log.Info("Stopping all running plugins for reload...")
 	if err := ps.pluginManager.Stop(); err != nil {
 		log.Errorf("Error stopping plugin manager during reload: %v", err)
+		// Send SOC alert for stop failure
+		if ps.config.SOCAlertClient != nil {
+			ps.config.SOCAlertClient.SendAlert("high", "Plugin Reload Failed - Stop Phase",
+				"Failed to stop plugins during reload", err.Error())
+		}
 		return fmt.Errorf("failed to stop plugins: %w", err)
 	}
+
+	// CRITICAL: Wait for OS to release ports (especially UDP)
+	// This prevents "address already in use" errors when rebinding
+	waitTime := 2 * time.Second
+	log.Infof("Waiting %v for OS to release ports...", waitTime)
+	time.Sleep(waitTime)
+
+	// Verify new ports are available before attempting to start
+	if err := verifyPortsAvailable(newPorts); err != nil {
+		log.Errorf("Port availability check failed: %v", err)
+		// Send SOC alert for port conflict
+		if ps.config.SOCAlertClient != nil {
+			ps.config.SOCAlertClient.SendAlert("high", "Plugin Reload Failed - Port Conflict",
+				"Ports not available after plugin stop", err.Error())
+		}
+		return fmt.Errorf("ports not available: %w", err)
+	}
+
+	log.Infof("All %d ports verified as available", len(newPorts))
 
 	// Create new plugin manager with updated configs
 	ps.pluginManager = plugins.NewManagerWithGlobals(
@@ -178,12 +218,21 @@ func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 	)
 
 	// Start new plugins
+	log.Info("Starting plugins with new configuration...")
 	if err := ps.pluginManager.Start(); err != nil {
-		log.Errorf("Error starting new plugins during reload: %v", err)
+		log.Errorf("CRITICAL: Error starting new plugins during reload: %v", err)
+		// Send SOC alert for start failure
+		if ps.config.SOCAlertClient != nil {
+			ps.config.SOCAlertClient.SendAlert("critical", "Plugin Reload Failed - Start Phase",
+				fmt.Sprintf("Failed to start %d new plugins after reload", len(newInputConfigs)), err.Error())
+		}
 		return fmt.Errorf("failed to start new plugins: %w", err)
 	}
 
-	log.Infof("Plugin service reloaded successfully with %d plugins", len(newInputConfigs))
+	log.Infof("✅ Plugin service reloaded successfully with %d plugins", len(newInputConfigs))
+	if len(portChanges) > 0 {
+		log.Info("⚠️  Port changes applied - data collection restarted on new ports")
+	}
 	return nil
 }
 
@@ -412,4 +461,107 @@ func (ps *PluginService) GetPluginConfigs() []plugins.PluginConfig {
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
 func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
 	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)
+}
+
+// extractPortsFromConfigs extracts all port numbers from plugin configurations
+func extractPortsFromConfigs(configs []plugins.PluginConfig) map[int]string {
+	ports := make(map[int]string)
+
+	for _, cfg := range configs {
+		if portValue, exists := cfg.Config["port"]; exists {
+			var port int
+			switch p := portValue.(type) {
+			case int:
+				port = p
+			case float64:
+				port = int(p)
+			}
+
+			if port > 0 {
+				pluginName := fmt.Sprintf("%s[%s]", cfg.Type, cfg.Name)
+				ports[port] = pluginName
+			}
+		}
+	}
+
+	return ports
+}
+
+// detectPortChanges compares old and new port configurations and returns change descriptions
+func detectPortChanges(oldPorts, newPorts map[int]string) []string {
+	changes := []string{}
+
+	// Check for removed ports
+	for port, oldPlugin := range oldPorts {
+		if _, exists := newPorts[port]; !exists {
+			changes = append(changes, fmt.Sprintf("Port %d removed (was: %s)", port, oldPlugin))
+		}
+	}
+
+	// Check for added or changed ports
+	for port, newPlugin := range newPorts {
+		if oldPlugin, exists := oldPorts[port]; exists {
+			if oldPlugin != newPlugin {
+				changes = append(changes, fmt.Sprintf("Port %d reassigned: %s → %s", port, oldPlugin, newPlugin))
+			}
+		} else {
+			changes = append(changes, fmt.Sprintf("Port %d added (new: %s)", port, newPlugin))
+		}
+	}
+
+	return changes
+}
+
+// verifyPortsAvailable checks if all ports are available for binding
+// This helps detect port conflicts before attempting to start plugins
+func verifyPortsAvailable(ports map[int]string) error {
+	unavailablePorts := []string{}
+
+	for port := range ports {
+		// Try both UDP and TCP (plugins may use either)
+		if err := checkPortAvailableUDP(port); err != nil {
+			unavailablePorts = append(unavailablePorts, fmt.Sprintf("UDP:%d (%v)", port, err))
+		}
+		if err := checkPortAvailableTCP(port); err != nil {
+			unavailablePorts = append(unavailablePorts, fmt.Sprintf("TCP:%d (%v)", port, err))
+		}
+	}
+
+	if len(unavailablePorts) > 0 {
+		return fmt.Errorf("ports not available: %v", unavailablePorts)
+	}
+
+	return nil
+}
+
+// checkPortAvailableUDP checks if a UDP port is available
+func checkPortAvailableUDP(port int) error {
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return err
+	}
+
+	listener, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return err
+	}
+	listener.Close()
+
+	return nil
+}
+
+// checkPortAvailableTCP checks if a TCP port is available
+func checkPortAvailableTCP(port int) error {
+	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return err
+	}
+
+	listener, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return err
+	}
+	listener.Close()
+
+	return nil
 }

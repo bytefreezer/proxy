@@ -68,6 +68,9 @@ func (apiServer *APIServer) NewRouter() *web.Service {
 	// Connectivity test endpoints
 	service.Post("/api/v1/test/connectivity", api.TestConnectivity())
 
+	// Plugin reload endpoints
+	service.Post("/api/v1/config/reload", api.ReloadConfig())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 
