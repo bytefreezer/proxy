@@ -3,6 +3,7 @@ package ebpf
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -231,7 +232,7 @@ func (p *Plugin) packetReaderWithSpooling() {
 	}
 }
 
-// processMessageWithSpooling processes eBPF message (NDJSON passthrough)
+// processMessageWithSpooling processes eBPF message and flattens to NDJSON
 func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr) {
 	// Update metrics
 	p.metrics.MessagesReceived++
@@ -244,17 +245,35 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 		return
 	}
 
-	// eBPF data is expected to be NDJSON - pass through as-is
-	// No parsing needed, just store directly with ndjson hint
+	// Parse JSON (handles both compact and pretty-printed formats)
+	var message map[string]interface{}
+	if err := json.Unmarshal(payload, &message); err != nil {
+		log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
+		p.metrics.MessagesDropped++
+		return
+	}
+
+	// Re-marshal to compact JSON (flattens pretty-printed JSON)
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
+		p.metrics.MessagesDropped++
+		return
+	}
+
+	// Add newline for NDJSON format
+	ndjsonData := append(jsonData, '\n')
+
+	// Store to filesystem
 	bearerToken := p.config.BearerToken
-	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, payload, "ndjson"); err != nil {
+	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, ndjsonData, "ndjson"); err != nil {
 		log.Errorf("Failed to store eBPF message to filesystem from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.MessagesDropped++
 		return
 	}
 
-	log.Debugf("Stored eBPF NDJSON message from %s:%d (%d bytes)",
-		clientAddr.IP.String(), clientAddr.Port, len(payload))
+	log.Debugf("Stored eBPF NDJSON message from %s:%d (%d bytes flattened to %d bytes)",
+		clientAddr.IP.String(), clientAddr.Port, len(payload), len(ndjsonData))
 }
 
 // Schema returns the eBPF plugin configuration schema
