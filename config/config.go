@@ -39,7 +39,8 @@ type Config struct {
 	Dev              bool                   `mapstructure:"dev"`
 
 	// Runtime components
-	SOCAlertClient *alerts.SOCAlertClient `mapstructure:"-"`
+	SOCAlertClient       *alerts.SOCAlertClient `mapstructure:"-"`
+	DatasetMetricsClient interface{}            `mapstructure:"-"` // services.DatasetMetricsClient (interface to avoid circular import)
 }
 
 type App struct {

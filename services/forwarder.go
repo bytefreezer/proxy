@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -57,9 +58,10 @@ func isPermanentHTTPError(statusCode int) bool {
 
 // HTTPForwarder handles HTTP forwarding to bytefreezer-receiver
 type HTTPForwarder struct {
-	config         *config.Config
-	httpClient     *http.Client
-	metricsService *MetricsService
+	config               *config.Config
+	httpClient           *http.Client
+	metricsService       *MetricsService
+	datasetMetricsClient *DatasetMetricsClient
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder with connection pooling
@@ -78,13 +80,22 @@ func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 		DisableCompression:  false, // Enable gzip compression
 	}
 
+	// Extract DatasetMetricsClient from config if available
+	var datasetMetricsClient *DatasetMetricsClient
+	if cfg.DatasetMetricsClient != nil {
+		if client, ok := cfg.DatasetMetricsClient.(*DatasetMetricsClient); ok {
+			datasetMetricsClient = client
+		}
+	}
+
 	return &HTTPForwarder{
 		config: cfg,
 		httpClient: &http.Client{
 			Timeout:   cfg.GetReceiverTimeout(),
 			Transport: transport,
 		},
-		metricsService: nil, // Will be set if needed
+		metricsService:       nil, // Will be set if needed
+		datasetMetricsClient: datasetMetricsClient,
 	}
 }
 
@@ -104,13 +115,22 @@ func NewHTTPForwarderWithMetrics(cfg *config.Config, metricsService *MetricsServ
 		DisableCompression:  false, // Enable gzip compression
 	}
 
+	// Extract DatasetMetricsClient from config if available
+	var datasetMetricsClient *DatasetMetricsClient
+	if cfg.DatasetMetricsClient != nil {
+		if client, ok := cfg.DatasetMetricsClient.(*DatasetMetricsClient); ok {
+			datasetMetricsClient = client
+		}
+	}
+
 	return &HTTPForwarder{
 		config: cfg,
 		httpClient: &http.Client{
 			Timeout:   cfg.GetReceiverTimeout(),
 			Transport: transport,
 		},
-		metricsService: metricsService,
+		metricsService:       metricsService,
+		datasetMetricsClient: datasetMetricsClient,
 	}
 }
 
@@ -130,13 +150,22 @@ func NewRetryHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 		DisableCompression:  false, // Enable gzip compression
 	}
 
+	// Extract DatasetMetricsClient from config if available
+	var datasetMetricsClient *DatasetMetricsClient
+	if cfg.DatasetMetricsClient != nil {
+		if client, ok := cfg.DatasetMetricsClient.(*DatasetMetricsClient); ok {
+			datasetMetricsClient = client
+		}
+	}
+
 	return &HTTPForwarder{
 		config: cfg,
 		httpClient: &http.Client{
 			Timeout:   cfg.GetReceiverTimeout(),
 			Transport: transport,
 		},
-		metricsService: nil, // Retry forwarder doesn't need metrics
+		metricsService:       nil, // Retry forwarder doesn't need metrics
+		datasetMetricsClient: datasetMetricsClient,
 	}
 }
 
@@ -209,6 +238,30 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 			if err := f.preserveSource(batch, req.Header); err != nil {
 				log.Warnf("Failed to preserve source for batch %s: %v", batch.ID, err)
 			}
+		}
+
+		// Record dataset metrics asynchronously (non-blocking)
+		if f.datasetMetricsClient != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				inputBytes := batch.TotalBytes
+				outputBytes := int64(len(batch.Data))
+				linesProcessed := int64(batch.LineCount)
+				errorCount := int64(0)
+
+				_ = f.datasetMetricsClient.RecordMetric(
+					ctx,
+					batch.TenantID,
+					batch.DatasetID,
+					inputBytes,
+					outputBytes,
+					linesProcessed,
+					errorCount,
+					nil, // No custom metrics
+				)
+			}()
 		}
 
 		return nil

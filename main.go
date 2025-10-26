@@ -112,6 +112,18 @@ func main() {
 		log.Fatalf("Failed to initialize components: %v", err)
 	}
 
+	// Initialize dataset metrics client
+	if cfg.ControlURL != "" {
+		cfg.DatasetMetricsClient = services.NewDatasetMetricsClient(
+			cfg.ControlURL,
+			5,    // 5 second timeout
+			true, // enabled when ControlURL is set
+		)
+		log.Infof("Dataset metrics client initialized (endpoint: %s)", cfg.ControlURL)
+	} else {
+		log.Info("Dataset metrics client disabled (no control URL configured)")
+	}
+
 	// Initialize health reporting service
 	var healthReportingService *services.HealthReportingService
 	if cfg.HealthReporting.Enabled && cfg.ControlURL != "" {
