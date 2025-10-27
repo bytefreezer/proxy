@@ -94,5 +94,9 @@ tenant_validation:
   inactive_cache_ttl_seconds: {{ config.tenant_validation.inactive_cache_ttl_seconds }}  # 1 hour for inactive tenants (reduces API load)
   timeout_seconds: {{ config.tenant_validation.timeout_seconds }}
 
+# Error tracking configuration (uses control_service.base_url)
+error_tracking:
+  enabled: {{ config.error_tracking.enabled | default(true) | lower }}
+
 # Development mode
 dev: {{ config.dev | lower }}

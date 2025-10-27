@@ -118,6 +118,11 @@ config:
     inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
     timeout_seconds: 5
 
+  # Error tracking configuration for centralized error monitoring
+  # Note: Uses control_service.base_url for the control service endpoint
+  error_tracking:
+    enabled: true  # Enable by default to collect errors from proxy service
+
   # Development mode
   dev: false
 
