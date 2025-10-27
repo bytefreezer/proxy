@@ -72,7 +72,6 @@ type ConfigResponse struct {
 	ConfigPolling ConfigPollingResponse  `json:"config_polling,omitempty"` // Configuration polling settings
 	SOC           SOCConfig              `json:"soc"`
 	Otel          OtelConfig             `json:"otel"`
-	Housekeeping  HousekeepingConfig     `json:"housekeeping"`
 	Dev           bool                   `json:"dev"`
 }
 
@@ -98,10 +97,8 @@ type PluginConfigDetail struct {
 }
 
 type ReceiverConfigMasked struct {
-	BaseURL       string `json:"base_url"`
-	TimeoutSec    int    `json:"timeout_seconds"`
-	RetryCount    int    `json:"retry_count"`
-	RetryDelaySec int    `json:"retry_delay_seconds"`
+	BaseURL    string `json:"base_url"`
+	TimeoutSec int    `json:"timeout_seconds"`
 }
 
 type SOCConfig struct {
@@ -115,11 +112,6 @@ type OtelConfig struct {
 	Endpoint              string `json:"endpoint"`
 	ServiceName           string `json:"service_name"`
 	ScrapeIntervalSeconds int    `json:"scrape_interval_seconds"`
-}
-
-type HousekeepingConfig struct {
-	Enabled         bool `json:"enabled"`
-	IntervalSeconds int  `json:"interval_seconds"`
 }
 
 type ConfigPollingResponse struct {
@@ -419,10 +411,8 @@ func (api *API) GetConfig() usecase.Interactor {
 
 		// Receiver configuration
 		output.Receiver = ReceiverConfigMasked{
-			BaseURL:       cfg.Receiver.BaseURL,
-			TimeoutSec:    cfg.Receiver.TimeoutSec,
-			RetryCount:    cfg.Receiver.RetryCount,
-			RetryDelaySec: cfg.Receiver.RetryDelaySec,
+			BaseURL:    cfg.Receiver.BaseURL,
+			TimeoutSec: cfg.Receiver.TimeoutSec,
 		}
 
 		// Global tenant ID and bearer token (masked)
@@ -454,12 +444,6 @@ func (api *API) GetConfig() usecase.Interactor {
 			Endpoint:              cfg.Otel.Endpoint,
 			ServiceName:           cfg.Otel.ServiceName,
 			ScrapeIntervalSeconds: cfg.Otel.ScrapeIntervalSeconds,
-		}
-
-		// Housekeeping configuration
-		output.Housekeeping = HousekeepingConfig{
-			Enabled:         cfg.Housekeeping.Enabled,
-			IntervalSeconds: cfg.Housekeeping.IntervalSeconds,
 		}
 
 		// Dev flag

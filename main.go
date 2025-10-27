@@ -421,11 +421,11 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 			"compression_level":   cfg.Batching.CompressionLevel,
 		},
 		"receiver": map[string]interface{}{
-			"base_url":             cfg.Receiver.BaseURL,
-			"timeout_seconds":      cfg.Receiver.TimeoutSec,
-			"upload_worker_count":  cfg.Receiver.UploadWorkerCount,
-			"max_idle_conns":       cfg.Receiver.MaxIdleConns,
-			"max_conns_per_host":   cfg.Receiver.MaxConnsPerHost,
+			"base_url":            cfg.Receiver.BaseURL,
+			"timeout_seconds":     cfg.Receiver.TimeoutSec,
+			"upload_worker_count": cfg.Receiver.UploadWorkerCount,
+			"max_idle_conns":      cfg.Receiver.MaxIdleConns,
+			"max_conns_per_host":  cfg.Receiver.MaxConnsPerHost,
 		},
 		"spooling": map[string]interface{}{
 			"enabled":                         cfg.Spooling.Enabled,
@@ -440,10 +440,6 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 			"per_tenant_limits":               cfg.Spooling.PerTenantLimits,
 			"max_files_per_dataset":           cfg.Spooling.MaxFilesPerDataset,
 			"max_age_days":                    cfg.Spooling.MaxAgeDays,
-		},
-		"housekeeping": map[string]interface{}{
-			"enabled":          cfg.Housekeeping.Enabled,
-			"interval_seconds": cfg.Housekeeping.IntervalSeconds,
 		},
 		"otel": map[string]interface{}{
 			"enabled":         cfg.Otel.Enabled,

@@ -32,7 +32,6 @@ type Config struct {
 	ConfigPolling   ConfigPollingConfig    `mapstructure:"config_polling"`
 	SOC             SOCAlert               `mapstructure:"soc"`
 	Otel            Otel                   `mapstructure:"otel"`
-	Housekeeping    Housekeeping           `mapstructure:"housekeeping"`
 	Spooling         Spooling               `mapstructure:"spooling"`
 	HealthReporting  HealthReportingConfig  `mapstructure:"health_reporting"`
 	TenantValidation TenantValidationConfig `mapstructure:"tenant_validation"`
@@ -70,8 +69,6 @@ type Batching struct {
 type Receiver struct {
 	BaseURL            string `mapstructure:"base_url"`
 	TimeoutSec         int    `mapstructure:"timeout_seconds"`
-	RetryCount         int    `mapstructure:"retry_count"`
-	RetryDelaySec      int    `mapstructure:"retry_delay_seconds"`
 	UploadWorkerCount  int    `mapstructure:"upload_worker_count"`  // Number of upload workers (aligned with receiver)
 	MaxIdleConns       int    `mapstructure:"max_idle_conns"`       // HTTP connection pool size
 	MaxConnsPerHost    int    `mapstructure:"max_conns_per_host"`   // Max connections per host
@@ -97,10 +94,6 @@ type Otel struct {
 	MetricsHost           string `mapstructure:"metrics_host"`
 }
 
-type Housekeeping struct {
-	Enabled         bool `mapstructure:"enabled"`
-	IntervalSeconds int  `mapstructure:"intervalseconds"`
-}
 
 type ConfigPollingConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`

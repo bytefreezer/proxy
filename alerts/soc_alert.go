@@ -63,22 +63,6 @@ func (client *SOCAlertClient) SendAlert(severity, title, message, details string
 	return client.sendAlert(severity, title, message, details)
 }
 
-func (client *SOCAlertClient) SendReceiverForwardingFailureAlert(url string, err error) error {
-	return client.SendWarningAlert(
-		"Receiver Forwarding Failure",
-		"Failed to forward data to ByteFreezer Receiver",
-		fmt.Sprintf("URL: %s, Error: %v", url, err),
-	)
-}
-
-func (client *SOCAlertClient) SendBatchProcessingFailureAlert(batchID string, err error) error {
-	return client.SendWarningAlert(
-		"Batch Processing Failure",
-		"Failed to process UDP data batch",
-		fmt.Sprintf("Batch ID: %s, Error: %v", batchID, err),
-	)
-}
-
 func (client *SOCAlertClient) sendAlert(severity, title, message, details string) error {
 	if !client.config.SOC.Enabled {
 		if client.config.Dev {
