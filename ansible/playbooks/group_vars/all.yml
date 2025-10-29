@@ -45,7 +45,7 @@ config:
   # Account-based configuration - proxy polls Control for all tenants + datasets
   account_id: "ejq73vgnw26p"
   # tenant_id: "customer-1"  # Optional: Only required if account_id is not set
-  bearer_token: "eb4ba9e3236eaefae736495bd79f0d6de753bd7b6547b184ac0c439ff76982cf"
+  bearer_token: "966c5b3e-597c-4b2c-96fb-86d2ffc312fe"  # Service API key (GUID format)
   control_url: "http://192.168.86.103:8082"
   config_mode: "control-only"  # local-only | control-only
 

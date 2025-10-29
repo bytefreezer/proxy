@@ -440,10 +440,10 @@ logging:
 
 ```bash
 # Check plugin health via API
-curl http://localhost:8088/api/v2/health
+curl http://localhost:8088/api/v1/health
 
 # Check plugin configuration
-curl http://localhost:8088/api/v2/config | jq '.inputs'
+curl http://localhost:8088/api/v1/config | jq '.inputs'
 ```
 
 ### Monitor Plugin Metrics

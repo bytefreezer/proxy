@@ -129,7 +129,7 @@ start_http_proxy() {
     # Wait for proxy to start
     local retries=0
     while [[ $retries -lt 15 ]]; do
-        if curl -s http://127.0.0.1:38088/api/v2/health > /dev/null 2>&1; then
+        if curl -s http://127.0.0.1:38088/api/v1/health > /dev/null 2>&1; then
             success "HTTP proxy started (PID: $PROXY_PID)"
             return 0
         fi

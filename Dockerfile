@@ -83,7 +83,7 @@ EXPOSE 8088/tcp 9090/tcp 2056/udp 2057/udp 2058/udp 2059/udp 2060/udp 2061/udp 2
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8088/api/v2/health || exit 1
+    CMD curl -f http://localhost:8088/api/v1/health || exit 1
 
 # Set working directory
 WORKDIR /

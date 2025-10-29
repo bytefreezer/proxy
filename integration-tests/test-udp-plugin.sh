@@ -117,7 +117,7 @@ start_udp_proxy() {
     # Wait for proxy to start
     local retries=0
     while [[ $retries -lt 10 ]]; do
-        if curl -s http://127.0.0.1:28088/api/v2/health > /dev/null 2>&1; then
+        if curl -s http://127.0.0.1:28088/api/v1/health > /dev/null 2>&1; then
             success "UDP proxy started (PID: $PROXY_PID)"
             return 0
         fi

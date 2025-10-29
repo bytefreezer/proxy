@@ -303,7 +303,7 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/api/v2/proxy/config?account_id=%s", s.controlURL, s.cfg.AccountID)
+	url := fmt.Sprintf("%s/api/v1/proxy/config?account_id=%s", s.controlURL, s.cfg.AccountID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -400,7 +400,7 @@ func (s *ConfigPollingService) pollTenantConfiguration() error {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/api/v2/proxies/%s/config?tenant_id=%s", s.controlURL, s.instanceID, s.cfg.TenantID)
+	url := fmt.Sprintf("%s/api/v1/proxies/%s/config?tenant_id=%s", s.controlURL, s.instanceID, s.cfg.TenantID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -664,7 +664,7 @@ func (s *ConfigPollingService) loadCachedConfig() error {
 
 // reportConfigApplied reports to control that config was applied
 func (s *ConfigPollingService) reportConfigApplied(configVersion int) error {
-	url := fmt.Sprintf("%s/api/v2/proxies/%s/config/applied", s.controlURL, s.instanceID)
+	url := fmt.Sprintf("%s/api/v1/proxies/%s/config/applied", s.controlURL, s.instanceID)
 
 	payload := map[string]interface{}{
 		"tenant_id":      s.cfg.TenantID,
@@ -854,7 +854,7 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 		"proxy_settings": map[string]interface{}{}, // Empty for now
 	}
 
-	url := fmt.Sprintf("%s/api/v2/proxies/%s/config", s.controlURL, s.instanceID)
+	url := fmt.Sprintf("%s/api/v1/proxies/%s/config", s.controlURL, s.instanceID)
 	payload, err := json.Marshal(reportPayload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal report payload: %w", err)
@@ -897,7 +897,7 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 
 // markConfigAppliedForTenant marks a configuration version as applied for a specific tenant
 func (s *ConfigPollingService) markConfigAppliedForTenant(tenantID string, configVersion int) error {
-	url := fmt.Sprintf("%s/api/v2/proxies/%s/config/applied", s.controlURL, s.instanceID)
+	url := fmt.Sprintf("%s/api/v1/proxies/%s/config/applied", s.controlURL, s.instanceID)
 
 	payload := map[string]interface{}{
 		"tenant_id":      tenantID,

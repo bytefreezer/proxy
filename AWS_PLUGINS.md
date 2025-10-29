@@ -204,7 +204,7 @@ SQS Queue → ReceiveMessage → ByteFreezer Message → Queue → Receiver → 
 
 ## Monitoring and Health
 
-Both plugins provide comprehensive health monitoring through the `/api/v2/health` endpoint:
+Both plugins provide comprehensive health monitoring through the `/api/v1/health` endpoint:
 
 ```json
 {
@@ -356,7 +356,7 @@ spec:
 
 Check plugin status:
 ```bash
-curl http://localhost:8088/api/v2/health | jq '.plugins'
+curl http://localhost:8088/api/v1/health | jq '.plugins'
 ```
 
 Expected healthy response:
@@ -438,7 +438,7 @@ inputs:
 
 - **Plugin Source Code**: `plugins/kinesis/` and `plugins/sqs/`
 - **Configuration Examples**: `config-aws-plugins-example.yaml`
-- **Health Monitoring**: `/api/v2/health` endpoint
+- **Health Monitoring**: `/api/v1/health` endpoint
 - **AWS Documentation**: [Kinesis](https://docs.aws.amazon.com/kinesis/) | [SQS](https://docs.aws.amazon.com/sqs/)
 
 Both plugins are production-ready and follow ByteFreezer's proven spool-first architecture for maximum data reliability.

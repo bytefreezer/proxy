@@ -121,7 +121,7 @@ Response:
 
 ### Proxy Health
 ```bash
-curl http://proxy:8088/api/v2/health
+curl http://proxy:8088/api/v1/health
 ```
 
 Response:
@@ -161,7 +161,7 @@ Response:
 
 ### DLQ Statistics
 ```bash
-curl http://proxy:8088/api/v2/dlq/stats
+curl http://proxy:8088/api/v1/dlq/stats
 ```
 
 Response:
@@ -192,7 +192,7 @@ Response:
 
 ### DLQ File Retry
 ```bash
-curl -X POST http://proxy:8088/api/v2/dlq/retry/acme/logs
+curl -X POST http://proxy:8088/api/v1/dlq/retry/acme/logs
 ```
 
 Response:

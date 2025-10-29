@@ -480,7 +480,7 @@ go test ./plugins/zmq/...
 3. **Verify Data Processing:**
    ```bash
    # Check proxy health
-   curl http://localhost:8088/api/v2/health
+   curl http://localhost:8088/api/v1/health
    
    # Check ZMQ metrics
    curl http://localhost:9090/metrics | grep zmq_
@@ -515,7 +515,7 @@ go test ./plugins/zmq/...
 4. **Messages Not Received:**
    ```bash
    # Check ZMQ socket connections
-   curl http://localhost:8088/api/v2/health | jq '.plugins[] | select(.name=="zmq")'
+   curl http://localhost:8088/api/v1/health | jq '.plugins[] | select(.name=="zmq")'
    
    # Verify publisher is sending to correct endpoint
    # Check topic subscriptions for SUB sockets

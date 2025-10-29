@@ -192,7 +192,7 @@ start_proxy() {
     local max_retries=10
     
     while [[ $retries -lt $max_retries ]]; do
-        if curl -s http://127.0.0.1:18088/api/v2/health > /dev/null 2>&1; then
+        if curl -s http://127.0.0.1:18088/api/v1/health > /dev/null 2>&1; then
             success "Proxy started successfully (PID: $PROXY_PID)"
             return 0
         fi
@@ -277,7 +277,7 @@ test_api_endpoints() {
     log "Testing proxy API endpoints..."
     
     # Test health endpoint
-    local health_response=$(curl -s http://127.0.0.1:18088/api/v2/health)
+    local health_response=$(curl -s http://127.0.0.1:18088/api/v1/health)
     if echo "$health_response" | jq -e '.status' > /dev/null 2>&1; then
         success "Health endpoint working"
     else
@@ -287,7 +287,7 @@ test_api_endpoints() {
     fi
     
     # Test config endpoint
-    local config_response=$(curl -s http://127.0.0.1:18088/api/v2/config)
+    local config_response=$(curl -s http://127.0.0.1:18088/api/v1/config)
     if echo "$config_response" | jq -e '.app.name' > /dev/null 2>&1; then
         success "Config endpoint working"
     else
@@ -297,7 +297,7 @@ test_api_endpoints() {
     fi
     
     # Test DLQ stats endpoint
-    local dlq_response=$(curl -s http://127.0.0.1:18088/api/v2/dlq/stats)
+    local dlq_response=$(curl -s http://127.0.0.1:18088/api/v1/dlq/stats)
     if echo "$dlq_response" | jq -e '.spooling_enabled' > /dev/null 2>&1; then
         success "DLQ stats endpoint working"
     else

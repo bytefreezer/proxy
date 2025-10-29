@@ -128,7 +128,7 @@ start_monitoring_proxy() {
     # Wait for proxy to start
     local retries=0
     while [[ $retries -lt 15 ]]; do
-        if curl -s http://127.0.0.1:48088/api/v2/health > /dev/null 2>&1; then
+        if curl -s http://127.0.0.1:48088/api/v1/health > /dev/null 2>&1; then
             success "Monitoring proxy started (PID: $PROXY_PID)"
             return 0
         fi
@@ -330,7 +330,7 @@ test_api_with_monitoring() {
     log "Testing proxy API endpoints with monitoring enabled..."
     
     # Test health endpoint
-    local health_response=$(curl -s http://127.0.0.1:48088/api/v2/health)
+    local health_response=$(curl -s http://127.0.0.1:48088/api/v1/health)
     if echo "$health_response" | jq -e '.status' > /dev/null 2>&1; then
         success "Health endpoint working with monitoring"
     else
@@ -339,7 +339,7 @@ test_api_with_monitoring() {
     fi
     
     # Test config endpoint (should show OTEL enabled)
-    local config_response=$(curl -s http://127.0.0.1:48088/api/v2/config)
+    local config_response=$(curl -s http://127.0.0.1:48088/api/v1/config)
     if echo "$config_response" | jq -e '.otel.enabled' > /dev/null 2>&1; then
         local otel_enabled=$(echo "$config_response" | jq -r '.otel.enabled')
         if [[ "$otel_enabled" == "true" ]]; then
