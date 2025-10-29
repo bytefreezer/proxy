@@ -152,6 +152,8 @@ func main() {
 
 		healthReportingService = services.NewHealthReportingService(
 			cfg.ControlURL,
+			cfg.AccountID,
+			cfg.BearerToken,
 			"bytefreezer-proxy",
 			instanceAPI,
 			reportInterval,

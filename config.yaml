@@ -15,10 +15,10 @@ server:
 inputs: []
 
 # Account-based configuration - proxy polls Control for all tenants + datasets
-# IMPORTANT: bearer_token is the account-specific API key from Control (NOT the system-wide service_api_key)
+# IMPORTANT: bearer_token is the account-specific API key used for ALL authentication
 account_id: "ejq73vgnw26p"
 # tenant_id: "customer-1"  # Optional: Only required if account_id is not set
-bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"  # Account-specific API key from Control
+bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"  # Account-specific API key for all auth (config polling AND health reporting)
 control_url: "http://192.168.86.103:8082"
 config_mode: "control-only"  # local-only | control-only
 

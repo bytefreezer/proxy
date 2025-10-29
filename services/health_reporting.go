@@ -14,6 +14,8 @@ import (
 // HealthReportingService handles health reporting to the control service
 type HealthReportingService struct {
 	controlURL     string
+	accountID      string
+	bearerToken    string
 	serviceType    string
 	instanceID     string
 	instanceAPI    string
@@ -59,7 +61,7 @@ type HealthReportResponse struct {
 }
 
 // NewHealthReportingService creates a new health reporting service
-func NewHealthReportingService(controlURL, serviceType, instanceAPI string, reportInterval, timeout time.Duration, config map[string]interface{}) *HealthReportingService {
+func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, instanceAPI string, reportInterval, timeout time.Duration, config map[string]interface{}) *HealthReportingService {
 	// Get hostname for instance ID
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -68,6 +70,8 @@ func NewHealthReportingService(controlURL, serviceType, instanceAPI string, repo
 
 	return &HealthReportingService{
 		controlURL:     controlURL,
+		accountID:      accountID,
+		bearerToken:    bearerToken,
 		serviceType:    serviceType,
 		instanceID:     hostname,
 		instanceAPI:    instanceAPI,
@@ -127,11 +131,19 @@ func (h *HealthReportingService) RegisterService() error {
 		return fmt.Errorf("failed to marshal registration request: %w", err)
 	}
 
-	resp, err := h.httpClient.Post(
-		h.controlURL+"/api/v1/health/register",
-		"application/json",
-		bytes.NewBuffer(reqBody),
-	)
+	// Use account-scoped registration endpoint
+	url := fmt.Sprintf("%s/api/v1/accounts/%s/services/register", h.controlURL, h.accountID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create registration request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if h.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+h.bearerToken)
+	}
+
+	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to register service: %w", err)
 	}
@@ -174,11 +186,19 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, configuration ma
 		return fmt.Errorf("failed to marshal health report: %w", err)
 	}
 
-	resp, err := h.httpClient.Post(
-		h.controlURL+"/api/v1/services/report",
-		"application/json",
-		bytes.NewBuffer(reqBody),
-	)
+	// Use account-scoped health reporting endpoint
+	url := fmt.Sprintf("%s/api/v1/accounts/%s/services/report", h.controlURL, h.accountID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create health report request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if h.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+h.bearerToken)
+	}
+
+	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send health report: %w", err)
 	}

@@ -26,9 +26,9 @@ type Config struct {
 	Receiver        Receiver               `mapstructure:"receiver"`
 	AccountID       string                 `mapstructure:"account_id"` // Account ID for multi-tenant polling
 	TenantID        string                 `mapstructure:"tenant_id"`  // Global tenant ID (fallback for plugins without tenant_id)
-	BearerToken     string                 `mapstructure:"bearer_token"`
-	ControlURL      string                 `mapstructure:"control_url"` // Centralized control service URL
-	ConfigMode      string                 `mapstructure:"config_mode"` // local-only | control-only
+	BearerToken     string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
+	ControlURL      string                 `mapstructure:"control_url"`  // Centralized control service URL
+	ConfigMode      string                 `mapstructure:"config_mode"`  // local-only | control-only
 	ConfigPolling   ConfigPollingConfig    `mapstructure:"config_polling"`
 	SOC             SOCAlert               `mapstructure:"soc"`
 	Otel            Otel                   `mapstructure:"otel"`
