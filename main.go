@@ -116,8 +116,9 @@ func main() {
 	if cfg.ControlURL != "" {
 		cfg.DatasetMetricsClient = services.NewDatasetMetricsClient(
 			cfg.ControlURL,
-			5,    // 5 second timeout
-			true, // enabled when ControlURL is set
+			cfg.BearerToken, // Use account bearer token for authentication
+			5,               // 5 second timeout
+			true,            // enabled when ControlURL is set
 		)
 		log.Infof("Dataset metrics client initialized (endpoint: %s)", cfg.ControlURL)
 	} else {

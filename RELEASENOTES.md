@@ -1,5 +1,34 @@
 # ByteFreezer Proxy - Release Notes
 
+## v0.0.5 - Dataset Metrics Authentication Fix (2025-10-29)
+
+### Bug Fixes
+
+#### 🔧 Dataset Metrics Recording Authentication
+- **Issue**: Dataset metrics recording to control service was failing with 401 Unauthorized errors
+  - `DatasetMetricsClient` was not sending Authorization header
+  - Error logged: "Dataset metrics recording failed with status 401 for {tenant}/{dataset}"
+  - Control service requires `Authorization: Bearer <token>` for dataset metrics endpoint
+- **Fix**: Added bearer token authentication to dataset metrics client
+  - Added `bearerToken` field to `DatasetMetricsClient` struct
+  - Updated `NewDatasetMetricsClient()` to accept `bearerToken` parameter
+  - Modified HTTP request creation to include Authorization header
+  - Now uses account `bearer_token` from configuration (same as health reporting and config polling)
+- **Impact**: Dataset metrics successfully recorded to control service
+- **Files Changed**:
+  - `services/dataset_metrics_client.go:17,40,94-96` (added bearerToken field and Authorization header)
+  - `main.go:119` (pass bearer token to client constructor)
+
+### Authentication Consistency
+The proxy now uses `bearer_token` consistently for ALL Control Service communication:
+- ✅ Configuration polling
+- ✅ Health reporting (registration and status updates)
+- ✅ Dataset metrics recording
+
+```yaml
+bearer_token: "account-bearer-token"  # Single token for all operations
+```
+
 ## v0.0.4 - Account-Scoped Health Reporting (2025-10-29)
 
 ### Security Enhancement

@@ -13,9 +13,10 @@ import (
 
 // DatasetMetricsClient handles sending dataset metrics to the control service
 type DatasetMetricsClient struct {
-	controlURL string
-	httpClient *http.Client
-	enabled    bool
+	controlURL  string
+	bearerToken string
+	httpClient  *http.Client
+	enabled     bool
 }
 
 // DatasetMetricRequest represents a metrics record request to control service
@@ -36,13 +37,14 @@ type DatasetMetricResponse struct {
 }
 
 // NewDatasetMetricsClient creates a new dataset metrics client
-func NewDatasetMetricsClient(controlURL string, timeoutSeconds int, enabled bool) *DatasetMetricsClient {
+func NewDatasetMetricsClient(controlURL string, bearerToken string, timeoutSeconds int, enabled bool) *DatasetMetricsClient {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 5
 	}
 
 	return &DatasetMetricsClient{
-		controlURL: controlURL,
+		controlURL:  controlURL,
+		bearerToken: bearerToken,
 		httpClient: &http.Client{
 			Timeout: time.Duration(timeoutSeconds) * time.Second,
 		},
@@ -89,6 +91,9 @@ func (c *DatasetMetricsClient) RecordMetric(ctx context.Context, tenantID, datas
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if c.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
