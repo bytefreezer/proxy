@@ -43,9 +43,10 @@ config:
   inputs: []
 
   # Account-based configuration - proxy polls Control for all tenants + datasets
+  # IMPORTANT: bearer_token is account-specific API key from Control (NOT system-wide service_api_key)
   account_id: "ejq73vgnw26p"
   # tenant_id: "customer-1"  # Optional: Only required if account_id is not set
-  bearer_token: "966c5b3e-597c-4b2c-96fb-86d2ffc312fe"  # Service API key (GUID format)
+  bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"  # Account-specific API key from Control
   control_url: "http://192.168.86.103:8082"
   config_mode: "control-only"  # local-only | control-only
 
@@ -117,11 +118,6 @@ config:
     cache_ttl_seconds: 300  # 5 minutes for active tenants
     inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
     timeout_seconds: 5
-
-  # Error tracking configuration for centralized error monitoring
-  # Note: Uses control_service.base_url for the control service endpoint
-  error_tracking:
-    enabled: true  # Enable by default to collect errors from proxy service
 
   # Development mode
   dev: false
