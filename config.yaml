@@ -89,3 +89,7 @@ tenant_validation:
   cache_ttl_seconds: 300  # 5 minutes for active tenants
   inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
   timeout_seconds: 5
+
+# Error tracking configuration
+error_tracking:
+  enabled: true  # Enable error reporting to control service
