@@ -848,7 +848,7 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 	reportPayload := map[string]interface{}{
 		"instance_id":    s.instanceID,
 		"tenant_id":      tenantID,
-		"instance_api":   fmt.Sprintf("%s:8081", s.instanceID), // Default API port
+		"instance_api":   fmt.Sprintf("%s:%d", s.instanceID, s.cfg.Server.ApiPort),
 		"config_mode":    s.cfg.ConfigMode,
 		"plugin_configs": tenantPluginConfigs,
 		"proxy_settings": map[string]interface{}{}, // Empty for now
