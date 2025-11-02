@@ -3,7 +3,7 @@ package services
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"io"
 	"os"
@@ -453,7 +453,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 		TriggerReason:    triggerReason,
 	}
 
-	metaData, err := json.Marshal(metadata)
+	metaData, err := sonic.Marshal(metadata)
 	if err != nil {
 		// Clean up data file on metadata error
 		os.Remove(filePath)
@@ -563,7 +563,7 @@ func (s *SpoolingService) getMetadataFromDirectory(dir string) []SpooledFile {
 		}
 
 		var file SpooledFile
-		if err := json.Unmarshal(data, &file); err != nil {
+		if err := sonic.Unmarshal(data, &file); err != nil {
 			log.Warnf("Failed to unmarshal metadata file %s: %v", metaPath, err)
 			continue
 		}
@@ -600,7 +600,7 @@ func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 	file.LastRetry = time.Now()
 	file.Filename = dlqFilePath // Update path to DLQ location
 
-	metaData, err := json.Marshal(file)
+	metaData, err := sonic.Marshal(file)
 	if err != nil {
 		return fmt.Errorf("failed to marshal DLQ metadata: %w", err)
 	}
@@ -1023,7 +1023,7 @@ func (s *SpoolingService) readRetryMetadata(metaPath string) (*SpooledFile, erro
 	}
 
 	var metadata SpooledFile
-	if err := json.Unmarshal(data, &metadata); err != nil {
+	if err := sonic.Unmarshal(data, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata file %s: %w", metaPath, err)
 	}
 
@@ -1100,7 +1100,7 @@ func (s *SpoolingService) updateRetryMetadata(metadata *SpooledFile) error {
 	retryDir := filepath.Dir(metadata.Filename)
 	metaPath := filepath.Join(retryDir, batchID+".meta")
 
-	metaData, err := json.Marshal(metadata)
+	metaData, err := sonic.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
@@ -1491,7 +1491,7 @@ func (s *SpoolingService) getSpooledFiles() ([]SpooledFile, error) {
 		}
 
 		var file SpooledFile
-		if err := json.Unmarshal(metaData, &file); err != nil {
+		if err := sonic.Unmarshal(metaData, &file); err != nil {
 			log.Warnf("Failed to unmarshal metadata file %s: %v", path, err)
 			return nil // Continue walking
 		}
@@ -2270,7 +2270,7 @@ func (s *SpoolingService) countFilesInDirectory(dirPath, extension string) (int,
 			}
 
 			var spooledFile SpooledFile
-			if err := json.Unmarshal(metaData, &spooledFile); err == nil {
+			if err := sonic.Unmarshal(metaData, &spooledFile); err == nil {
 				createdAt = spooledFile.CreatedAt
 				if oldestFile == nil || createdAt.Before(oldestFile.CreatedAt) {
 					oldestFile = &spooledFile
@@ -2404,7 +2404,7 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 					metaData, err := os.ReadFile(srcMetaPath)
 					if err == nil {
 						var spooledFile SpooledFile
-						if err := json.Unmarshal(metaData, &spooledFile); err == nil {
+						if err := sonic.Unmarshal(metaData, &spooledFile); err == nil {
 							// Reset for retry - give files fresh retry attempts
 							spooledFile.Status = "retry"
 							spooledFile.RetryCount = 0
@@ -2413,7 +2413,7 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 							spooledFile.Filename = dstPath
 
 							// Write updated metadata
-							updatedMetaData, err := json.Marshal(spooledFile)
+							updatedMetaData, err := sonic.Marshal(spooledFile)
 							if err == nil {
 								if err := os.WriteFile(dstMetaPath, updatedMetaData, 0600); err == nil {
 									os.Remove(srcMetaPath) // Remove old metadata
@@ -2532,7 +2532,7 @@ func (s *SpoolingService) ListDLQFiles(tenantID, datasetID string) ([]SpooledFil
 				}
 
 				var spooledFile SpooledFile
-				if err := json.Unmarshal(metaData, &spooledFile); err != nil {
+				if err := sonic.Unmarshal(metaData, &spooledFile); err != nil {
 					log.Debugf("Failed to unmarshal metadata file %s: %v", metaPath, err)
 					continue
 				}
@@ -2653,7 +2653,7 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 	}
 
 	// Write metadata to retry directory
-	metaData, err := json.Marshal(metadata)
+	metaData, err := sonic.Marshal(metadata)
 	if err == nil {
 		if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
 			log.Warnf("Failed to write retry metadata for %s: %v", batchID, err)
@@ -2759,7 +2759,7 @@ func (s *SpoolingService) MoveQueueToDLQ(tenantID, datasetID, batchID, failureRe
 	}
 
 	// Write metadata to DLQ directory
-	metaData, err := json.Marshal(metadata)
+	metaData, err := sonic.Marshal(metadata)
 	if err == nil {
 		if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
 			log.Warnf("Failed to write DLQ metadata for %s: %v", batchID, err)
@@ -2972,7 +2972,7 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 	}
 
 	// Write metadata to retry directory
-	metaData, err := json.Marshal(metadata)
+	metaData, err := sonic.Marshal(metadata)
 	if err != nil {
 		// Clean up moved data file on metadata error
 		os.Remove(dstDataFile)

@@ -3,7 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net/http"
 	"time"
@@ -73,7 +73,7 @@ func (c *DatasetMetricsClient) RecordMetric(ctx context.Context, tenantID, datas
 		CustomMetrics:  customMetrics,
 	}
 
-	reqBody, err := json.Marshal(metricReq)
+	reqBody, err := sonic.Marshal(metricReq)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metrics request: %w", err)
 	}
@@ -110,7 +110,7 @@ func (c *DatasetMetricsClient) RecordMetric(ctx context.Context, tenantID, datas
 	}
 
 	var metricResp DatasetMetricResponse
-	if err := json.NewDecoder(resp.Body).Decode(&metricResp); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&metricResp); err != nil {
 		log.Warnf("Failed to decode metrics response: %v", err)
 		return nil
 	}

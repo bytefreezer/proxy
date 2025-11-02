@@ -15,15 +15,16 @@ import (
 
 // Plugin implements the UDP input plugin with direct filesystem writes
 type Plugin struct {
-	config  Config
-	conn    *net.UDPConn
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	health  plugins.PluginHealth
-	mu      sync.RWMutex
-	spooler plugins.SpoolingInterface
-	metrics PluginMetrics
+	config        Config
+	conn          *net.UDPConn
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	health        plugins.PluginHealth
+	mu            sync.RWMutex
+	spooler       plugins.SpoolingInterface
+	metrics       PluginMetrics
+	textProcessor *plugins.TextProcessor
 }
 
 // Config represents UDP plugin configuration
@@ -36,6 +37,7 @@ type Config struct {
 	Protocol          string `mapstructure:"protocol,omitempty"`    // "udp", "syslog"
 	SyslogMode        string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424"
 	DataHint          string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "raw")
+	DataFormat        string `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
 	ReadBufferSize    int    `mapstructure:"read_buffer_size,omitempty"`
 }
 
@@ -59,6 +61,7 @@ func NewPlugin() plugins.InputPlugin {
 		metrics: PluginMetrics{
 			StartTime: time.Now(),
 		},
+		textProcessor: plugins.NewTextProcessor(),
 	}
 }
 
@@ -95,6 +98,9 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	}
 	if p.config.ReadBufferSize == 0 {
 		p.config.ReadBufferSize = 65536 // 64KB default
+	}
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
 	}
 
 	// Validate protocol
@@ -260,17 +266,11 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 		return
 	}
 
-	// Format data according to data hint
-	formattedData := payload
-	if p.config.DataHint != "" {
-		var err error
-		formatter := plugins.GetFormatter(p.config.DataHint)
-		formattedData, err = formatter.Format(payload)
-		if err != nil {
-			log.Warnf("Data formatting failed for UDP packet from %s (format: %s): %v", clientAddr.IP.String(), p.config.DataHint, err)
-			// Continue with original payload if formatting fails
-			formattedData = payload
-		}
+	// Process through text processor (line-by-line detection and wrapping)
+	formattedData, linesWrapped := p.processPacketData(payload)
+	if linesWrapped > 0 {
+		log.Debugf("UDP: Wrapped %d text lines from %s (data_format: %s)",
+			linesWrapped, clientAddr.IP.String(), p.config.DataFormat)
 	}
 
 	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
@@ -287,6 +287,42 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 
 	log.Debugf("Stored UDP message from %s:%d directly to filesystem (%d bytes)",
 		clientAddr.IP.String(), clientAddr.Port, len(formattedData))
+}
+
+// processPacketData processes UDP packet data line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processPacketData(data []byte) ([]byte, int) {
+	// UDP packets may contain multiple lines - split and process each
+	lines := bytes.Split(data, []byte("\n"))
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine(line, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // Schema returns the UDP plugin configuration schema

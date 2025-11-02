@@ -3,7 +3,7 @@ package ebpf
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net"
 	"sync"
@@ -247,14 +247,14 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 
 	// Parse JSON (handles both compact and pretty-printed formats)
 	var message map[string]interface{}
-	if err := json.Unmarshal(payload, &message); err != nil {
+	if err := sonic.Unmarshal(payload, &message); err != nil {
 		log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.MessagesDropped++
 		return
 	}
 
 	// Re-marshal to compact JSON (flattens pretty-printed JSON)
-	jsonData, err := json.Marshal(message)
+	jsonData, err := sonic.Marshal(message)
 	if err != nil {
 		log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.MessagesDropped++

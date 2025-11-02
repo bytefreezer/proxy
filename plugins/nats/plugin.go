@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -25,6 +26,7 @@ type Plugin struct {
 	mu            sync.RWMutex
 	spooler       plugins.SpoolingInterface
 	metrics       PluginMetrics
+	textProcessor *plugins.TextProcessor
 }
 
 // Config represents NATS plugin configuration
@@ -35,6 +37,7 @@ type Config struct {
 	TenantID      string   `mapstructure:"tenant_id"`
 	DatasetID     string   `mapstructure:"dataset_id"`
 	DataHint      string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
+	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken   string   `mapstructure:"bearer_token,omitempty"`
 	MaxReconnect  int      `mapstructure:"max_reconnect,omitempty"`
 	ReconnectWait int      `mapstructure:"reconnect_wait,omitempty"` // seconds
@@ -65,6 +68,7 @@ func NewPlugin() plugins.InputPlugin {
 			StartTime: time.Now(),
 			Subjects:  make(map[string]uint64),
 		},
+		textProcessor: plugins.NewTextProcessor(),
 	}
 }
 
@@ -112,6 +116,9 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	log.Infof("NATS plugin configured: servers=%v subjects=%v -> %s/%s",
 		p.config.Servers, p.config.Subjects, p.config.TenantID, p.config.DatasetID)
 
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
+	}
 	return nil
 }
 
@@ -265,17 +272,11 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 	p.metrics.Subjects[msg.Subject]++
 	p.mu.Unlock()
 
-	// Format data according to data hint
-	formattedData := msg.Data
-	if p.config.DataHint != "" {
-		var err error
-		formatter := plugins.GetFormatter(p.config.DataHint)
-		formattedData, err = formatter.Format(msg.Data)
-		if err != nil {
-			log.Warnf("Data formatting failed for NATS message from subject %s (format: %s): %v", msg.Subject, p.config.DataHint, err)
-			// Continue with original data if formatting fails
-			formattedData = msg.Data
-		}
+	// Process through text processor (line-by-line detection and wrapping)
+	formattedData, linesWrapped := p.processMessageData(msg.Data)
+	if linesWrapped > 0 {
+		log.Debugf("NATS: Wrapped %d text lines from subject %s (data_format: %s)",
+			linesWrapped, msg.Subject, p.config.DataFormat)
 	}
 
 	// Create data message for output
@@ -331,6 +332,42 @@ func (p *Plugin) messageHandler(msg *nats.Msg) {
 
 	log.Debugf("Stored NATS message from subject %s directly to filesystem (%d bytes)",
 		msg.Subject, len(formattedData))
+}
+
+// processMessageData processes NATS message data line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processMessageData(data []byte) ([]byte, int) {
+	// NATS messages may contain multiple lines - split and process each
+	lines := bytes.Split(data, []byte("\n"))
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine(line, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // Schema returns the NATS plugin configuration schema

@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -23,6 +24,7 @@ type Plugin struct {
 	mu            sync.RWMutex
 	spooler       plugins.SpoolingInterface
 	metrics       PluginMetrics
+	textProcessor *plugins.TextProcessor
 	consumerReady chan bool
 }
 
@@ -34,6 +36,7 @@ type Config struct {
 	TenantID          string   `mapstructure:"tenant_id"`
 	DatasetID         string   `mapstructure:"dataset_id"`
 	DataHint          string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
+	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken       string   `mapstructure:"bearer_token,omitempty"`
 	AutoOffsetReset   string   `mapstructure:"auto_offset_reset,omitempty"`  // "earliest", "latest"
 	SessionTimeout    int      `mapstructure:"session_timeout,omitempty"`    // seconds
@@ -63,6 +66,7 @@ func NewPlugin() plugins.InputPlugin {
 			Partition: make(map[string]int32),
 		},
 		consumerReady: make(chan bool),
+		textProcessor: plugins.NewTextProcessor(),
 	}
 }
 
@@ -113,6 +117,9 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	log.Infof("Kafka plugin configured: brokers=%v topics=%v group=%s -> %s/%s",
 		p.config.Brokers, p.config.Topics, p.config.GroupID, p.config.TenantID, p.config.DatasetID)
 
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
+	}
 	return nil
 }
 
@@ -312,17 +319,11 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 	p.metrics.LastMessageTime = time.Now()
 	p.metrics.Partition[msg.Topic] = msg.Partition
 
-	// Format data according to data hint
-	formattedData := msg.Value
-	if p.config.DataHint != "" {
-		var err error
-		formatter := plugins.GetFormatter(p.config.DataHint)
-		formattedData, err = formatter.Format(msg.Value)
-		if err != nil {
-			log.Warnf("Data formatting failed for Kafka message from topic %s (format: %s): %v", msg.Topic, p.config.DataHint, err)
-			// Continue with original data if formatting fails
-			formattedData = msg.Value
-		}
+	// Process through text processor (line-by-line detection and wrapping)
+	formattedData, linesWrapped := p.processMessageData(msg.Value)
+	if linesWrapped > 0 {
+		log.Debugf("Kafka: Wrapped %d text lines from topic %s (data_format: %s)",
+			linesWrapped, msg.Topic, p.config.DataFormat)
 	}
 
 	// Create data message for output
@@ -371,6 +372,42 @@ func (p *Plugin) processMessage(msg *sarama.ConsumerMessage, session sarama.Cons
 	session.MarkMessage(msg, "")
 
 	log.Debugf("Stored Kafka message from topic %s directly to filesystem: %d bytes", msg.Topic, len(msg.Value))
+}
+
+// processMessageData processes Kafka message data line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processMessageData(data []byte) ([]byte, int) {
+	// Kafka messages may contain multiple lines - split and process each
+	lines := bytes.Split(data, []byte("\n"))
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine(line, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // Schema returns the Kafka plugin configuration schema

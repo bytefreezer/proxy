@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/plugins"
 	"github.com/n0needt0/go-goodies/log"
@@ -343,7 +343,7 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 
 	// Parse tenants + datasets response
 	var controlConfig ControlConfiguration
-	if err := json.NewDecoder(resp.Body).Decode(&controlConfig); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&controlConfig); err != nil {
 		return fmt.Errorf("failed to decode config response: %w", err)
 	}
 
@@ -444,7 +444,7 @@ func (s *ConfigPollingService) pollTenantConfiguration() error {
 	}
 
 	var remoteConfig ControlProxyConfig
-	if err := json.NewDecoder(resp.Body).Decode(&remoteConfig); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&remoteConfig); err != nil {
 		return fmt.Errorf("failed to decode config response: %w", err)
 	}
 
@@ -619,7 +619,7 @@ func (s *ConfigPollingService) cacheConfiguration(remoteConfig *ControlProxyConf
 		return fmt.Errorf("invalid cache file path: %w", err)
 	}
 
-	data, err := json.MarshalIndent(remoteConfig, "", "  ")
+	data, err := sonic.MarshalIndent(remoteConfig, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -649,7 +649,7 @@ func (s *ConfigPollingService) loadCachedConfig() error {
 	}
 
 	var cachedConfig ControlProxyConfig
-	if err := json.Unmarshal(data, &cachedConfig); err != nil {
+	if err := sonic.Unmarshal(data, &cachedConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal cached config: %w", err)
 	}
 
@@ -671,7 +671,7 @@ func (s *ConfigPollingService) reportConfigApplied(configVersion int) error {
 		"config_version": configVersion,
 	}
 
-	data, err := json.Marshal(payload)
+	data, err := sonic.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
@@ -728,7 +728,7 @@ func CalculateConfigHash(pluginConfigs []plugins.PluginConfig, proxySettings int
 		ProxySettings: proxySettings,
 	}
 
-	data, _ := json.Marshal(combined)
+	data, _ := sonic.Marshal(combined)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -827,7 +827,7 @@ func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Data
 
 // calculatePluginConfigsHash calculates hash for plugin configs
 func (s *ConfigPollingService) calculatePluginConfigsHash(pluginConfigs []map[string]interface{}) string {
-	data, _ := json.Marshal(pluginConfigs)
+	data, _ := sonic.Marshal(pluginConfigs)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -855,7 +855,7 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 	}
 
 	url := fmt.Sprintf("%s/api/v1/proxies/%s/config", s.controlURL, s.instanceID)
-	payload, err := json.Marshal(reportPayload)
+	payload, err := sonic.Marshal(reportPayload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal report payload: %w", err)
 	}
@@ -885,7 +885,7 @@ func (s *ConfigPollingService) reportConfigAppliedForTenant(tenantID string, con
 	var response struct {
 		ConfigVersion int `json:"config_version"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return fmt.Errorf("failed to parse upsert response: %w", err)
 	}
 
@@ -904,7 +904,7 @@ func (s *ConfigPollingService) markConfigAppliedForTenant(tenantID string, confi
 		"config_version": configVersion,
 	}
 
-	data, err := json.Marshal(payload)
+	data, err := sonic.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}

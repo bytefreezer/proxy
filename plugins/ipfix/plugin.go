@@ -3,7 +3,7 @@ package ipfix
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net"
 	"sync"
@@ -266,7 +266,7 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 	p.metrics.FlowsDecoded++
 
 	// Convert decoded packet to JSON
-	jsonData, err := json.Marshal(packet)
+	jsonData, err := sonic.Marshal(packet)
 	if err != nil {
 		log.Warnf("Failed to marshal IPFIX message to JSON from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.PacketsDropped++

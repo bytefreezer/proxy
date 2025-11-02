@@ -2,7 +2,7 @@ package services
 
 import (
 	"bytes"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net/http"
 	"os"
@@ -126,7 +126,7 @@ func (h *HealthReportingService) RegisterService() error {
 		Configuration: h.config, // Use full configuration data
 	}
 
-	reqBody, err := json.Marshal(registrationReq)
+	reqBody, err := sonic.Marshal(registrationReq)
 	if err != nil {
 		return fmt.Errorf("failed to marshal registration request: %w", err)
 	}
@@ -154,7 +154,7 @@ func (h *HealthReportingService) RegisterService() error {
 	}
 
 	var registrationResp ServiceRegistrationResponse
-	if err := json.NewDecoder(resp.Body).Decode(&registrationResp); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&registrationResp); err != nil {
 		return fmt.Errorf("failed to decode registration response: %w", err)
 	}
 
@@ -181,7 +181,7 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, configuration ma
 		Metrics:       metrics,
 	}
 
-	reqBody, err := json.Marshal(healthReq)
+	reqBody, err := sonic.Marshal(healthReq)
 	if err != nil {
 		return fmt.Errorf("failed to marshal health report: %w", err)
 	}

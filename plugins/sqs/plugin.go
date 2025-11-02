@@ -1,6 +1,7 @@
 package sqs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -28,6 +29,7 @@ type Plugin struct {
 	mu       sync.RWMutex
 	spooler  plugins.SpoolingInterface
 	metrics  PluginMetrics
+	textProcessor *plugins.TextProcessor
 }
 
 // Config represents SQS plugin configuration
@@ -39,6 +41,7 @@ type Config struct {
 	DatasetID            string `mapstructure:"dataset_id"`
 	BearerToken          string `mapstructure:"bearer_token,omitempty"`
 	DataHint             string `mapstructure:"data_hint,omitempty"`             // Data format hint for downstream processing (defaults to "ndjson")
+	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
 	PollInterval         int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
 	MaxMessages          int    `mapstructure:"max_messages,omitempty"`          // Max messages per receive call (default: 10, max: 10)
 	VisibilityTimeout    int    `mapstructure:"visibility_timeout_seconds,omitempty"` // Visibility timeout (default: 30)
@@ -149,6 +152,9 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	}
 
 	log.Infof("SQS plugin configured: %s -> %s/%s (%s)", p.config.QueueName, p.config.TenantID, p.config.DatasetID, p.config.DataHint)
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
+	}
 	return nil
 }
 
@@ -278,34 +284,13 @@ func (p *Plugin) processMessage(message types.Message, workerID int) {
 		return
 	}
 
-	// Extract metadata from message attributes
-	metadata := map[string]string{
-		"sqs_queue":      p.config.QueueName,
-		"sqs_message_id": *message.MessageId,
-		"sqs_worker_id":  fmt.Sprintf("%d", workerID),
-	}
-
-	// Add message attributes to metadata
-	for name, attr := range message.MessageAttributes {
-		if attr.StringValue != nil {
-			metadata[fmt.Sprintf("sqs_attr_%s", name)] = *attr.StringValue
-		}
-	}
-
-	// Format data according to data hint
+	// Process through text processor (line-by-line detection and wrapping)
 	body := []byte(*message.Body)
-	formattedData := body
-	if p.config.DataHint != "" {
-		var err error
-		formatter := plugins.GetFormatter(p.config.DataHint)
-		formattedData, err = formatter.Format(body)
-		if err != nil {
-			log.Warnf("Data formatting failed for SQS message %s (format: %s): %v", *message.MessageId, p.config.DataHint, err)
-			// Continue with original data if formatting fails
-			formattedData = body
-		}
+	formattedData, linesWrapped := p.processMessageData(body)
+	if linesWrapped > 0 {
+		log.Debugf("SQS: Wrapped %d text lines from message %s (data_format: %s)",
+			linesWrapped, *message.MessageId, p.config.DataFormat)
 	}
-
 
 	// Update metrics
 	p.mu.Lock()
@@ -358,6 +343,42 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message string) {
 	p.health.Status = status
 	p.health.Message = message
 	p.health.LastUpdated = time.Now()
+}
+
+// processMessageData processes SQS message data line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processMessageData(data []byte) ([]byte, int) {
+	// SQS messages may contain multiple lines - split and process each
+	lines := bytes.Split(data, []byte("\n"))
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine(line, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // Schema returns the SQS plugin configuration schema
@@ -457,5 +478,12 @@ func (p *Plugin) Schema() plugins.PluginSchema {
 
 // Factory function for creating SQS plugin instances
 func NewSQSPlugin() plugins.InputPlugin {
-	return &Plugin{}
+	return &Plugin{
+		textProcessor: plugins.NewTextProcessor(),
+		health: plugins.PluginHealth{
+			Status:      plugins.HealthStatusStopped,
+			Message:     "Plugin created but not started",
+			LastUpdated: time.Now(),
+		},
+	}
 }

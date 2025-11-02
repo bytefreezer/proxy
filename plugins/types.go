@@ -66,6 +66,14 @@ const (
 // InputPluginFactory creates new instances of input plugins
 type InputPluginFactory func() InputPlugin
 
+// Data Format Constants
+// These constants define how input data should be detected and processed.
+const (
+	DataFormatNDJSON = "ndjson" // Explicit JSON - pass through as-is, no detection
+	DataFormatText   = "text"   // Explicit text - always wrap lines in JSON envelope
+	DataFormatAuto   = "auto"   // Auto-detect - try JSON first, cache mode per dataset
+)
+
 // Data Hint Constants
 // These constants define the supported data format hints for downstream processing.
 // When data_hint is not specified, it defaults to "raw".

@@ -3,12 +3,12 @@ package errors
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -154,7 +154,7 @@ func (er *ErrorReporter) ReportError(ctx context.Context, report ErrorReport) er
 // sendError sends an error to the control service (internal method, account-scoped endpoint)
 func (er *ErrorReporter) sendError(ctx context.Context, report ErrorReport) error {
 	// Marshal the report
-	body, err := json.Marshal(report)
+	body, err := sonic.Marshal(report)
 	if err != nil {
 		return fmt.Errorf("failed to marshal error report: %w", err)
 	}

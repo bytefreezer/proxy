@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"os"
 	"path/filepath"
 	"testing"
@@ -201,7 +201,7 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 		FailureReason: "Exceeded retry limit",
 	}
 
-	metaData, err := json.Marshal(testMetadata)
+	metaData, err := sonic.Marshal(testMetadata)
 	if err != nil {
 		t.Fatalf("Failed to marshal metadata: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestAPI_RetryDLQFiles_SpecificTenant(t *testing.T) {
 				Filename:  filePath,
 				Status:    "dlq",
 			}
-			metaData, _ := json.Marshal(metadata)
+			metaData, _ := sonic.Marshal(metadata)
 			if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 				t.Fatalf("Failed to create test metadata file: %v", err)
 			}
@@ -403,7 +403,7 @@ func TestAPI_RetryDLQFiles_SpecificTenantAndDataset(t *testing.T) {
 		Filename:  filePath,
 		Status:    "dlq",
 	}
-	metaData, _ := json.Marshal(metadata)
+	metaData, _ := sonic.Marshal(metadata)
 	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		t.Fatalf("Failed to create test metadata file: %v", err)
 	}
@@ -527,14 +527,14 @@ func TestDLQStatsResponse_JSON(t *testing.T) {
 	}
 
 	// Test JSON marshaling
-	jsonData, err := json.Marshal(response)
+	jsonData, err := sonic.Marshal(response)
 	if err != nil {
 		t.Fatalf("Failed to marshal DLQStatsResponse: %v", err)
 	}
 
 	// Test JSON unmarshaling
 	var unmarshaled DLQStatsResponse
-	err = json.Unmarshal(jsonData, &unmarshaled)
+	err = sonic.Unmarshal(jsonData, &unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal DLQStatsResponse: %v", err)
 	}
@@ -576,14 +576,14 @@ func TestDLQRetryResponse_JSON(t *testing.T) {
 	}
 
 	// Test JSON marshaling
-	jsonData, err := json.Marshal(response)
+	jsonData, err := sonic.Marshal(response)
 	if err != nil {
 		t.Fatalf("Failed to marshal DLQRetryResponse: %v", err)
 	}
 
 	// Test JSON unmarshaling
 	var unmarshaled DLQRetryResponse
-	err = json.Unmarshal(jsonData, &unmarshaled)
+	err = sonic.Unmarshal(jsonData, &unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal DLQRetryResponse: %v", err)
 	}

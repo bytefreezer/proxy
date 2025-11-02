@@ -1,7 +1,7 @@
 package services
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net/http"
 	"sync"
@@ -136,7 +136,7 @@ func (tv *TenantValidator) fetchTenantStatus(tenantID string) bool {
 	}
 
 	var tenant TenantResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tenant); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&tenant); err != nil {
 		log.Warnf("Failed to decode tenant response for %s: %v", tenantID, err)
 		return true // Fail open - assume active on decode error
 	}

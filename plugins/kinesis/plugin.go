@@ -1,6 +1,7 @@
 package kinesis
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -27,6 +28,7 @@ type Plugin struct {
 	mu         sync.RWMutex
 	spooler    plugins.SpoolingInterface
 	metrics    PluginMetrics
+	textProcessor *plugins.TextProcessor
 	shardIters map[string]string // track shard iterators
 }
 
@@ -38,6 +40,7 @@ type Config struct {
 	DatasetID       string `mapstructure:"dataset_id"`
 	BearerToken     string `mapstructure:"bearer_token,omitempty"`
 	DataHint        string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "ndjson")
+	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
 	PollInterval    int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
 	MaxRecords      int    `mapstructure:"max_records,omitempty"`      // Max records per GetRecords call (default: 100)
 	ShardIteratorType string `mapstructure:"shard_iterator_type,omitempty"` // LATEST, TRIM_HORIZON, etc.
@@ -112,6 +115,9 @@ func (p *Plugin) Configure(configData map[string]interface{}) error {
 	}
 
 	log.Infof("Kinesis plugin configured: %s -> %s/%s (%s)", p.config.StreamName, p.config.TenantID, p.config.DatasetID, p.config.DataHint)
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
+	}
 	return nil
 }
 
@@ -256,19 +262,12 @@ func (p *Plugin) getRecords(shardIterator *string) ([]types.Record, *string, err
 
 // processRecord processes a single Kinesis record
 func (p *Plugin) processRecord(record types.Record, shardID string) {
-	// Format data according to data hint
-	formattedData := record.Data
-	if p.config.DataHint != "" {
-		var err error
-		formatter := plugins.GetFormatter(p.config.DataHint)
-		formattedData, err = formatter.Format(record.Data)
-		if err != nil {
-			log.Warnf("Data formatting failed for Kinesis record from shard %s (format: %s): %v", shardID, p.config.DataHint, err)
-			// Continue with original data if formatting fails
-			formattedData = record.Data
-		}
+	// Process through text processor (line-by-line detection and wrapping)
+	formattedData, linesWrapped := p.processRecordData(record.Data)
+	if linesWrapped > 0 {
+		log.Debugf("Kinesis: Wrapped %d text lines from shard %s (data_format: %s)",
+			linesWrapped, shardID, p.config.DataFormat)
 	}
-
 
 	// Update metrics
 	p.mu.Lock()
@@ -292,6 +291,42 @@ func (p *Plugin) processRecord(record types.Record, shardID string) {
 	}
 
 	log.Debugf("Stored Kinesis record from shard %s directly to filesystem: %d bytes", shardID, len(record.Data))
+}
+
+// processRecordData processes Kinesis record data line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processRecordData(data []byte) ([]byte, int) {
+	// Kinesis records may contain multiple lines - split and process each
+	lines := bytes.Split(data, []byte("\n"))
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine(line, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // updateHealth updates plugin health status
@@ -364,5 +399,13 @@ func (p *Plugin) Schema() plugins.PluginSchema {
 
 // Factory function for creating Kinesis plugin instances
 func NewKinesisPlugin() plugins.InputPlugin {
-	return &Plugin{}
+	return &Plugin{
+		textProcessor: plugins.NewTextProcessor(),
+		health: plugins.PluginHealth{
+			Status:      plugins.HealthStatusStopped,
+			Message:     "Plugin created but not started",
+			LastUpdated: time.Now(),
+		},
+		shardIters: make(map[string]string),
+	}
 }

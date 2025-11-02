@@ -2,11 +2,11 @@ package alerts
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -87,7 +87,7 @@ func (client *SOCAlertClient) sendAlert(severity, title, message, details string
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	jsonData, err := json.Marshal(payload)
+	jsonData, err := sonic.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal alert payload: %w", err)
 	}

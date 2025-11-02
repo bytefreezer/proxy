@@ -3,7 +3,7 @@ package sflow
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net"
 	"sync"
@@ -365,7 +365,7 @@ func (p *Plugin) extractFlowRecords(packet *sflowdec.Packet) ([]byte, error) {
 		output["samples"] = append(output["samples"].([]map[string]interface{}), sampleData)
 	}
 
-	return json.Marshal(output)
+	return sonic.Marshal(output)
 }
 
 // extractIPsFromHeader extracts IP addresses and ports from raw packet header

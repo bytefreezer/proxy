@@ -1,7 +1,7 @@
 package services
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,10 +59,10 @@ func TestSpoolingService_StoreRawMessage(t *testing.T) {
 
 		// Check that stored content is valid JSON
 		var stored, expected interface{}
-		if err := json.Unmarshal(content, &stored); err != nil {
+		if err := sonic.Unmarshal(content, &stored); err != nil {
 			t.Errorf("Stored content is not valid JSON: %v", err)
 		}
-		if err := json.Unmarshal(testData, &expected); err != nil {
+		if err := sonic.Unmarshal(testData, &expected); err != nil {
 			t.Errorf("Test data is not valid JSON: %v", err)
 		}
 
@@ -272,7 +272,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 		FailureReason: "Exceeded retry limit",
 	}
 
-	metaData, err := json.Marshal(testMetadata)
+	metaData, err := sonic.Marshal(testMetadata)
 	if err != nil {
 		t.Fatalf("Failed to marshal metadata: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 	}
 
 	var spooledFile SpooledFile
-	if err := json.Unmarshal(metaContent, &spooledFile); err != nil {
+	if err := sonic.Unmarshal(metaContent, &spooledFile); err != nil {
 		t.Fatalf("Failed to unmarshal metadata: %v", err)
 	}
 
@@ -519,7 +519,7 @@ func TestSpoolingService_TriggerReasonMetadata(t *testing.T) {
 			}
 
 			var metadata SpooledFile
-			if err := json.Unmarshal(metaContent, &metadata); err != nil {
+			if err := sonic.Unmarshal(metaContent, &metadata); err != nil {
 				t.Fatalf("Failed to unmarshal metadata: %v", err)
 			}
 

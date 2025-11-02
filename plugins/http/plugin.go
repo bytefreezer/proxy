@@ -16,15 +16,16 @@ import (
 
 // Plugin implements the HTTP webhook input plugin with direct filesystem writes
 type Plugin struct {
-	config  Config
-	server  *http.Server
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	health  plugins.PluginHealth
-	mu      sync.RWMutex
-	spooler plugins.SpoolingInterface
-	metrics PluginMetrics
+	config        Config
+	server        *http.Server
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	health        plugins.PluginHealth
+	mu            sync.RWMutex
+	spooler       plugins.SpoolingInterface
+	metrics       PluginMetrics
+	textProcessor *plugins.TextProcessor
 }
 
 // Config represents HTTP plugin configuration
@@ -35,6 +36,7 @@ type Config struct {
 	TenantID             string `mapstructure:"tenant_id"`
 	DatasetID            string `mapstructure:"dataset_id"`
 	DataHint             string `mapstructure:"data_hint,omitempty"`             // data format hint (e.g., "ndjson")
+	DataFormat           string `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken          string `mapstructure:"bearer_token,omitempty"`
 	MaxPayloadSize       int64  `mapstructure:"max_payload_size,omitempty"`      // bytes
 	MaxLinesPerRequest   int    `mapstructure:"max_lines_per_request,omitempty"` // lines limit
@@ -66,6 +68,7 @@ func NewPlugin() plugins.InputPlugin {
 		metrics: PluginMetrics{
 			StartTime: time.Now(),
 		},
+		textProcessor: plugins.NewTextProcessor(),
 	}
 }
 
@@ -111,6 +114,9 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 	}
 	if p.config.WriteTimeout == 0 {
 		p.config.WriteTimeout = 30 // 30 seconds
+	}
+	if p.config.DataFormat == "" {
+		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
 	}
 
 	// Ensure path starts with /
@@ -230,10 +236,40 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError st
 	}
 }
 
-// formatData normalizes data according to the specified format hint
-func (p *Plugin) formatData(data []byte, dataHint string) ([]byte, error) {
-	formatter := plugins.GetFormatter(dataHint)
-	return formatter.Format(data)
+// processRequestBody processes HTTP request body line-by-line
+// Returns processed data and count of wrapped lines
+func (p *Plugin) processRequestBody(body []byte) ([]byte, int) {
+	// Split body into lines
+	lines := strings.Split(string(body), "\n")
+
+	var result []byte
+	linesWrapped := 0
+
+	for _, line := range lines {
+		// Skip empty lines
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		// Process line through text processor
+		processed, wrapped, err := p.textProcessor.ProcessLine([]byte(line), p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
+		if err != nil {
+			log.Warnf("Failed to process line for %s/%s: %v", p.config.TenantID, p.config.DatasetID, err)
+			continue
+		}
+
+		if wrapped {
+			linesWrapped++
+		}
+
+		// Append processed line (already has \n if wrapped, add if not)
+		result = append(result, processed...)
+		if !wrapped && len(processed) > 0 && processed[len(processed)-1] != '\n' {
+			result = append(result, '\n')
+		}
+	}
+
+	return result, linesWrapped
 }
 
 // webhookHandler handles incoming HTTP webhook requests
@@ -296,21 +332,11 @@ func (p *Plugin) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Format and normalize data according to data hint
-	formattedData := body
-	if p.config.DataHint != "" {
-		var err error
-		formattedData, err = p.formatData(body, p.config.DataHint)
-		if err != nil {
-			log.Warnf("Data formatting failed for request from %s (format: %s): %v", r.RemoteAddr, p.config.DataHint, err)
-			http.Error(w, fmt.Sprintf("Invalid %s format: %v", p.config.DataHint, err), http.StatusBadRequest)
-			p.mu.Lock()
-			p.metrics.RequestsRejected++
-			p.mu.Unlock()
-			return
-		}
-		log.Debugf("Data formatting successful for %s/%s (format: %s), normalized %d bytes -> %d bytes",
-			p.config.TenantID, p.config.DatasetID, p.config.DataHint, len(body), len(formattedData))
+	// Process data through text processor (splits lines, detects JSON, wraps if needed)
+	formattedData, linesWrapped := p.processRequestBody(body)
+	if linesWrapped > 0 {
+		log.Debugf("HTTP: Wrapped %d text lines for %s/%s (data_format: %s)",
+			linesWrapped, p.config.TenantID, p.config.DatasetID, p.config.DataFormat)
 	}
 
 	// Update metrics
