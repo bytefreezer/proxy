@@ -37,7 +37,7 @@ config:
     encoding: "console"
 
   server:
-    api_port: 8088
+    api_port: 8008
 
   # Plugin-based input configuration (populated from Control)
   inputs: []
@@ -59,7 +59,7 @@ config:
     retry_on_error: true
 
   receiver:
-    base_url: "{{ bytefreezer_receiver_url | default('http://192.168.86.103:8081') }}/{tenantid}/{datasetid}"
+    base_url: "{{ bytefreezer_receiver_url | default('http://192.168.86.103:8080') }}/{tenantid}/{datasetid}"
     timeout_seconds: 30
     upload_worker_count: 5    # Number of upload workers (aligned with receiver)
     max_idle_conns: 10        # HTTP connection pool size
@@ -89,6 +89,7 @@ config:
     enabled: false
     service_name: "bytefreezer-proxy"
     scrapeIntervalseconds: 15
+    metrics_port: 9090
 
   # Housekeeping configuration
   housekeeping:

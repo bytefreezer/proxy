@@ -9,7 +9,7 @@ logging:
 
 # API server configuration
 server:
-  api_port: 8088
+  api_port: 8008
 
 # Plugin-based input configuration (populated from Control)
 inputs: []
@@ -62,6 +62,7 @@ otel:
   enabled: false
   service_name: "bytefreezer-proxy"
   scrapeIntervalseconds: 15
+  metrics_port: 9090
 
 # Local spooling for failed uploads
 spooling:

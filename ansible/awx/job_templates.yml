@@ -1,0 +1,110 @@
+---
+# AWX Job Templates for ByteFreezer Proxy Deployments
+# These use your existing AWX inventory
+# Manual creation recommended - adjust inventory name to match your AWX setup
+
+# ============================================================
+# MANAGED DEPLOYMENT (tp1)
+# ============================================================
+
+- name: ByteFreezer Proxy - Deploy Managed (tp1)
+  description: Deploy ByteFreezer Proxy to managed infrastructure on tp1
+  job_type: run
+  inventory: YOUR_EXISTING_INVENTORY  # Replace with your AWX inventory name
+  project: ByteFreezer Proxy
+  playbook: ansible/playbooks/onprem_install.yml
+  credentials:
+    - ByteFreezer SSH Credential
+  ask_limit_on_launch: true  # Allows you to target specific hosts
+  ask_variables_on_launch: true  # Allows variable overrides
+  verbosity: 0
+  limit: "managed"  # Or use tp1, or your host group name
+  tags:
+    - proxy
+    - managed
+    - tp1
+
+# ============================================================
+# ON-PREM DEPLOYMENT (tp2)
+# ============================================================
+
+- name: ByteFreezer Proxy - Deploy On-Prem (tp2)
+  description: Deploy ByteFreezer Proxy to on-premises infrastructure on tp2
+  job_type: run
+  inventory: YOUR_EXISTING_INVENTORY  # Replace with your AWX inventory name
+  project: ByteFreezer Proxy
+  playbook: ansible/playbooks/onprem_install.yml
+  credentials:
+    - ByteFreezer SSH Credential
+  ask_limit_on_launch: true  # Allows you to target specific hosts
+  ask_variables_on_launch: true  # Allows variable overrides
+  verbosity: 0
+  limit: "onprem"  # Or use tp2, or your host group name
+  tags:
+    - proxy
+    - onprem
+    - tp2
+
+# ============================================================
+# REMOVAL JOBS
+# ============================================================
+
+- name: ByteFreezer Proxy - Remove Managed (tp1)
+  description: Remove ByteFreezer Proxy from tp1
+  job_type: run
+  inventory: YOUR_EXISTING_INVENTORY  # Replace with your AWX inventory name
+  project: ByteFreezer Proxy
+  playbook: ansible/playbooks/remove.yml
+  credentials:
+    - ByteFreezer SSH Credential
+  ask_limit_on_launch: true
+  ask_variables_on_launch: true
+  survey_enabled: true
+  survey_spec:
+    name: Removal Options
+    description: Configure removal options
+    spec:
+      - question_name: Remove spooling directory?
+        question_description: Delete /var/spool/bytefreezer-proxy directory and all queued data
+        required: true
+        type: multiplechoice
+        variable: bytefreezer_proxy_remove_spooling_dir
+        choices:
+          - "true"
+          - "false"
+        default: "false"
+  limit: "managed"
+  tags:
+    - proxy
+    - managed
+    - remove
+
+- name: ByteFreezer Proxy - Remove On-Prem (tp2)
+  description: Remove ByteFreezer Proxy from tp2
+  job_type: run
+  inventory: YOUR_EXISTING_INVENTORY  # Replace with your AWX inventory name
+  project: ByteFreezer Proxy
+  playbook: ansible/playbooks/remove.yml
+  credentials:
+    - ByteFreezer SSH Credential
+  ask_limit_on_launch: true
+  ask_variables_on_launch: true
+  survey_enabled: true
+  survey_spec:
+    name: Removal Options
+    description: Configure removal options
+    spec:
+      - question_name: Remove spooling directory?
+        question_description: Delete /var/spool/bytefreezer-proxy directory and all queued data
+        required: true
+        type: multiplechoice
+        variable: bytefreezer_proxy_remove_spooling_dir
+        choices:
+          - "true"
+          - "false"
+        default: "false"
+  limit: "onprem"
+  tags:
+    - proxy
+    - onprem
+    - remove

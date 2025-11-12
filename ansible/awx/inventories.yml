@@ -1,0 +1,54 @@
+---
+# AWX Inventory Definitions for ByteFreezer Proxy
+
+# ============================================================
+# MANAGED INVENTORY
+# ============================================================
+
+- name: ByteFreezer Managed Inventory
+  description: Managed infrastructure hosts (tp1, tp2, tp3)
+  organization: ByteFreezer
+  groups:
+    - name: managed
+      description: Managed deployment hosts
+      hosts:
+        - name: tp1
+          description: Proxy and Piper host (managed)
+          variables:
+            ansible_host: 192.168.86.101
+            ansible_user: andrew
+            ansible_become: yes
+            deployment_type: managed
+
+  variables:
+    # Managed-specific variables (can also be in group_vars/managed.yml)
+    bytefreezer_proxy_account_id: "ejq73vgnw26p"
+    bytefreezer_proxy_bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"
+    bytefreezer_control_url: "http://192.168.86.103:8082"
+    bytefreezer_receiver_url: "http://192.168.86.102:8080"
+
+# ============================================================
+# ON-PREM INVENTORY
+# ============================================================
+
+- name: ByteFreezer OnPrem Inventory
+  description: On-premises infrastructure hosts (tp2)
+  organization: ByteFreezer
+  groups:
+    - name: onprem
+      description: On-premises deployment hosts
+      hosts:
+        - name: tp2
+          description: On-prem proxy host
+          variables:
+            ansible_host: 192.168.86.102
+            ansible_user: andrew
+            ansible_become: yes
+            deployment_type: onprem
+
+  variables:
+    # On-prem-specific variables (can also be in group_vars/onprem.yml)
+    bytefreezer_proxy_account_id: "s2jeovtia7zn"
+    bytefreezer_proxy_bearer_token: "onprem-92643688d4e31fbc4ca03c8cb87ef6c7"
+    bytefreezer_control_url: "http://192.168.86.103:8082"
+    bytefreezer_receiver_url: "http://192.168.86.101:8080"
