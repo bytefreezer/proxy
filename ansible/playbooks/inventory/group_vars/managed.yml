@@ -1,0 +1,12 @@
+---
+# ByteFreezer Proxy - Managed Deployment Variables
+# This is the default managed deployment on tp1, tp2, tp3
+
+# Account configuration for managed deployment
+config:
+  account_id: "ejq73vgnw26p"  # Managed account (deployment_type: managed)
+  bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"  # Managed account API key
+  control_url: "http://192.168.86.103:8082"  # Control on tp3
+
+  receiver:
+    base_url: "http://192.168.86.102:8080/{tenantid}/{datasetid}"  # Receiver on tp2

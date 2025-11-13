@@ -44,10 +44,11 @@ config:
 
   # Account-based configuration - proxy polls Control for all tenants + datasets
   # IMPORTANT: bearer_token is account-specific API key from Control (NOT system-wide service_api_key)
-  account_id: "{{ bytefreezer_proxy_account_id | default('ejq73vgnw26p') }}"
+  # These can be overridden by group-specific vars (managed.yml, onprem.yml)
+  account_id: "{{ config_account_id | default(bytefreezer_proxy_account_id | default('ejq73vgnw26p')) }}"
   # tenant_id: "customer-1"  # Optional: Only required if account_id is not set
-  bearer_token: "{{ bytefreezer_proxy_bearer_token | default('-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx') }}"  # Account-specific API key from Control
-  control_url: "{{ bytefreezer_control_url | default('http://192.168.86.103:8082') }}"
+  bearer_token: "{{ config_bearer_token | default(bytefreezer_proxy_bearer_token | default('-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx')) }}"  # Account-specific API key from Control
+  control_url: "{{ config_control_url | default(bytefreezer_control_url | default('http://192.168.86.103:8082')) }}"
   config_mode: "control-only"  # local-only | control-only
 
   # Configuration polling from Control
@@ -59,7 +60,7 @@ config:
     retry_on_error: true
 
   receiver:
-    base_url: "{{ bytefreezer_receiver_url | default('http://192.168.86.103:8080') }}/{tenantid}/{datasetid}"
+    base_url: "{{ config_receiver_base_url | default(bytefreezer_receiver_url | default('http://192.168.86.102:8080') + '/{tenantid}/{datasetid}') }}"
     timeout_seconds: 30
     upload_worker_count: 5    # Number of upload workers (aligned with receiver)
     max_idle_conns: 10        # HTTP connection pool size
