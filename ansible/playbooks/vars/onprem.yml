@@ -46,7 +46,7 @@ config:
 
   # On-prem deployment configuration
   account_id: "s2jeovtia7zn"
-  bearer_token: "onprem-92643688d4e31fbc4ca03c8cb87ef6c7"
+  bearer_token: "onprem-api-key-s2jeovtia7zn-12345678"
   control_url: "http://192.168.86.103:8082"
   config_mode: "control-only"
 
