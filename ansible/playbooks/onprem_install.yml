@@ -1,7 +1,9 @@
 ---
-- name: Install and configure ByteFreezer Proxy service
+- name: Install and configure ByteFreezer Proxy service (On-Prem)
   hosts: all
   become: yes
+  vars_files:
+    - vars/onprem.yml
 
   pre_tasks:
     - name: Check if service already exists

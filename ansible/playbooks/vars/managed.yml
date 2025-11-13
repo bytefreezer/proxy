@@ -1,0 +1,139 @@
+---
+# ByteFreezer Proxy - Managed Deployment (Self-Contained Variables)
+# Managed deployment on tp1, tp2, tp3
+# This file contains ALL variables needed for managed deployment
+
+# GitHub repository
+github_repo: "n0needt0/bytefreezer-proxy"
+version: "{{ bytefreezer_proxy_version | default('latest') }}"
+
+# Service configuration
+service:
+  name: "bytefreezer-proxy"
+  user: "root"
+  group: "root"
+
+# File paths
+paths:
+  binary_dir: "/usr/local/bin"
+  binary_path: "/usr/local/bin/bytefreezer-proxy"
+  config_dir: "/etc/bytefreezer-proxy"
+  config_path: "/etc/bytefreezer-proxy/config.yaml"
+  log_dir: "/var/log/bytefreezer-proxy"
+  spool_dir: "/var/spool/bytefreezer-proxy"
+  service_path: "/etc/systemd/system/bytefreezer-proxy.service"
+  logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
+
+# Log rotation settings
+logrotate:
+  rotate_count: 7
+
+# Application configuration
+config:
+  app:
+    name: "bytefreezer-proxy"
+    version: "0.0.2"
+
+  logging:
+    level: "info"
+    encoding: "console"
+
+  server:
+    api_port: 8008
+
+  # Plugin-based input configuration (populated from Control)
+  inputs: []
+
+  # Managed deployment configuration
+  account_id: "ejq73vgnw26p"
+  bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"
+  control_url: "http://192.168.86.103:8082"
+  config_mode: "control-only"
+
+  # Configuration polling from Control
+  config_polling:
+    enabled: true
+    interval_seconds: 60
+    timeout_seconds: 30
+    cache_directory: "/var/cache/bytefreezer-proxy"
+    retry_on_error: true
+
+  receiver:
+    base_url: "http://192.168.86.102:8080/{tenantid}/{datasetid}"
+    timeout_seconds: 30
+    upload_worker_count: 5
+    max_idle_conns: 10
+    max_conns_per_host: 6
+
+  # Batch processing configuration
+  batching:
+    enabled: true
+    max_lines: 0
+    max_bytes: 10485760
+    timeout_seconds: 60
+    compression_enabled: true
+    compression_level: 6
+
+  # SOC alerting configuration
+  soc:
+    enabled: false
+    endpoint: ""
+    timeout_seconds: 30
+
+  # OpenTelemetry configuration (disabled by default)
+  otel:
+    enabled: false
+    service_name: "bytefreezer-proxy"
+    scrapeIntervalseconds: 15
+    metrics_port: 9090
+
+  # Housekeeping configuration
+  housekeeping:
+    enabled: true
+    intervalseconds: 60
+
+  # Local spooling for failed uploads
+  spooling:
+    enabled: true
+    directory: "/var/spool/bytefreezer-proxy"
+    max_size_bytes: 1073741824
+    retry_attempts: 5
+    retry_interval_seconds: 60
+    cleanup_interval_seconds: 300
+    keep_src: false
+
+  # Health reporting configuration
+  health_reporting:
+    enabled: true
+    report_interval: 30
+    timeout_seconds: 10
+    register_on_startup: true
+
+  # Tenant validation configuration
+  tenant_validation:
+    enabled: true
+    cache_ttl_seconds: 300
+    inactive_cache_ttl_seconds: 3600
+    timeout_seconds: 5
+
+  # Development mode
+  dev: false
+
+# Download configuration
+download:
+  url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/bytefreezer-proxy-linux-amd64.tar.gz"
+
+# Docker image configuration
+docker:
+  image_name: "ghcr.io/n0needt0/bytefreezer-proxy"
+  tag: "{{ bytefreezer_proxy_version | default('latest') }}"
+  force_pull: false
+
+# Remove configuration
+remove:
+  spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
+
+# AWX Survey Variables
+force_reinstall: "{{ force_reinstall | default(false) }}"
+skip_validation: "{{ skip_validation | default(false) }}"
+enable_debug_logging: "{{ enable_debug_logging | default(false) }}"
