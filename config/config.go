@@ -9,37 +9,46 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/pkg/errors"
+	"github.com/n0needt0/go-goodies/log"
+	pkgerrors "github.com/pkg/errors"
 
 	"github.com/n0needt0/bytefreezer-proxy/alerts"
+	"github.com/n0needt0/bytefreezer-proxy/errors"
 	"github.com/n0needt0/bytefreezer-proxy/plugins"
 )
 
 var k = koanf.New(".")
 
 type Config struct {
-	App             App                    `mapstructure:"app"`
-	Logging         LoggingConfig          `mapstructure:"logging"`
-	Server          Server                 `mapstructure:"server"`
-	Inputs          []plugins.PluginConfig `mapstructure:"inputs"` // Plugin-based input system
-	Batching        Batching               `mapstructure:"batching"`
-	Receiver        Receiver               `mapstructure:"receiver"`
-	AccountID       string                 `mapstructure:"account_id"` // Account ID for multi-tenant polling
-	TenantID        string                 `mapstructure:"tenant_id"`  // Global tenant ID (fallback for plugins without tenant_id)
-	BearerToken     string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
-	ControlURL      string                 `mapstructure:"control_url"`  // Centralized control service URL
-	ConfigMode      string                 `mapstructure:"config_mode"`  // local-only | control-only
-	ConfigPolling   ConfigPollingConfig    `mapstructure:"config_polling"`
-	SOC             SOCAlert               `mapstructure:"soc"`
-	Otel            Otel                   `mapstructure:"otel"`
+	App              App                    `mapstructure:"app"`
+	Logging          LoggingConfig          `mapstructure:"logging"`
+	Server           Server                 `mapstructure:"server"`
+	Inputs           []plugins.PluginConfig `mapstructure:"inputs"` // Plugin-based input system
+	Batching         Batching               `mapstructure:"batching"`
+	Receiver         Receiver               `mapstructure:"receiver"`
+	AccountID        string                 `mapstructure:"account_id"` // Account ID for multi-tenant polling
+	TenantID         string                 `mapstructure:"tenant_id"`  // Global tenant ID (fallback for plugins without tenant_id)
+	BearerToken      string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
+	ControlURL       string                 `mapstructure:"control_url"`  // Centralized control service URL
+	ConfigMode       string                 `mapstructure:"config_mode"`  // local-only | control-only
+	ConfigPolling    ConfigPollingConfig    `mapstructure:"config_polling"`
+	SOC              SOCAlert               `mapstructure:"soc"`
+	Otel             Otel                   `mapstructure:"otel"`
 	Spooling         Spooling               `mapstructure:"spooling"`
 	HealthReporting  HealthReportingConfig  `mapstructure:"health_reporting"`
+	ErrorTracking    ErrorTrackingConfig    `mapstructure:"error_tracking"`
 	TenantValidation TenantValidationConfig `mapstructure:"tenant_validation"`
 	Dev              bool                   `mapstructure:"dev"`
 
 	// Runtime components
-	SOCAlertClient       *alerts.SOCAlertClient `mapstructure:"-"`
-	DatasetMetricsClient interface{}            `mapstructure:"-"` // services.DatasetMetricsClient (interface to avoid circular import)
+	SOCAlertClient       *alerts.SOCAlertClient    `mapstructure:"-"`
+	ErrorReporter        *errors.ErrorReporter     `mapstructure:"-"`
+	DatasetMetricsClient interface{}               `mapstructure:"-"` // services.DatasetMetricsClient (interface to avoid circular import)
+}
+
+// ErrorTrackingConfig represents error tracking configuration
+type ErrorTrackingConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 type App struct {
@@ -141,23 +150,23 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 
 	err := k.Load(file.Provider(cfgFile), yaml.Parser())
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse %s", cfgFile)
+		return pkgerrors.Wrapf(err, "failed to parse %s", cfgFile)
 	}
 
 	if err := k.Load(env.Provider(envPrefix, ".", func(s string) string {
 		return strings.Replace(strings.ToLower(strings.TrimPrefix(s, envPrefix)), "_", ".", -1)
 	}), nil); err != nil {
-		return errors.Wrapf(err, "error loading config from env")
+		return pkgerrors.Wrapf(err, "error loading config from env")
 	}
 
 	err = k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "mapstructure"})
 	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal %s", cfgFile)
+		return pkgerrors.Wrapf(err, "failed to unmarshal %s", cfgFile)
 	}
 
 	// Validate plugin inputs and identifiers
 	if err := validateIdentifiers(cfg); err != nil {
-		return errors.Wrapf(err, "identifier validation failed")
+		return pkgerrors.Wrapf(err, "identifier validation failed")
 	}
 
 	// Batching defaults
@@ -233,6 +242,20 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 }
 
 func (cfg *Config) InitializeComponents() error {
+	// Initialize error reporter if configured
+	if cfg.ErrorTracking.Enabled && cfg.ControlURL != "" {
+		cfg.ErrorReporter = errors.NewErrorReporter(
+			cfg.ControlURL,
+			cfg.AccountID,
+			cfg.BearerToken,
+			"proxy",
+			true,
+		)
+		log.Infof("Error reporter initialized - reporting to control service at %s", cfg.ControlURL)
+	} else {
+		log.Infof("Error reporting disabled (enabled: %v, control_url: %s)", cfg.ErrorTracking.Enabled, cfg.ControlURL)
+	}
+
 	// Initialize SOC alert client
 	cfg.SOCAlertClient = alerts.NewSOCAlertClient(alerts.AlertClientConfig{
 		SOC: alerts.SOCConfig{

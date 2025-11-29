@@ -3,7 +3,7 @@ package services
 import (
 	"bytes"
 	"compress/gzip"
-	"github.com/bytedance/sonic"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/bytefreezer-proxy/config"
 	"github.com/n0needt0/bytefreezer-proxy/domain"
 	"github.com/n0needt0/go-goodies/log"
@@ -903,6 +904,18 @@ func (s *SpoolingService) processRetryJob(job RetryJob, forwarder *HTTPForwarder
 	// Check if we should retry this file
 	if metadata.RetryCount >= s.config.Spooling.RetryAttempts {
 		log.Warnf("Batch %s exceeded max retries (%d), moving to DLQ", job.BatchID, s.config.Spooling.RetryAttempts)
+
+		// Report critical error to control service
+		if s.config.ErrorReporter != nil {
+			s.config.ErrorReporter.ReportCritical(
+				context.Background(),
+				"upload_max_retries_exceeded",
+				fmt.Sprintf("File moved to DLQ after %d retry attempts", s.config.Spooling.RetryAttempts),
+				metadata.TenantID,
+				metadata.DatasetID,
+			)
+		}
+
 		if err := s.moveToDLQ(metadata, "max_retries_exceeded"); err != nil {
 			log.Errorf("Failed to move batch %s to DLQ: %v", job.BatchID, err)
 		}
@@ -977,6 +990,18 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 	if s.tenantValidator != nil && s.tenantValidator.IsEnabled() {
 		if !s.tenantValidator.IsActiveTenant(job.TenantID) {
 			log.Warnf("Tenant %s is inactive - skipping upload and moving to DLQ", job.TenantID)
+
+			// Report warning to control service
+			if s.config.ErrorReporter != nil {
+				s.config.ErrorReporter.ReportWarning(
+					context.Background(),
+					"tenant_inactive",
+					fmt.Sprintf("Data received for inactive tenant: %s", job.TenantID),
+					job.TenantID,
+					job.DatasetID,
+				)
+			}
+
 			// Move directly to DLQ for inactive tenants (no retry)
 			if moveErr := s.MoveQueueToDLQ(job.TenantID, job.DatasetID, job.BatchID, "tenant inactive or not found"); moveErr != nil {
 				log.Errorf("Failed to move queue file %s to DLQ: %v", fileName, moveErr)
@@ -991,6 +1016,19 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 		// Check if this is a permanent failure (don't retry)
 		if uploadErr, ok := err.(*UploadError); ok && uploadErr.IsPermanent {
 			log.Warnf("Queue file upload failed permanently for %s (HTTP %d) - moving directly to DLQ", fileName, uploadErr.StatusCode)
+
+			// Report error to control service
+			if s.config.ErrorReporter != nil {
+				s.config.ErrorReporter.ReportErrorSimple(
+					context.Background(),
+					"upload_permanent_failure",
+					fmt.Sprintf("HTTP %d: %s", uploadErr.StatusCode, uploadErr.Message),
+					"error",
+					job.TenantID,
+					job.DatasetID,
+				)
+			}
+
 			// Move directly to DLQ for permanent failures (no retry)
 			if moveErr := s.MoveQueueToDLQ(job.TenantID, job.DatasetID, job.BatchID, uploadErr.FailureReason); moveErr != nil {
 				log.Errorf("Failed to move queue file %s to DLQ: %v", fileName, moveErr)
