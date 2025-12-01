@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/bytefreezer-proxy/domain"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/config"
+	"github.com/bytefreezer/proxy/domain"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // UploadWorker handles upload processing (aligned with receiver pattern)

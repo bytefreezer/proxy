@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/config"
+	"github.com/bytefreezer/proxy/config"
 )
 
 func TestSpoolingService_StoreRawMessage(t *testing.T) {

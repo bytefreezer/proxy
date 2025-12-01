@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/bytefreezer-proxy/services"
+	"github.com/bytefreezer/proxy/config"
+	"github.com/bytefreezer/proxy/services"
 )
 
 func TestAPI_GetDLQStats(t *testing.T) {

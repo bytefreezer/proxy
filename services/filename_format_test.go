@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/domain"
+	"github.com/bytefreezer/proxy/domain"
 )
 
 func TestGenerateProxyFilename(t *testing.T) {

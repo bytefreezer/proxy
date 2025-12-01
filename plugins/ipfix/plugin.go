@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/goodies/log"
 	netflowdec "github.com/netsampler/goflow2/v2/decoders/netflow"
 )
 

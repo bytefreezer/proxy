@@ -57,7 +57,7 @@ import (
     "context"
     "time"
     
-    "github.com/n0needt0/bytefreezer-proxy/plugins"
+    "github.com/bytefreezer/proxy/plugins"
 )
 
 type Plugin struct {
@@ -169,7 +169,7 @@ Create `init.go`:
 package myplugin
 
 import (
-    "github.com/n0needt0/bytefreezer-proxy/plugins"
+    "github.com/bytefreezer/proxy/plugins"
 )
 
 func init() {
@@ -183,7 +183,7 @@ Add to `main.go`:
 
 ```go
 // Import plugin packages to register them
-_ "github.com/n0needt0/bytefreezer-proxy/plugins/myplugin"
+_ "github.com/bytefreezer/proxy/plugins/myplugin"
 ```
 
 ### 5. Configure Plugin

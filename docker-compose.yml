@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   bytefreezer-proxy:
-    image: ghcr.io/n0needt0/bytefreezer-proxy:latest
+    image: ghcr.io/bytefreezer/proxy:latest
     container_name: bytefreezer-proxy
     restart: unless-stopped
     

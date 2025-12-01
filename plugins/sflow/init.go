@@ -1,7 +1,7 @@
 package sflow
 
 import (
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
+	"github.com/bytefreezer/proxy/plugins"
 )
 
 // Register the sFlow plugin with the global registry

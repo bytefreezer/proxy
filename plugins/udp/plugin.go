@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // Plugin implements the UDP input plugin with direct filesystem writes

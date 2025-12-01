@@ -146,7 +146,7 @@ Add to `main.go`:
 
 ```go
 // Import plugin packages to register them
-_ "github.com/n0needt0/bytefreezer-proxy/plugins/zmq"
+_ "github.com/bytefreezer/proxy/plugins/zmq"
 ```
 
 ### 5. Build and Run

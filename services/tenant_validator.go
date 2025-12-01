@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/config"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // TenantValidator handles tenant validation with caching

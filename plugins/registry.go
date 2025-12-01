@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // Registry manages available input plugins

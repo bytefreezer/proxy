@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // Manager manages multiple input plugins with direct filesystem writes

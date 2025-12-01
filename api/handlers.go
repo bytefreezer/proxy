@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
-	"github.com/n0needt0/bytefreezer-proxy/services"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/config"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/proxy/services"
+	"github.com/bytefreezer/goodies/log"
 	"github.com/swaggest/usecase"
 )
 

@@ -9,12 +9,12 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/goodies/log"
 	pkgerrors "github.com/pkg/errors"
 
-	"github.com/n0needt0/bytefreezer-proxy/alerts"
-	"github.com/n0needt0/bytefreezer-proxy/errors"
-	"github.com/n0needt0/bytefreezer-proxy/plugins"
+	"github.com/bytefreezer/proxy/alerts"
+	"github.com/bytefreezer/proxy/errors"
+	"github.com/bytefreezer/proxy/plugins"
 )
 
 var k = koanf.New(".")

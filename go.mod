@@ -1,4 +1,4 @@
-module github.com/n0needt0/bytefreezer-proxy
+module github.com/bytefreezer/proxy
 
 go 1.23.0
 
@@ -11,12 +11,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.40.4
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.7
 	github.com/bytedance/sonic v1.14.1
+	github.com/bytefreezer/goodies/log v0.1.0
 	github.com/knadh/koanf/parsers/yaml v0.1.0
 	github.com/knadh/koanf/providers/env v0.1.0
 	github.com/knadh/koanf/providers/file v0.1.0
 	github.com/knadh/koanf/v2 v2.0.1
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/n0needt0/go-goodies/log v0.0.0-20250911153747-5be7cbbfc35a
 	github.com/nats-io/nats.go v1.37.0
 	github.com/netsampler/goflow2/v2 v2.2.3
 	github.com/pkg/errors v0.9.1

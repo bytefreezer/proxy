@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/n0needt0/bytefreezer-proxy/config"
-	"github.com/n0needt0/bytefreezer-proxy/domain"
-	"github.com/n0needt0/go-goodies/log"
+	"github.com/bytefreezer/proxy/config"
+	"github.com/bytefreezer/proxy/domain"
+	"github.com/bytefreezer/goodies/log"
 )
 
 // SpoolingService handles local file spooling for failed uploads
