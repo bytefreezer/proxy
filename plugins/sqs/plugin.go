@@ -13,41 +13,41 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
 )
 
 // Plugin implements the SQS input plugin with direct filesystem writes
 type Plugin struct {
-	config   Config
-	client   *sqs.Client
-	queueURL string
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	health   plugins.PluginHealth
-	mu       sync.RWMutex
-	spooler  plugins.SpoolingInterface
-	metrics  PluginMetrics
+	config        Config
+	client        *sqs.Client
+	queueURL      string
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	health        plugins.PluginHealth
+	mu            sync.RWMutex
+	spooler       plugins.SpoolingInterface
+	metrics       PluginMetrics
 	textProcessor *plugins.TextProcessor
 }
 
 // Config represents SQS plugin configuration
 type Config struct {
-	QueueName            string `mapstructure:"queue_name"`
-	QueueURL             string `mapstructure:"queue_url,omitempty"` // Optional direct URL
-	Region               string `mapstructure:"region"`
-	TenantID             string `mapstructure:"tenant_id"`
-	DatasetID            string `mapstructure:"dataset_id"`
-	BearerToken          string `mapstructure:"bearer_token,omitempty"`
-	DataHint             string `mapstructure:"data_hint,omitempty"`             // Data format hint for downstream processing (defaults to "ndjson")
-	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
-	PollInterval         int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
-	MaxMessages          int    `mapstructure:"max_messages,omitempty"`          // Max messages per receive call (default: 10, max: 10)
-	VisibilityTimeout    int    `mapstructure:"visibility_timeout_seconds,omitempty"` // Visibility timeout (default: 30)
-	WaitTimeSeconds      int    `mapstructure:"wait_time_seconds,omitempty"`     // Long polling wait time (default: 20, max: 20)
-	DeleteAfterProcess   bool   `mapstructure:"delete_after_process"`            // Delete messages after processing (default: true)
-	WorkerCount          int    `mapstructure:"worker_count,omitempty"`          // Number of concurrent workers (default: 3)
+	QueueName          string `mapstructure:"queue_name"`
+	QueueURL           string `mapstructure:"queue_url,omitempty"` // Optional direct URL
+	Region             string `mapstructure:"region"`
+	TenantID           string `mapstructure:"tenant_id"`
+	DatasetID          string `mapstructure:"dataset_id"`
+	BearerToken        string `mapstructure:"bearer_token,omitempty"`
+	DataHint           string `mapstructure:"data_hint,omitempty"`                  // Data format hint for downstream processing (defaults to "ndjson")
+	DataFormat         string `mapstructure:"data_format,omitempty"`                // data format mode: "ndjson", "text", "auto" (default)
+	PollInterval       int    `mapstructure:"poll_interval_seconds,omitempty"`      // Polling interval in seconds (default: 5)
+	MaxMessages        int    `mapstructure:"max_messages,omitempty"`               // Max messages per receive call (default: 10, max: 10)
+	VisibilityTimeout  int    `mapstructure:"visibility_timeout_seconds,omitempty"` // Visibility timeout (default: 30)
+	WaitTimeSeconds    int    `mapstructure:"wait_time_seconds,omitempty"`          // Long polling wait time (default: 20, max: 20)
+	DeleteAfterProcess bool   `mapstructure:"delete_after_process"`                 // Delete messages after processing (default: true)
+	WorkerCount        int    `mapstructure:"worker_count,omitempty"`               // Number of concurrent workers (default: 3)
 }
 
 // PluginMetrics tracks SQS plugin metrics

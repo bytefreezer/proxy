@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
 )
 
@@ -36,8 +36,8 @@ type Config struct {
 	QueueGroup    string   `mapstructure:"queue_group,omitempty"`
 	TenantID      string   `mapstructure:"tenant_id"`
 	DatasetID     string   `mapstructure:"dataset_id"`
-	DataHint      string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
-	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
+	DataHint      string   `mapstructure:"data_hint,omitempty"`   // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
+	DataFormat    string   `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken   string   `mapstructure:"bearer_token,omitempty"`
 	MaxReconnect  int      `mapstructure:"max_reconnect,omitempty"`
 	ReconnectWait int      `mapstructure:"reconnect_wait,omitempty"` // seconds

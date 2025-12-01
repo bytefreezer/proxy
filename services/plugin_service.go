@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/domain"
 	"github.com/bytefreezer/proxy/plugins"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // UploadWorker handles upload processing (aligned with receiver pattern)
@@ -290,7 +290,7 @@ func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domai
 		CreatedAt:     msg.Timestamp,
 		BearerToken:   bearerToken,
 		TriggerReason: "single_message", // Single message processing (not batched)
-		DataHint:      msg.DataHint, // Data format hint for downstream processing
+		DataHint:      msg.DataHint,     // Data format hint for downstream processing
 	}
 }
 
@@ -403,7 +403,7 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		"",                  // No failure reason - this is initial spooling
 		batch.ID,            // Use the existing batch ID
 		batch.TriggerReason, // Pass the trigger reason from the batch
-		batch.DataHint, // Data format hint for downstream processing
+		batch.DataHint,      // Data format hint for downstream processing
 	)
 }
 

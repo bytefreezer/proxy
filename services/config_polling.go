@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/plugins"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // ControlProxyConfig represents the configuration fetched from control
@@ -38,12 +38,12 @@ type ControlProxyConfig struct {
 
 // ProxySettings represents proxy-level settings from control
 type ProxySettings struct {
-	Receiver     ReceiverSettings     `json:"receiver,omitempty"`
-	Batching     BatchingSettings     `json:"batching,omitempty"`
-	Spooling     SpoolingSettings     `json:"spooling,omitempty"`
-	Housekeeping HousekeepingSettings `json:"housekeeping,omitempty"`
-	Otel         OtelSettings         `json:"otel,omitempty"`
-	SOC          SOCSettings          `json:"soc,omitempty"`
+	Receiver     ReceiverSettings       `json:"receiver,omitempty"`
+	Batching     BatchingSettings       `json:"batching,omitempty"`
+	Spooling     SpoolingSettings       `json:"spooling,omitempty"`
+	Housekeeping HousekeepingSettings   `json:"housekeeping,omitempty"`
+	Otel         OtelSettings           `json:"otel,omitempty"`
+	SOC          SOCSettings            `json:"soc,omitempty"`
 	Custom       map[string]interface{} `json:"custom,omitempty"`
 }
 
@@ -140,9 +140,9 @@ type Dataset struct {
 
 // DatasetConfig represents dataset configuration from control
 type DatasetConfig struct {
-	Source      SourceConfig               `json:"source"`
-	Destination map[string]interface{}     `json:"destination"`
-	Custom      map[string]interface{}     `json:"custom,omitempty"`
+	Source      SourceConfig           `json:"source"`
+	Destination map[string]interface{} `json:"destination"`
+	Custom      map[string]interface{} `json:"custom,omitempty"`
 }
 
 // SourceConfig represents dataset source configuration
@@ -165,9 +165,9 @@ type ConfigPollingService struct {
 	currentConfigHash string
 	configMutex       sync.RWMutex
 
-	ticker       *time.Ticker
-	stopChan     chan struct{}
-	httpClient   *http.Client
+	ticker         *time.Ticker
+	stopChan       chan struct{}
+	httpClient     *http.Client
 	onConfigChange func(*ControlProxyConfig) error // Callback for config changes
 
 	// Exponential backoff and circuit breaker
@@ -332,8 +332,8 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 
 		// Try cached config for some error types
 		if resp.StatusCode == http.StatusUnauthorized ||
-		   resp.StatusCode == http.StatusForbidden ||
-		   resp.StatusCode == http.StatusNotFound {
+			resp.StatusCode == http.StatusForbidden ||
+			resp.StatusCode == http.StatusNotFound {
 			log.Warnf("Control returned status %d (inactive/unauthorized account), using cached config if available", resp.StatusCode)
 			_ = s.loadCachedConfig() // Ignore error, we'll return the original error
 		}
@@ -435,7 +435,7 @@ func (s *ConfigPollingService) pollTenantConfiguration() error {
 
 		// Try cached config for some error types
 		if resp.StatusCode == http.StatusUnauthorized ||
-		   resp.StatusCode == http.StatusForbidden {
+			resp.StatusCode == http.StatusForbidden {
 			log.Warnf("Control returned status %d (unauthorized tenant), using cached config if available", resp.StatusCode)
 			_ = s.loadCachedConfig() // Ignore error, we'll return the original error
 		}
@@ -959,8 +959,8 @@ func (s *ConfigPollingService) recordFailure(statusCode int) {
 	// Only apply backoff for authentication errors (401, 403) or not found (404)
 	// These indicate inactive/invalid accounts that shouldn't hammer Control
 	if statusCode != http.StatusUnauthorized &&
-	   statusCode != http.StatusForbidden &&
-	   statusCode != http.StatusNotFound {
+		statusCode != http.StatusForbidden &&
+		statusCode != http.StatusNotFound {
 		return
 	}
 

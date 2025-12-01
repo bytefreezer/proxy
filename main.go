@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/api"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/proxy/services"
-	"github.com/bytefreezer/goodies/log"
 
 	// Import plugin packages to register them
 	_ "github.com/bytefreezer/proxy/plugins/ebpf"
@@ -431,18 +431,18 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 			"max_conns_per_host":  cfg.Receiver.MaxConnsPerHost,
 		},
 		"spooling": map[string]interface{}{
-			"enabled":                         cfg.Spooling.Enabled,
-			"directory":                       cfg.Spooling.Directory,
-			"max_size_bytes":                  cfg.Spooling.MaxSizeBytes,
-			"retry_attempts":                  cfg.Spooling.RetryAttempts,
-			"retry_interval_seconds":          cfg.Spooling.RetryIntervalSec,
-			"cleanup_interval_seconds":        cfg.Spooling.CleanupIntervalSec,
-			"keep_src":                        cfg.Spooling.KeepSrc,
+			"enabled":                           cfg.Spooling.Enabled,
+			"directory":                         cfg.Spooling.Directory,
+			"max_size_bytes":                    cfg.Spooling.MaxSizeBytes,
+			"retry_attempts":                    cfg.Spooling.RetryAttempts,
+			"retry_interval_seconds":            cfg.Spooling.RetryIntervalSec,
+			"cleanup_interval_seconds":          cfg.Spooling.CleanupIntervalSec,
+			"keep_src":                          cfg.Spooling.KeepSrc,
 			"queue_processing_interval_seconds": cfg.Spooling.QueueProcessingIntervalSec,
-			"organization":                    cfg.Spooling.Organization,
-			"per_tenant_limits":               cfg.Spooling.PerTenantLimits,
-			"max_files_per_dataset":           cfg.Spooling.MaxFilesPerDataset,
-			"max_age_days":                    cfg.Spooling.MaxAgeDays,
+			"organization":                      cfg.Spooling.Organization,
+			"per_tenant_limits":                 cfg.Spooling.PerTenantLimits,
+			"max_files_per_dataset":             cfg.Spooling.MaxFilesPerDataset,
+			"max_age_days":                      cfg.Spooling.MaxAgeDays,
 		},
 		"otel": map[string]interface{}{
 			"enabled":         cfg.Otel.Enabled,

@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/proxy/services"
-	"github.com/bytefreezer/goodies/log"
 	"github.com/swaggest/usecase"
 )
 
@@ -60,19 +60,19 @@ type ProxyStatsResponse struct {
 
 // ConfigResponse represents the current system configuration
 type ConfigResponse struct {
-	App           AppConfig              `json:"app"`
-	Server        ServerConfig           `json:"server"`
-	Plugins       PluginsConfig          `json:"plugins"`
-	Receiver      ReceiverConfigMasked   `json:"receiver"`
-	AccountID     string                 `json:"account_id,omitempty"`     // Account ID for multi-tenant polling
-	TenantID      string                 `json:"tenant_id,omitempty"`      // This will be masked
-	BearerToken   string                 `json:"bearer_token"`             // This will be masked
-	ControlURL    string                 `json:"control_url,omitempty"`    // Control service URL
-	ConfigMode    string                 `json:"config_mode,omitempty"`    // local-only | control-only
-	ConfigPolling ConfigPollingResponse  `json:"config_polling,omitempty"` // Configuration polling settings
-	SOC           SOCConfig              `json:"soc"`
-	Otel          OtelConfig             `json:"otel"`
-	Dev           bool                   `json:"dev"`
+	App           AppConfig             `json:"app"`
+	Server        ServerConfig          `json:"server"`
+	Plugins       PluginsConfig         `json:"plugins"`
+	Receiver      ReceiverConfigMasked  `json:"receiver"`
+	AccountID     string                `json:"account_id,omitempty"`     // Account ID for multi-tenant polling
+	TenantID      string                `json:"tenant_id,omitempty"`      // This will be masked
+	BearerToken   string                `json:"bearer_token"`             // This will be masked
+	ControlURL    string                `json:"control_url,omitempty"`    // Control service URL
+	ConfigMode    string                `json:"config_mode,omitempty"`    // local-only | control-only
+	ConfigPolling ConfigPollingResponse `json:"config_polling,omitempty"` // Configuration polling settings
+	SOC           SOCConfig             `json:"soc"`
+	Otel          OtelConfig            `json:"otel"`
+	Dev           bool                  `json:"dev"`
 }
 
 type AppConfig struct {
@@ -214,7 +214,7 @@ type DLQFileInfo struct {
 	RetryCount       int       `json:"retry_count"`
 	Status           string    `json:"status"`
 	FailureReason    string    `json:"failure_reason,omitempty"`
-	TriggerReason string    `json:"trigger_reason,omitempty"`
+	TriggerReason    string    `json:"trigger_reason,omitempty"`
 }
 
 // API holds the API configuration and services
@@ -697,9 +697,9 @@ type ConnectivityTestRequest struct {
 
 // ConnectivityTestResponse represents the response from connectivity tests
 type ConnectivityTestResponse struct {
-	Message string                         `json:"message"`
-	Results []ConnectivityTestResultAPI   `json:"results"`
-	Summary ConnectivityTestSummary       `json:"summary"`
+	Message string                      `json:"message"`
+	Results []ConnectivityTestResultAPI `json:"results"`
+	Summary ConnectivityTestSummary     `json:"summary"`
 }
 
 // ConnectivityTestResultAPI represents a single connectivity test result
@@ -719,11 +719,11 @@ type ConnectivityTestResultAPI struct {
 
 // ConnectivityTestSummary represents a summary of connectivity test results
 type ConnectivityTestSummary struct {
-	TotalTests    int `json:"total_tests"`
-	SuccessCount  int `json:"success_count"`
-	FailureCount  int `json:"failure_count"`
-	ErrorCount    int `json:"error_count"`
-	SuccessRate   int `json:"success_rate_percent"`
+	TotalTests   int `json:"total_tests"`
+	SuccessCount int `json:"success_count"`
+	FailureCount int `json:"failure_count"`
+	ErrorCount   int `json:"error_count"`
+	SuccessRate  int `json:"success_rate_percent"`
 }
 
 // TestConnectivity tests connectivity to receiver for all configured plugins/tenants
@@ -802,12 +802,12 @@ type PluginSchemasResponse struct {
 
 // PluginSchemaAPI represents a plugin schema in the API
 type PluginSchemaAPI struct {
-	Name        string               `json:"name"`
-	DisplayName string               `json:"display_name"`
-	Description string               `json:"description"`
-	Category    string               `json:"category"`
-	Transport   string               `json:"transport"`
-	DefaultPort int                  `json:"default_port,omitempty"`
+	Name        string                 `json:"name"`
+	DisplayName string                 `json:"display_name"`
+	Description string                 `json:"description"`
+	Category    string                 `json:"category"`
+	Transport   string                 `json:"transport"`
+	DefaultPort int                    `json:"default_port,omitempty"`
 	Fields      []PluginFieldSchemaAPI `json:"fields"`
 }
 

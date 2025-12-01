@@ -1,14 +1,14 @@
 package services
 
 import (
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/config"
 )
 
 // TenantValidator handles tenant validation with caching

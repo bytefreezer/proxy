@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Plugin implements the Syslog input plugin with direct filesystem writes
@@ -36,7 +36,7 @@ type Config struct {
 	TenantID       string `mapstructure:"tenant_id"`
 	DatasetID      string `mapstructure:"dataset_id"`
 	BearerToken    string `mapstructure:"bearer_token,omitempty"`
-	SyslogMode     string `mapstructure:"syslog_mode,omitempty"`    // "rfc3164", "rfc5424", "auto"
+	SyslogMode     string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424", "auto"
 	ReadBufferSize int    `mapstructure:"read_buffer_size,omitempty"`
 }
 

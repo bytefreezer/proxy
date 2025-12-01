@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/domain"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // SpoolingService handles local file spooling for failed uploads
@@ -47,20 +47,20 @@ type SpoolingService struct {
 
 // SpooledFile represents a file in the spooling directory
 type SpooledFile struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	DatasetID     string    `json:"dataset_id"`
-	BearerToken   string    `json:"bearer_token,omitempty"` // Authentication token for this tenant
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	DatasetID        string    `json:"dataset_id"`
+	BearerToken      string    `json:"bearer_token,omitempty"` // Authentication token for this tenant
 	Filename         string    `json:"filename"`
-	CompressedSize   int64     `json:"compressed_size"`     // Compressed size on disk
-	UncompressedSize int64     `json:"uncompressed_size"`   // Original data size before compression
+	CompressedSize   int64     `json:"compressed_size"`   // Compressed size on disk
+	UncompressedSize int64     `json:"uncompressed_size"` // Original data size before compression
 	LineCount        int       `json:"line_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	LastRetry     time.Time `json:"last_retry"`
-	RetryCount    int       `json:"retry_count"`
-	Status        string    `json:"status"` // "pending", "retrying", "failed", "success"
-	FailureReason string    `json:"failure_reason,omitempty"`
-	TriggerReason string    `json:"trigger_reason,omitempty"` // Reason batch was created: "timeout", "size_limit_reached", "service_shutdown"
+	CreatedAt        time.Time `json:"created_at"`
+	LastRetry        time.Time `json:"last_retry"`
+	RetryCount       int       `json:"retry_count"`
+	Status           string    `json:"status"` // "pending", "retrying", "failed", "success"
+	FailureReason    string    `json:"failure_reason,omitempty"`
+	TriggerReason    string    `json:"trigger_reason,omitempty"` // Reason batch was created: "timeout", "size_limit_reached", "service_shutdown"
 }
 
 // NewSpoolingService creates a new spooling service
@@ -77,7 +77,7 @@ func NewSpoolingService(cfg *config.Config) *SpoolingService {
 		retryAttempts:   cfg.Spooling.RetryAttempts,
 		retryInterval:   time.Duration(cfg.Spooling.RetryIntervalSec) * time.Second,
 		cleanupInterval: time.Duration(cfg.Spooling.CleanupIntervalSec) * time.Second,
-		retryForwarder:  NewRetryHTTPForwarder(cfg),          // Dedicated HTTP client for retry processing
+		retryForwarder:  NewRetryHTTPForwarder(cfg),                                // Dedicated HTTP client for retry processing
 		tenantValidator: NewTenantValidator(&cfg.TenantValidation, cfg.ControlURL), // Layer 4: Proactive tenant validation
 		shutdown:        make(chan struct{}),
 		retryTrigger:    make(chan struct{}, 100), // Buffered channel to prevent blocking
@@ -130,7 +130,6 @@ func (s *SpoolingService) Stop() error {
 	log.Info("Spooling service stopped")
 	return nil
 }
-
 
 // StoreRawMessage stores individual message in raw directory for later batching
 func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error {
@@ -364,7 +363,6 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 	return nil
 }
 
-
 // SpoolData stores data locally when upload fails (maintained for API compatibility)
 func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, data []byte, failureReason string, triggerReason string) error {
 	if !s.config.Spooling.Enabled {
@@ -443,8 +441,8 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 		DatasetID:        datasetID,
 		BearerToken:      bearerToken,
 		Filename:         filename,
-		CompressedSize:   compressedSize,     // File size on disk
-		UncompressedSize: uncompressedSize,   // Original data size (same as compressed here)
+		CompressedSize:   compressedSize,   // File size on disk
+		UncompressedSize: uncompressedSize, // Original data size (same as compressed here)
 		LineCount:        lineCount,
 		CreatedAt:        time.Now(),
 		LastRetry:        time.Time{},
@@ -624,11 +622,11 @@ func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 
 // RetryJob represents a retry task for a worker
 type RetryJob struct {
-	TenantID   string
-	DatasetID  string
-	BatchID    string
-	FilePath   string
-	MetaPath   string
+	TenantID  string
+	DatasetID string
+	BatchID   string
+	FilePath  string
+	MetaPath  string
 }
 
 // processRetries attempts to retry failed uploads from both queue/ and retry/ directories using concurrent workers
@@ -665,9 +663,9 @@ func (s *SpoolingService) processRetries() {
 	// Create job channel and results channel
 	jobChannel := make(chan RetryJob, len(jobs))
 	resultChannel := make(chan struct {
-		success bool
+		success  bool
 		tenantID string
-		batchID string
+		batchID  string
 	}, len(jobs))
 
 	// Start worker pool
@@ -860,9 +858,9 @@ func (s *SpoolingService) collectQueueJobs(tenantID, datasetID, queueDir string)
 
 // retryJobWorker processes retry jobs from the job channel
 func (s *SpoolingService) retryJobWorker(workerID int, jobChannel <-chan RetryJob, resultChannel chan<- struct {
-	success bool
+	success  bool
 	tenantID string
-	batchID string
+	batchID  string
 }, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -874,9 +872,9 @@ func (s *SpoolingService) retryJobWorker(workerID int, jobChannel <-chan RetryJo
 		success := s.processRetryJob(job, s.retryForwarder)
 
 		resultChannel <- struct {
-			success bool
+			success  bool
 			tenantID string
-			batchID string
+			batchID  string
 		}{
 			success:  success,
 			tenantID: job.TenantID,
@@ -975,15 +973,15 @@ func (s *SpoolingService) processQueueJob(job RetryJob, forwarder *HTTPForwarder
 
 	// Create a DataBatch for upload
 	batch := &domain.DataBatch{
-		ID:            job.BatchID,
-		TenantID:      job.TenantID,
-		DatasetID:     job.DatasetID,
-		Data:          data,
-		DataHint:      dataHint,
-		Filename:      fileName, // Preserve original filename
-		CreatedAt:     time.Now(),
-		TotalBytes:    int64(len(data)),
-		LineCount:     actualLineCount, // Use verified actual count
+		ID:         job.BatchID,
+		TenantID:   job.TenantID,
+		DatasetID:  job.DatasetID,
+		Data:       data,
+		DataHint:   dataHint,
+		Filename:   fileName, // Preserve original filename
+		CreatedAt:  time.Now(),
+		TotalBytes: int64(len(data)),
+		LineCount:  actualLineCount, // Use verified actual count
 	}
 
 	// Validate tenant is active before attempting upload (Layer 4 optimization)
@@ -1082,16 +1080,16 @@ func (s *SpoolingService) attemptRetryUpload(metadata *SpooledFile, forwarder *H
 
 	// Create a batch for upload
 	batch := &domain.DataBatch{
-		ID:            metadata.ID,
-		TenantID:      metadata.TenantID,
-		DatasetID:     metadata.DatasetID,
-		Data:          data,
-		LineCount:     metadata.LineCount,
-		TotalBytes:    metadata.CompressedSize,
-		CreatedAt:     metadata.CreatedAt,
-		BearerToken:   metadata.BearerToken,
-		DataHint:      dataHint, // Extract from filename to fix malformed filenames
-		Filename:      filepath.Base(metadata.Filename), // Preserve original filename
+		ID:          metadata.ID,
+		TenantID:    metadata.TenantID,
+		DatasetID:   metadata.DatasetID,
+		Data:        data,
+		LineCount:   metadata.LineCount,
+		TotalBytes:  metadata.CompressedSize,
+		CreatedAt:   metadata.CreatedAt,
+		BearerToken: metadata.BearerToken,
+		DataHint:    dataHint,                         // Extract from filename to fix malformed filenames
+		Filename:    filepath.Base(metadata.Filename), // Preserve original filename
 	}
 
 	// Try to upload
@@ -1119,7 +1117,7 @@ func (s *SpoolingService) removeSuccessfulRetryFile(metadata *SpooledFile) error
 	// Remove metadata file (.meta extension)
 	// Extract batch ID from data file path - new format: tenant--dataset--timestamp--extension.gz
 	dataFile := filepath.Base(metadata.Filename)
-	batchID := strings.TrimSuffix(dataFile, ".gz")  // New format: just remove .gz suffix
+	batchID := strings.TrimSuffix(dataFile, ".gz") // New format: just remove .gz suffix
 	retryDir := filepath.Dir(metadata.Filename)
 	metaPath := filepath.Join(retryDir, batchID+".meta")
 
@@ -1134,7 +1132,7 @@ func (s *SpoolingService) removeSuccessfulRetryFile(metadata *SpooledFile) error
 func (s *SpoolingService) updateRetryMetadata(metadata *SpooledFile) error {
 	// Extract batch ID from data file path - new format: tenant--dataset--timestamp--extension.gz
 	dataFile := filepath.Base(metadata.Filename)
-	batchID := strings.TrimSuffix(dataFile, ".gz")  // New format: just remove .gz suffix
+	batchID := strings.TrimSuffix(dataFile, ".gz") // New format: just remove .gz suffix
 	retryDir := filepath.Dir(metadata.Filename)
 	metaPath := filepath.Join(retryDir, batchID+".meta")
 
@@ -1169,8 +1167,8 @@ func (s *SpoolingService) cleanupWorker() {
 		case <-s.shutdown:
 			return
 		case <-ticker.C:
-			s.moveAgedFilesToDLQ()  // Move old undeliverable files to DLQ first
-			s.cleanupOldFiles()     // Then cleanup only safe files
+			s.moveAgedFilesToDLQ() // Move old undeliverable files to DLQ first
+			s.cleanupOldFiles()    // Then cleanup only safe files
 			s.monitorDLQAndSpace()
 		}
 	}
@@ -1581,9 +1579,9 @@ func (s *SpoolingService) generateSpoolPaths(tenantID, datasetID string, data []
 	// Determine file extension based on compression
 	var fileExtension string
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-		fileExtension = "ndjson"  // Will become: tenant--dataset--timestamp--ndjson.gz
+		fileExtension = "ndjson" // Will become: tenant--dataset--timestamp--ndjson.gz
 	} else {
-		fileExtension = "ndjson"  // Will become: tenant--dataset--timestamp--ndjson.gz (uncompressed data, but named .gz for consistency)
+		fileExtension = "ndjson" // Will become: tenant--dataset--timestamp--ndjson.gz (uncompressed data, but named .gz for consistency)
 	}
 
 	// Generate filename in new format
@@ -2679,9 +2677,9 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 		DatasetID:        datasetID,
 		BearerToken:      "", // Will be filled from batch context if available
 		Filename:         dstDataFile,
-		CompressedSize:   compressedSize,      // Compressed size on disk
-		UncompressedSize: uncompressedSize,    // Original data size before compression
-		LineCount:        lineCount,           // Count lines from actual file data
+		CompressedSize:   compressedSize,   // Compressed size on disk
+		UncompressedSize: uncompressedSize, // Original data size before compression
+		LineCount:        lineCount,        // Count lines from actual file data
 		CreatedAt:        now,
 		LastRetry:        now,
 		RetryCount:       1, // First retry attempt
@@ -2785,9 +2783,9 @@ func (s *SpoolingService) MoveQueueToDLQ(tenantID, datasetID, batchID, failureRe
 		DatasetID:        datasetID,
 		BearerToken:      "", // Will be filled from batch context if available
 		Filename:         dstDataFile,
-		CompressedSize:   compressedSize,      // Compressed size on disk
-		UncompressedSize: uncompressedSize,    // Original data size before compression
-		LineCount:        lineCount,           // Count lines from actual file data
+		CompressedSize:   compressedSize,   // Compressed size on disk
+		UncompressedSize: uncompressedSize, // Original data size before compression
+		LineCount:        lineCount,        // Count lines from actual file data
 		CreatedAt:        now,
 		LastRetry:        now,
 		RetryCount:       0, // No retries for permanent failures
@@ -2998,12 +2996,12 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		DatasetID:        datasetID,
 		BearerToken:      "", // Will be filled from config during retry
 		Filename:         dstDataFile,
-		CompressedSize:   compressedSize,      // Compressed size on disk
-		UncompressedSize: uncompressedSize,    // Original data size before compression
-		LineCount:        lineCount,           // Count lines from actual file data
-		CreatedAt:        now,                 // Use current time as creation time
-		LastRetry:        time.Time{},         // No retry attempted yet
-		RetryCount:       0,                   // Fresh start - gets full 4 retry attempts
+		CompressedSize:   compressedSize,   // Compressed size on disk
+		UncompressedSize: uncompressedSize, // Original data size before compression
+		LineCount:        lineCount,        // Count lines from actual file data
+		CreatedAt:        now,              // Use current time as creation time
+		LastRetry:        time.Time{},      // No retry attempted yet
+		RetryCount:       0,                // Fresh start - gets full 4 retry attempts
 		Status:           "retry",
 		FailureReason:    "Recovered from orphaned queue file on startup",
 		TriggerReason:    "service_restart", // Special case for recovered files
@@ -3099,8 +3097,6 @@ func (s *SpoolingService) moveAgedFilesToDLQ() {
 
 // Note: processQueueRetries removed - queue files don't have metadata and are processed immediately
 
-
-
 // monitorDLQAndSpace monitors DLQ growth and disk space usage
 func (s *SpoolingService) monitorDLQAndSpace() {
 	dlqStats, err := s.GetDLQStats()
@@ -3111,9 +3107,9 @@ func (s *SpoolingService) monitorDLQAndSpace() {
 
 	// Alert thresholds
 	const (
-		dlqSizeThresholdMB  = 500  // Alert when DLQ exceeds 500MB
-		dlqCountThreshold   = 1000 // Alert when DLQ exceeds 1000 files
-		diskUsageThreshold  = 0.85 // Alert when disk usage exceeds 85%
+		dlqSizeThresholdMB = 500  // Alert when DLQ exceeds 500MB
+		dlqCountThreshold  = 1000 // Alert when DLQ exceeds 1000 files
+		diskUsageThreshold = 0.85 // Alert when disk usage exceeds 85%
 	)
 
 	// Monitor DLQ size growth
@@ -3325,5 +3321,3 @@ func isLineBasedFormat(dataHint string) bool {
 		return false
 	}
 }
-
-

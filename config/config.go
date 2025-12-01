@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/bytefreezer/goodies/log"
 	pkgerrors "github.com/pkg/errors"
 
 	"github.com/bytefreezer/proxy/alerts"
@@ -26,8 +26,8 @@ type Config struct {
 	Inputs           []plugins.PluginConfig `mapstructure:"inputs"` // Plugin-based input system
 	Batching         Batching               `mapstructure:"batching"`
 	Receiver         Receiver               `mapstructure:"receiver"`
-	AccountID        string                 `mapstructure:"account_id"` // Account ID for multi-tenant polling
-	TenantID         string                 `mapstructure:"tenant_id"`  // Global tenant ID (fallback for plugins without tenant_id)
+	AccountID        string                 `mapstructure:"account_id"`   // Account ID for multi-tenant polling
+	TenantID         string                 `mapstructure:"tenant_id"`    // Global tenant ID (fallback for plugins without tenant_id)
 	BearerToken      string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
 	ControlURL       string                 `mapstructure:"control_url"`  // Centralized control service URL
 	ConfigMode       string                 `mapstructure:"config_mode"`  // local-only | control-only
@@ -41,9 +41,9 @@ type Config struct {
 	Dev              bool                   `mapstructure:"dev"`
 
 	// Runtime components
-	SOCAlertClient       *alerts.SOCAlertClient    `mapstructure:"-"`
-	ErrorReporter        *errors.ErrorReporter     `mapstructure:"-"`
-	DatasetMetricsClient interface{}               `mapstructure:"-"` // services.DatasetMetricsClient (interface to avoid circular import)
+	SOCAlertClient       *alerts.SOCAlertClient `mapstructure:"-"`
+	ErrorReporter        *errors.ErrorReporter  `mapstructure:"-"`
+	DatasetMetricsClient interface{}            `mapstructure:"-"` // services.DatasetMetricsClient (interface to avoid circular import)
 }
 
 // ErrorTrackingConfig represents error tracking configuration
@@ -76,14 +76,14 @@ type Batching struct {
 }
 
 type Receiver struct {
-	BaseURL            string `mapstructure:"base_url"`
-	TimeoutSec         int    `mapstructure:"timeout_seconds"`
-	UploadWorkerCount  int    `mapstructure:"upload_worker_count"`  // Number of upload workers (aligned with receiver)
-	MaxIdleConns       int    `mapstructure:"max_idle_conns"`       // HTTP connection pool size
-	MaxConnsPerHost    int    `mapstructure:"max_conns_per_host"`   // Max connections per host
+	BaseURL           string `mapstructure:"base_url"`
+	TimeoutSec        int    `mapstructure:"timeout_seconds"`
+	UploadWorkerCount int    `mapstructure:"upload_worker_count"` // Number of upload workers (aligned with receiver)
+	MaxIdleConns      int    `mapstructure:"max_idle_conns"`      // HTTP connection pool size
+	MaxConnsPerHost   int    `mapstructure:"max_conns_per_host"`  // Max connections per host
 
 	// Dedicated retry HTTP client configuration (same defaults as upload client)
-	RetryMaxIdleConns    int `mapstructure:"retry_max_idle_conns"`    // HTTP connection pool size for retries
+	RetryMaxIdleConns    int `mapstructure:"retry_max_idle_conns"`     // HTTP connection pool size for retries
 	RetryMaxConnsPerHost int `mapstructure:"retry_max_conns_per_host"` // Max connections per host for retries
 }
 
@@ -103,7 +103,6 @@ type Otel struct {
 	MetricsHost           string `mapstructure:"metrics_host"`
 }
 
-
 type ConfigPollingConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`
 	IntervalSeconds int    `mapstructure:"interval_seconds"`
@@ -113,14 +112,14 @@ type ConfigPollingConfig struct {
 }
 
 type Spooling struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	Directory          string `mapstructure:"directory"`
-	MaxSizeBytes       int64  `mapstructure:"max_size_bytes"`
-	RetryAttempts      int    `mapstructure:"retry_attempts"`
-	RetryIntervalSec   int    `mapstructure:"retry_interval_seconds"`
-	CleanupIntervalSec int    `mapstructure:"cleanup_interval_seconds"`
-	KeepSrc                      bool `mapstructure:"keep_src"`
-	QueueProcessingIntervalSec   int  `mapstructure:"queue_processing_interval_seconds"`
+	Enabled                    bool   `mapstructure:"enabled"`
+	Directory                  string `mapstructure:"directory"`
+	MaxSizeBytes               int64  `mapstructure:"max_size_bytes"`
+	RetryAttempts              int    `mapstructure:"retry_attempts"`
+	RetryIntervalSec           int    `mapstructure:"retry_interval_seconds"`
+	CleanupIntervalSec         int    `mapstructure:"cleanup_interval_seconds"`
+	KeepSrc                    bool   `mapstructure:"keep_src"`
+	QueueProcessingIntervalSec int    `mapstructure:"queue_processing_interval_seconds"`
 
 	// Organization settings
 	Organization       string `mapstructure:"organization"`          // "flat", "tenant_dataset", "date_tenant", "protocol_tenant"
@@ -130,17 +129,17 @@ type Spooling struct {
 }
 
 type HealthReportingConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	ReportInterval     int    `mapstructure:"report_interval"`
-	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
-	RegisterOnStartup  bool   `mapstructure:"register_on_startup"`
+	Enabled           bool `mapstructure:"enabled"`
+	ReportInterval    int  `mapstructure:"report_interval"`
+	TimeoutSeconds    int  `mapstructure:"timeout_seconds"`
+	RegisterOnStartup bool `mapstructure:"register_on_startup"`
 }
 
 type TenantValidationConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	CacheTTLSec        int    `mapstructure:"cache_ttl_seconds"`         // TTL for active tenants
-	InactiveCacheTTLSec int    `mapstructure:"inactive_cache_ttl_seconds"` // TTL for inactive tenants (longer)
-	TimeoutSeconds     int    `mapstructure:"timeout_seconds"`
+	Enabled             bool `mapstructure:"enabled"`
+	CacheTTLSec         int  `mapstructure:"cache_ttl_seconds"`          // TTL for active tenants
+	InactiveCacheTTLSec int  `mapstructure:"inactive_cache_ttl_seconds"` // TTL for inactive tenants (longer)
+	TimeoutSeconds      int  `mapstructure:"timeout_seconds"`
 }
 
 func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {

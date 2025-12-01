@@ -3,15 +3,15 @@ package ebpf
 import (
 	"bytes"
 	"context"
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Plugin implements the eBPF input plugin with direct filesystem writes

@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Plugin implements the HTTP webhook input plugin with direct filesystem writes
@@ -35,8 +35,8 @@ type Config struct {
 	Path                 string `mapstructure:"path"`
 	TenantID             string `mapstructure:"tenant_id"`
 	DatasetID            string `mapstructure:"dataset_id"`
-	DataHint             string `mapstructure:"data_hint,omitempty"`             // data format hint (e.g., "ndjson")
-	DataFormat           string `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
+	DataHint             string `mapstructure:"data_hint,omitempty"`   // data format hint (e.g., "ndjson")
+	DataFormat           string `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken          string `mapstructure:"bearer_token,omitempty"`
 	MaxPayloadSize       int64  `mapstructure:"max_payload_size,omitempty"`      // bytes
 	MaxLinesPerRequest   int    `mapstructure:"max_lines_per_request,omitempty"` // lines limit

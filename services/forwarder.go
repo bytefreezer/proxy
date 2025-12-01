@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/domain"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // UploadError represents an upload failure with retry information
@@ -33,13 +33,13 @@ func (e *UploadError) Error() string {
 // isPermanentHTTPError determines if an HTTP status code represents a permanent failure
 func isPermanentHTTPError(statusCode int) bool {
 	switch statusCode {
-	case http.StatusBadRequest,          // 400 - Bad Request
-		http.StatusUnauthorized,         // 401 - Unauthorized (inactive tenant)
-		http.StatusForbidden,            // 403 - Forbidden
-		http.StatusNotFound,             // 404 - Not Found
-		http.StatusGone,                 // 410 - Gone (explicitly deactivated)
+	case http.StatusBadRequest, // 400 - Bad Request
+		http.StatusUnauthorized,          // 401 - Unauthorized (inactive tenant)
+		http.StatusForbidden,             // 403 - Forbidden
+		http.StatusNotFound,              // 404 - Not Found
+		http.StatusGone,                  // 410 - Gone (explicitly deactivated)
 		http.StatusRequestEntityTooLarge, // 413 - Payload Too Large
-		http.StatusUnprocessableEntity:  // 422 - Unprocessable Entity
+		http.StatusUnprocessableEntity:   // 422 - Unprocessable Entity
 		return true
 	case http.StatusTooManyRequests: // 429 - Rate limited (transient, should retry)
 		return false

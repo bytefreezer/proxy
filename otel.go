@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"

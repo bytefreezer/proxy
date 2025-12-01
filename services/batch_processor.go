@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/domain"
 	"github.com/bytefreezer/proxy/plugins"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // BatchProcessor handles batching of plugin messages
@@ -28,14 +28,14 @@ type BatchProcessor struct {
 
 // activeBatch represents a batch being built
 type activeBatch struct {
-	TenantID      string
-	DatasetID     string
-	BearerToken   string
-	DataHint      string
-	Messages      [][]byte
-	TotalBytes    int64
-	CreatedAt     time.Time
-	LastUpdated   time.Time
+	TenantID    string
+	DatasetID   string
+	BearerToken string
+	DataHint    string
+	Messages    [][]byte
+	TotalBytes  int64
+	CreatedAt   time.Time
+	LastUpdated time.Time
 }
 
 // NewBatchProcessor creates a new batch processor
@@ -101,13 +101,13 @@ func (bp *BatchProcessor) AddMessage(msg *plugins.DataMessage) {
 		}
 
 		batch = &activeBatch{
-			TenantID:      msg.TenantID,
-			DatasetID:     msg.DatasetID,
-			BearerToken:   bearerToken,
-			DataHint:      msg.DataHint,
-			Messages:      make([][]byte, 0),
-			CreatedAt:     msg.Timestamp,
-			LastUpdated:   msg.Timestamp,
+			TenantID:    msg.TenantID,
+			DatasetID:   msg.DatasetID,
+			BearerToken: bearerToken,
+			DataHint:    msg.DataHint,
+			Messages:    make([][]byte, 0),
+			CreatedAt:   msg.Timestamp,
+			LastUpdated: msg.Timestamp,
 		}
 		bp.batches[key] = batch
 	}
@@ -170,7 +170,7 @@ func (bp *BatchProcessor) finalizeBatch(key string, batch *activeBatch, reason s
 		DatasetID:     batch.DatasetID,
 		DataHint:      batch.DataHint,
 		Data:          compressedData,
-		LineCount:     actualLineCount, // Use actual count of messages that made it through
+		LineCount:     actualLineCount,  // Use actual count of messages that made it through
 		TotalBytes:    batch.TotalBytes, // Original uncompressed size
 		CreatedAt:     batch.CreatedAt,
 		BearerToken:   batch.BearerToken,

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Plugin implements the Kafka input plugin with direct filesystem writes
@@ -35,8 +35,8 @@ type Config struct {
 	GroupID           string   `mapstructure:"group_id"`
 	TenantID          string   `mapstructure:"tenant_id"`
 	DatasetID         string   `mapstructure:"dataset_id"`
-	DataHint          string   `mapstructure:"data_hint,omitempty"`      // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
-	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
+	DataHint          string   `mapstructure:"data_hint,omitempty"`   // data format hint (e.g., "ndjson", "raw") - use "ndjson" for JSON normalization
+	DataFormat        string   `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
 	BearerToken       string   `mapstructure:"bearer_token,omitempty"`
 	AutoOffsetReset   string   `mapstructure:"auto_offset_reset,omitempty"`  // "earliest", "latest"
 	SessionTimeout    int      `mapstructure:"session_timeout,omitempty"`    // seconds

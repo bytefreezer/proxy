@@ -3,15 +3,15 @@ package ipfix
 import (
 	"bytes"
 	"context"
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 	netflowdec "github.com/netsampler/goflow2/v2/decoders/netflow"
 )
 
@@ -36,7 +36,7 @@ type Config struct {
 	TenantID       string `mapstructure:"tenant_id"`
 	DatasetID      string `mapstructure:"dataset_id"`
 	BearerToken    string `mapstructure:"bearer_token,omitempty"`
-	Protocol       string `mapstructure:"protocol,omitempty"` // Always "ipfix" for this plugin
+	Protocol       string `mapstructure:"protocol,omitempty"`  // Always "ipfix" for this plugin
 	DataHint       string `mapstructure:"data_hint,omitempty"` // Always "ndjson" for flow data
 	ReadBufferSize int    `mapstructure:"read_buffer_size,omitempty"`
 	WorkerCount    int    `mapstructure:"worker_count,omitempty"` // Number of processing workers

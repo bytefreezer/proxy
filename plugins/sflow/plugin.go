@@ -3,15 +3,15 @@ package sflow
 import (
 	"bytes"
 	"context"
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 	sflowdec "github.com/netsampler/goflow2/v2/decoders/sflow"
 )
 
@@ -35,7 +35,7 @@ type Config struct {
 	TenantID       string `mapstructure:"tenant_id"`
 	DatasetID      string `mapstructure:"dataset_id"`
 	BearerToken    string `mapstructure:"bearer_token,omitempty"`
-	Protocol       string `mapstructure:"protocol,omitempty"` // Always "sflow" for this plugin
+	Protocol       string `mapstructure:"protocol,omitempty"`  // Always "sflow" for this plugin
 	DataHint       string `mapstructure:"data_hint,omitempty"` // Always "ndjson" for flow data
 	ReadBufferSize int    `mapstructure:"read_buffer_size,omitempty"`
 	WorkerCount    int    `mapstructure:"worker_count,omitempty"` // Number of processing workers
@@ -398,7 +398,7 @@ func extractIPsFromHeader(headerBytes []byte) map[string]interface{} {
 		}
 
 		// Get IP header length and extract TCP/UDP ports if available
-		ihl := int(headerBytes[offset] & 0x0F) * 4
+		ihl := int(headerBytes[offset]&0x0F) * 4
 		protocol := headerBytes[offset+9]
 
 		if len(headerBytes) >= offset+ihl+4 && (protocol == 6 || protocol == 17) { // TCP or UDP

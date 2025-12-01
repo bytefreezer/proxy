@@ -186,19 +186,19 @@ func TestAPI_RetryDLQFiles(t *testing.T) {
 
 	// Create test metadata file - ID should match the filename without .gz
 	testMetadata := services.SpooledFile{
-		ID:            "tenant1--dataset1--20240115103045--raw",
-		TenantID:      "test-tenant",
-		DatasetID:     "test-dataset",
-		BearerToken:   "test-token",
-		Filename:      testDataFile,
+		ID:               "tenant1--dataset1--20240115103045--raw",
+		TenantID:         "test-tenant",
+		DatasetID:        "test-dataset",
+		BearerToken:      "test-token",
+		Filename:         testDataFile,
 		CompressedSize:   int64(len(testData)),
 		UncompressedSize: int64(len(testData)),
-		LineCount:     1,
-		CreatedAt:     time.Now(),
-		LastRetry:     time.Now(),
-		RetryCount:    4,
-		Status:        "dlq",
-		FailureReason: "Exceeded retry limit",
+		LineCount:        1,
+		CreatedAt:        time.Now(),
+		LastRetry:        time.Now(),
+		RetryCount:       4,
+		Status:           "dlq",
+		FailureReason:    "Exceeded retry limit",
 	}
 
 	metaData, err := sonic.Marshal(testMetadata)
@@ -516,12 +516,12 @@ func TestDLQStatsResponse_JSON(t *testing.T) {
 			},
 		},
 		OldestQueueFile: &FileInfo{
-			ID:        "test-file",
-			TenantID:  "test-tenant",
-			DatasetID: "test-dataset",
+			ID:               "test-file",
+			TenantID:         "test-tenant",
+			DatasetID:        "test-dataset",
 			CompressedSize:   100,
 			UncompressedSize: 100,
-			CreatedAt: time.Now(),
+			CreatedAt:        time.Now(),
 		},
 		SpoolDirectory: "/test/spool",
 	}

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Plugin implements the UDP input plugin with direct filesystem writes
@@ -29,16 +29,16 @@ type Plugin struct {
 
 // Config represents UDP plugin configuration
 type Config struct {
-	Host              string `mapstructure:"host"`
-	Port              int    `mapstructure:"port"`
-	TenantID          string `mapstructure:"tenant_id"`
-	DatasetID         string `mapstructure:"dataset_id"`
-	BearerToken       string `mapstructure:"bearer_token,omitempty"`
-	Protocol          string `mapstructure:"protocol,omitempty"`    // "udp", "syslog"
-	SyslogMode        string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424"
-	DataHint          string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "raw")
-	DataFormat        string `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
-	ReadBufferSize    int    `mapstructure:"read_buffer_size,omitempty"`
+	Host           string `mapstructure:"host"`
+	Port           int    `mapstructure:"port"`
+	TenantID       string `mapstructure:"tenant_id"`
+	DatasetID      string `mapstructure:"dataset_id"`
+	BearerToken    string `mapstructure:"bearer_token,omitempty"`
+	Protocol       string `mapstructure:"protocol,omitempty"`    // "udp", "syslog"
+	SyslogMode     string `mapstructure:"syslog_mode,omitempty"` // "rfc3164", "rfc5424"
+	DataHint       string `mapstructure:"data_hint,omitempty"`   // Data format hint for downstream processing (defaults to "raw")
+	DataFormat     string `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
+	ReadBufferSize int    `mapstructure:"read_buffer_size,omitempty"`
 }
 
 // PluginMetrics tracks UDP plugin metrics
@@ -168,7 +168,6 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 	return nil
 }
 
-
 // Stop gracefully shuts down the UDP plugin
 func (p *Plugin) Stop() error {
 	p.mu.Lock()
@@ -217,7 +216,6 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError st
 		LastUpdated: time.Now(),
 	}
 }
-
 
 // packetReaderWithSpooling reads UDP packets and writes directly to filesystem (zero data loss)
 func (p *Plugin) packetReaderWithSpooling() {

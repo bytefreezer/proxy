@@ -150,14 +150,14 @@ func TestForwarderWithNewFilenameFormat(t *testing.T) {
 	testTime := time.Date(2025, 1, 15, 10, 30, 45, 123456789, time.UTC)
 
 	batch := &domain.DataBatch{
-		ID:            "batch_12345",
-		TenantID:      "test-tenant",
-		DatasetID:     "test-dataset",
-		DataHint:      "raw",
-		CreatedAt:     testTime,
-		Data:          []byte("test data"),
-		LineCount:     1,
-		TotalBytes:    9,
+		ID:         "batch_12345",
+		TenantID:   "test-tenant",
+		DatasetID:  "test-dataset",
+		DataHint:   "raw",
+		CreatedAt:  testTime,
+		Data:       []byte("test data"),
+		LineCount:  1,
+		TotalBytes: 9,
 	}
 
 	expectedFilename := fmt.Sprintf("test-tenant--test-dataset--%d--raw.gz", testTime.UnixNano())

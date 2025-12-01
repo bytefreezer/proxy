@@ -257,19 +257,19 @@ func TestSpoolingService_RetryDLQFiles(t *testing.T) {
 
 	// Create test metadata file
 	testMetadata := SpooledFile{
-		ID:            "tenant1--dataset1--20240115103045--raw",
-		TenantID:      "test-tenant",
-		DatasetID:     "test-dataset",
-		BearerToken:   "test-token",
-		Filename:      testDataFile,
+		ID:               "tenant1--dataset1--20240115103045--raw",
+		TenantID:         "test-tenant",
+		DatasetID:        "test-dataset",
+		BearerToken:      "test-token",
+		Filename:         testDataFile,
 		CompressedSize:   int64(len(testData)),
 		UncompressedSize: int64(len(testData)),
-		LineCount:     1,
-		CreatedAt:     time.Now(),
-		LastRetry:     time.Now(),
-		RetryCount:    4,
-		Status:        "dlq",
-		FailureReason: "Exceeded retry limit",
+		LineCount:        1,
+		CreatedAt:        time.Now(),
+		LastRetry:        time.Now(),
+		RetryCount:       4,
+		Status:           "dlq",
+		FailureReason:    "Exceeded retry limit",
 	}
 
 	metaData, err := sonic.Marshal(testMetadata)
@@ -421,8 +421,8 @@ func TestSpoolingService_CountFilesInDirectory(t *testing.T) {
 	testFiles := map[string]string{
 		"tenant1--dataset1--20240115103045--raw.gz": "test data 1",
 		"tenant1--dataset1--20240115103047--raw.gz": "test data 2 longer content",
-		"file3.txt":       "should be ignored",
-		"file4.ndjson":    "should be ignored",
+		"file3.txt":    "should be ignored",
+		"file4.ndjson": "should be ignored",
 	}
 
 	for filename, content := range testFiles {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/plugins"
-	"github.com/bytefreezer/goodies/log"
 )
 
 // ConnectivityTestResult represents the result of a connectivity test

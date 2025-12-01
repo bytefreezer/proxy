@@ -13,37 +13,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/bytefreezer/proxy/plugins"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/plugins"
 )
 
 // Plugin implements the Kinesis input plugin with direct filesystem writes
 type Plugin struct {
-	config     Config
-	client     *kinesis.Client
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	health     plugins.PluginHealth
-	mu         sync.RWMutex
-	spooler    plugins.SpoolingInterface
-	metrics    PluginMetrics
+	config        Config
+	client        *kinesis.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	health        plugins.PluginHealth
+	mu            sync.RWMutex
+	spooler       plugins.SpoolingInterface
+	metrics       PluginMetrics
 	textProcessor *plugins.TextProcessor
-	shardIters map[string]string // track shard iterators
+	shardIters    map[string]string // track shard iterators
 }
 
 // Config represents Kinesis plugin configuration
 type Config struct {
-	StreamName      string `mapstructure:"stream_name"`
-	Region          string `mapstructure:"region"`
-	TenantID        string `mapstructure:"tenant_id"`
-	DatasetID       string `mapstructure:"dataset_id"`
-	BearerToken     string `mapstructure:"bearer_token,omitempty"`
-	DataHint        string `mapstructure:"data_hint,omitempty"` // Data format hint for downstream processing (defaults to "ndjson")
-	DataFormat        string   `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
-	PollInterval    int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
-	MaxRecords      int    `mapstructure:"max_records,omitempty"`      // Max records per GetRecords call (default: 100)
-	ShardIteratorType string `mapstructure:"shard_iterator_type,omitempty"` // LATEST, TRIM_HORIZON, etc.
+	StreamName        string `mapstructure:"stream_name"`
+	Region            string `mapstructure:"region"`
+	TenantID          string `mapstructure:"tenant_id"`
+	DatasetID         string `mapstructure:"dataset_id"`
+	BearerToken       string `mapstructure:"bearer_token,omitempty"`
+	DataHint          string `mapstructure:"data_hint,omitempty"`             // Data format hint for downstream processing (defaults to "ndjson")
+	DataFormat        string `mapstructure:"data_format,omitempty"`           // data format mode: "ndjson", "text", "auto" (default)
+	PollInterval      int    `mapstructure:"poll_interval_seconds,omitempty"` // Polling interval in seconds (default: 5)
+	MaxRecords        int    `mapstructure:"max_records,omitempty"`           // Max records per GetRecords call (default: 100)
+	ShardIteratorType string `mapstructure:"shard_iterator_type,omitempty"`   // LATEST, TRIM_HORIZON, etc.
 }
 
 // PluginMetrics tracks Kinesis plugin metrics
