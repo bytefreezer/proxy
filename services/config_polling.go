@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -479,19 +480,19 @@ func (s *ConfigPollingService) hasConfigChanged(remoteConfig *ControlProxyConfig
 	defer s.configMutex.RUnlock()
 
 	if s.currentConfig == nil {
+		log.Debugf("Config change detection: no current config (first poll)")
 		return true // No current config, definitely changed
 	}
 
-	// Compare config hashes for quick change detection
+	// Compare config hashes for change detection
+	// Hash is calculated deterministically from plugin configs using encoding/json
 	if remoteConfig.ConfigHash != s.currentConfigHash {
+		log.Debugf("Config change detection: hash mismatch (remote=%s, current=%s)",
+			remoteConfig.ConfigHash, s.currentConfigHash)
 		return true
 	}
 
-	// Compare versions as fallback
-	if remoteConfig.ConfigVersion != s.currentConfig.ConfigVersion {
-		return true
-	}
-
+	// Hash matches - config unchanged
 	return false
 }
 
@@ -826,8 +827,11 @@ func (s *ConfigPollingService) datasetToPluginConfig(tenant Tenant, dataset Data
 }
 
 // calculatePluginConfigsHash calculates hash for plugin configs
+// Uses encoding/json which produces sorted keys for deterministic output
 func (s *ConfigPollingService) calculatePluginConfigsHash(pluginConfigs []map[string]interface{}) string {
-	data, _ := sonic.Marshal(pluginConfigs)
+	// encoding/json.Marshal sorts map keys alphabetically by default
+	// This ensures deterministic output regardless of map iteration order
+	data, _ := json.Marshal(pluginConfigs)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
