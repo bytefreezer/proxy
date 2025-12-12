@@ -1,0 +1,193 @@
+# ByteFreezer Proxy Configuration Template
+# Documentation: https://docs.bytefreezer.com/proxy
+#
+# This template contains all configuration options for bytefreezer-proxy.
+# Replace placeholders (marked with <PLACEHOLDER>) with your actual values.
+#
+# Required placeholders:
+#   - <ACCOUNT_ID>    : Your ByteFreezer account ID
+#   - <BEARER_TOKEN>  : API key generated from ByteFreezer UI (API Keys page)
+#   - <CONTROL_URL>   : URL of your ByteFreezer Control service
+#   - <RECEIVER_URL>  : URL of your ByteFreezer Receiver service
+
+# =============================================================================
+# APPLICATION
+# =============================================================================
+app:
+  name: bytefreezer-proxy
+  version: 0.0.2
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  level: info           # debug, info, warn, error
+  encoding: console     # console or json
+
+# =============================================================================
+# API SERVER
+# =============================================================================
+# Local API server for health checks and metrics
+server:
+  api_port: 8008
+
+# =============================================================================
+# INPUT PLUGINS
+# =============================================================================
+# When config_mode is "control-only", inputs are fetched from Control service.
+# Leave empty for managed configuration, or configure locally for "local-only" mode.
+#
+# Example inputs (uncomment for local-only mode):
+# inputs:
+#   - name: "syslog-udp"
+#     type: "syslog"
+#     config:
+#       host: "0.0.0.0"
+#       port: 514
+#       protocol: "udp"
+#       tenant_id: "your-tenant-id"
+#       dataset_id: "your-dataset-id"
+#
+#   - name: "http-webhook"
+#     type: "http"
+#     config:
+#       host: "0.0.0.0"
+#       port: 8080
+#       tenant_id: "your-tenant-id"
+#       dataset_id: "your-dataset-id"
+inputs: []
+
+# =============================================================================
+# ACCOUNT CONFIGURATION
+# =============================================================================
+# Account-based configuration - proxy polls Control for all tenants + datasets
+# IMPORTANT: bearer_token is the account-specific API key used for ALL authentication
+
+# Your ByteFreezer account ID
+account_id: "<ACCOUNT_ID>"
+
+# Account-specific API key for all auth (config polling AND health reporting)
+# Generate this from the ByteFreezer UI: Settings > API Keys
+bearer_token: "<BEARER_TOKEN>"
+
+# ByteFreezer Control service URL
+control_url: "<CONTROL_URL>"
+
+# Configuration mode:
+#   - "control-only": Proxy polls Control for plugin configuration (recommended)
+#   - "local-only": Use only local config file, no polling
+config_mode: "control-only"
+
+# =============================================================================
+# CONFIGURATION POLLING
+# =============================================================================
+# Settings for polling Control service for configuration updates
+config_polling:
+  enabled: true
+  interval_seconds: 60          # How often to poll for config changes
+  timeout_seconds: 30           # HTTP request timeout
+  cache_directory: "/var/cache/bytefreezer-proxy"  # Cache location for offline mode
+  retry_on_error: true          # Use cached config if Control is unreachable
+
+# =============================================================================
+# RECEIVER
+# =============================================================================
+# ByteFreezer Receiver endpoint for data upload
+# Placeholders {tenantid} and {datasetid} are replaced at runtime
+receiver:
+  base_url: "<RECEIVER_URL>/{tenantid}/{datasetid}"
+  timeout_seconds: 30
+  upload_worker_count: 5        # Number of parallel upload workers
+  max_idle_conns: 10            # HTTP connection pool size
+  max_conns_per_host: 6         # Max connections per host
+
+  # Dedicated retry HTTP client configuration (optional, defaults to upload client values)
+  # retry_max_idle_conns: 10
+  # retry_max_conns_per_host: 6
+
+# =============================================================================
+# BATCHING
+# =============================================================================
+# Batch processing groups messages before upload for efficiency
+batching:
+  enabled: true
+  max_lines: 0                  # Max lines per batch (0 = disabled)
+  max_bytes: 10485760           # Max bytes per batch (10MB)
+  timeout_seconds: 60           # Force flush after timeout
+  compression_enabled: true     # Enable gzip compression
+  compression_level: 6          # Compression level (1-9, 6 is balanced)
+
+# =============================================================================
+# SPOOLING
+# =============================================================================
+# Local spooling queues failed uploads for retry
+spooling:
+  enabled: true
+  directory: "/var/spool/bytefreezer-proxy"
+  max_size_bytes: 1073741824    # Max spool size (1GB)
+  retry_attempts: 5             # Number of retry attempts
+  retry_interval_seconds: 60    # Time between retries (1 minute)
+  cleanup_interval_seconds: 300 # Cleanup check interval (5 minutes)
+  keep_src: false               # Keep source files after successful upload
+
+# =============================================================================
+# HEALTH REPORTING
+# =============================================================================
+# Reports proxy health status to Control service
+health_reporting:
+  enabled: true
+  report_interval: 30           # Report interval in seconds
+  timeout_seconds: 10           # HTTP request timeout
+  register_on_startup: true     # Register with Control on startup
+
+# =============================================================================
+# TENANT VALIDATION
+# =============================================================================
+# Proactive tenant status checking (Layer 4 optimization)
+tenant_validation:
+  enabled: true
+  cache_ttl_seconds: 300        # Cache TTL for active tenants (5 minutes)
+  inactive_cache_ttl_seconds: 3600  # Cache TTL for inactive tenants (1 hour)
+  timeout_seconds: 5            # Validation request timeout
+
+# =============================================================================
+# ERROR TRACKING
+# =============================================================================
+# Reports errors to Control service for monitoring
+error_tracking:
+  enabled: true
+
+# =============================================================================
+# SOC ALERTING (Optional)
+# =============================================================================
+# Security Operations Center alerting integration
+soc:
+  enabled: false
+  endpoint: ""
+  timeout_seconds: 30
+
+# =============================================================================
+# OPENTELEMETRY (Optional)
+# =============================================================================
+# OpenTelemetry metrics and tracing
+otel:
+  enabled: false
+  service_name: "bytefreezer-proxy"
+  scrapeIntervalseconds: 15
+  # endpoint: ""                # OTEL collector endpoint
+  # prometheus_mode: false      # Enable Prometheus exposition
+  # metrics_port: 9090          # Prometheus metrics port
+
+# =============================================================================
+# HOUSEKEEPING
+# =============================================================================
+# Internal housekeeping tasks
+housekeeping:
+  enabled: true
+  intervalseconds: 60
+
+# =============================================================================
+# DEVELOPMENT MODE
+# =============================================================================
+# Enable development features (not for production)
+dev: false

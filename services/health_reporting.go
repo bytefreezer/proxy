@@ -28,6 +28,7 @@ type HealthReportingService struct {
 	enabled        bool
 	stopChan       chan bool
 	config         map[string]interface{} // Full configuration data to report
+	diskPath       string                 // Path to monitor for disk metrics (defaults to /)
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -86,7 +87,13 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		enabled:  true,
 		stopChan: make(chan bool),
 		config:   config,
+		diskPath: "/", // Default to root filesystem
 	}
+}
+
+// SetDiskPath sets the disk path to monitor for disk metrics
+func (h *HealthReportingService) SetDiskPath(path string) {
+	h.diskPath = path
 }
 
 // Start begins health reporting
@@ -255,11 +262,14 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 	metrics := map[string]interface{}{
 		"timestamp":         time.Now().Unix(),
 		"last_health_check": time.Now().UTC().Format(time.RFC3339),
-		// Add runtime metrics here like:
-		// - active_connections
-		// - messages_processed
-		// - errors_count
-		// - memory_usage
+	}
+
+	// Collect system metrics (disk, CPU, memory)
+	sysMetrics := CollectSystemMetrics(h.diskPath)
+	if sysMetrics != nil {
+		for k, v := range sysMetrics.ToMap() {
+			metrics[k] = v
+		}
 	}
 
 	return metrics

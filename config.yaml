@@ -12,6 +12,7 @@ server:
   api_port: 8008
 
 # Plugin-based input configuration (populated from Control)
+#just keep it as is, proxy gets its config from control
 inputs: []
 
 # Account-based configuration - proxy polls Control for all tenants + datasets
@@ -52,12 +53,14 @@ batching:
   compression_level: 6
 
 # SOC alerting configuration
+# no soc yet, this is just a placeholder
 soc:
   enabled: false
   endpoint: ""
   timeout_seconds: 30
 
 # OpenTelemetry configuration (disabled by default)
+# this is a placeholder for future observability features
 otel:
   enabled: false
   service_name: "bytefreezer-proxy"
