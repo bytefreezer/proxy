@@ -182,6 +182,15 @@ func main() {
 	// Create services
 	svcs := services.NewServices(&cfg)
 
+	// Wire up proxy stats to health reporting service for throughput metrics
+	if healthReportingService != nil {
+		healthReportingService.SetProxyStats(svcs.ProxyStats)
+		// Use spooling directory for disk metrics if spooling is enabled
+		if cfg.Spooling.Enabled && cfg.Spooling.Directory != "" {
+			healthReportingService.SetDiskPath(cfg.Spooling.Directory)
+		}
+	}
+
 	// Start spooling service if enabled
 	if err := svcs.SpoolingService.Start(); err != nil {
 		log.Fatalf("Failed to start spooling service: %v", err)

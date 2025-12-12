@@ -30,8 +30,9 @@ type SystemMetrics struct {
 	MemUsedPercent    float64 `json:"mem_used_percent"`
 
 	// CPU metrics
-	CPUUsedPercent float64 `json:"cpu_used_percent"`
-	CPUCores       int     `json:"cpu_cores"`
+	CPUUsedPercent  float64 `json:"cpu_used_percent"`
+	CPUIOWaitPercent float64 `json:"cpu_iowait_percent"`
+	CPUCores        int     `json:"cpu_cores"`
 
 	// Load average (Linux only)
 	LoadAvg1  float64 `json:"load_avg_1"`
@@ -207,9 +208,11 @@ func collectCPUMetrics(metrics *SystemMetrics) {
 				(current.iowait - lastCPUTimes.iowait)
 
 			idleDelta := (current.idle - lastCPUTimes.idle) + (current.iowait - lastCPUTimes.iowait)
+			iowaitDelta := current.iowait - lastCPUTimes.iowait
 
 			if totalDelta > 0 {
 				metrics.CPUUsedPercent = float64(totalDelta-idleDelta) / float64(totalDelta) * 100
+				metrics.CPUIOWaitPercent = float64(iowaitDelta) / float64(totalDelta) * 100
 			}
 		}
 
@@ -247,6 +250,7 @@ func (m *SystemMetrics) ToMap() map[string]interface{} {
 		"mem_available_bytes":  m.MemAvailableBytes,
 		"mem_used_percent":     m.MemUsedPercent,
 		"cpu_used_percent":     m.CPUUsedPercent,
+		"cpu_iowait_percent":   m.CPUIOWaitPercent,
 		"cpu_cores":            m.CPUCores,
 		"load_avg_1":           m.LoadAvg1,
 		"load_avg_5":           m.LoadAvg5,

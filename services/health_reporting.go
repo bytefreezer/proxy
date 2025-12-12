@@ -6,12 +6,14 @@ package services
 import (
 	"bytes"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/domain"
 )
 
 // HealthReportingService handles health reporting to the control service
@@ -29,6 +31,8 @@ type HealthReportingService struct {
 	stopChan       chan bool
 	config         map[string]interface{} // Full configuration data to report
 	diskPath       string                 // Path to monitor for disk metrics (defaults to /)
+	proxyStats     *domain.ProxyStats     // Pointer to proxy stats for throughput metrics
+	startTime      time.Time              // Service start time for uptime calculation
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -84,16 +88,22 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		enabled:  true,
-		stopChan: make(chan bool),
-		config:   config,
-		diskPath: "/", // Default to root filesystem
+		enabled:   true,
+		stopChan:  make(chan bool),
+		config:    config,
+		diskPath:  "/", // Default to root filesystem
+		startTime: time.Now(),
 	}
 }
 
 // SetDiskPath sets the disk path to monitor for disk metrics
 func (h *HealthReportingService) SetDiskPath(path string) {
 	h.diskPath = path
+}
+
+// SetProxyStats sets the proxy stats pointer for throughput metrics
+func (h *HealthReportingService) SetProxyStats(stats *domain.ProxyStats) {
+	h.proxyStats = stats
 }
 
 // Start begins health reporting
@@ -270,6 +280,32 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 		for k, v := range sysMetrics.ToMap() {
 			metrics[k] = v
 		}
+	}
+
+	// Add proxy throughput stats if available
+	if h.proxyStats != nil {
+		uptimeSeconds := int64(time.Since(h.startTime).Seconds())
+		if uptimeSeconds < 1 {
+			uptimeSeconds = 1 // Prevent division by zero
+		}
+
+		bytesReceived := atomic.LoadInt64(&h.proxyStats.BytesReceived)
+		bytesForwarded := atomic.LoadInt64(&h.proxyStats.BytesForwarded)
+		messagesReceived := atomic.LoadInt64(&h.proxyStats.UDPMessagesReceived)
+		batchesForwarded := atomic.LoadInt64(&h.proxyStats.BatchesForwarded)
+		forwardingErrors := atomic.LoadInt64(&h.proxyStats.ForwardingErrors)
+
+		metrics["uptime_seconds"] = uptimeSeconds
+		metrics["bytes_received"] = bytesReceived
+		metrics["bytes_forwarded"] = bytesForwarded
+		metrics["messages_received"] = messagesReceived
+		metrics["batches_forwarded"] = batchesForwarded
+		metrics["forwarding_errors"] = forwardingErrors
+
+		// Calculate throughput (bytes per second)
+		metrics["bytes_received_per_sec"] = float64(bytesReceived) / float64(uptimeSeconds)
+		metrics["bytes_forwarded_per_sec"] = float64(bytesForwarded) / float64(uptimeSeconds)
+		metrics["messages_received_per_sec"] = float64(messagesReceived) / float64(uptimeSeconds)
 	}
 
 	return metrics
