@@ -657,12 +657,23 @@ func (s *ConfigPollingService) loadCachedConfig() error {
 		return fmt.Errorf("failed to unmarshal cached config: %w", err)
 	}
 
-	s.configMutex.Lock()
-	s.currentConfig = &cachedConfig
-	s.currentConfigHash = cachedConfig.ConfigHash
-	s.configMutex.Unlock()
-
 	log.Infof("Loaded cached configuration (version %d) from %s", cachedConfig.ConfigVersion, cacheFile)
+
+	// Apply the cached configuration to actually start the plugins
+	// This is critical - without this, plugins won't start until config changes
+	if len(cachedConfig.PluginConfigs) > 0 {
+		log.Infof("Applying cached configuration: %d plugin configs", len(cachedConfig.PluginConfigs))
+		if err := s.applyConfiguration(&cachedConfig); err != nil {
+			return fmt.Errorf("failed to apply cached configuration: %w", err)
+		}
+	} else {
+		// No plugins to apply, just store the config state
+		s.configMutex.Lock()
+		s.currentConfig = &cachedConfig
+		s.currentConfigHash = cachedConfig.ConfigHash
+		s.configMutex.Unlock()
+	}
+
 	return nil
 }
 
