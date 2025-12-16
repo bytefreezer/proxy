@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bytefreezer/goodies/log"
@@ -65,6 +66,7 @@ type HTTPForwarder struct {
 	httpClient           *http.Client
 	metricsService       *MetricsService
 	datasetMetricsClient *DatasetMetricsClient
+	proxyStats           *domain.ProxyStats // Global stats for health reporting
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder with connection pooling
@@ -172,6 +174,11 @@ func NewRetryHTTPForwarder(cfg *config.Config) *HTTPForwarder {
 	}
 }
 
+// SetProxyStats sets the proxy stats pointer for throughput tracking
+func (f *HTTPForwarder) SetProxyStats(stats *domain.ProxyStats) {
+	f.proxyStats = stats
+}
+
 // ForwardBatch forwards a data batch to bytefreezer-receiver
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	// Replace placeholders in base URL with actual tenant and dataset IDs, and add file extension
@@ -236,6 +243,14 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 		log.Debugf("Successfully forwarded batch %s to %s (status: %d)",
 			batch.ID, url, resp.StatusCode)
 
+		// Update global proxy stats for health reporting
+		if f.proxyStats != nil {
+			atomic.AddInt64(&f.proxyStats.BytesReceived, batch.TotalBytes)
+			atomic.AddInt64(&f.proxyStats.BytesForwarded, int64(len(batch.Data)))
+			atomic.AddInt64(&f.proxyStats.BatchesForwarded, 1)
+			atomic.AddInt64(&f.proxyStats.UDPMessagesReceived, int64(batch.LineCount))
+		}
+
 		// Preserve source files if keep_src is enabled
 		if f.config.Spooling.KeepSrc {
 			if err := f.preserveSource(batch, req.Header); err != nil {
@@ -285,6 +300,11 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 
 	log.Warnf("Batch %s upload failed (%s) - %s returned HTTP %d: %s",
 		batch.ID, failureType, url, resp.StatusCode, bodyStr)
+
+	// Update error count in proxy stats
+	if f.proxyStats != nil {
+		atomic.AddInt64(&f.proxyStats.ForwardingErrors, 1)
+	}
 
 	// Return custom error with retry information
 	return &UploadError{

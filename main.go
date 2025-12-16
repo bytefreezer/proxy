@@ -222,6 +222,7 @@ func main() {
 
 	// Create HTTP forwarder (always needed for plugin system)
 	forwarder := services.NewHTTPForwarderWithMetrics(&cfg, svcs.MetricsService)
+	forwarder.SetProxyStats(svcs.ProxyStats) // Wire up stats for health reporting
 
 	// Create plugin service with spooling support (even if no local inputs - may get remote inputs)
 	var pluginService *services.PluginService
