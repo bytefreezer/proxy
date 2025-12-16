@@ -191,6 +191,9 @@ func main() {
 		}
 	}
 
+	// Wire up proxy stats to spooling service's retry forwarder
+	svcs.SpoolingService.SetProxyStats(svcs.ProxyStats)
+
 	// Start spooling service if enabled
 	if err := svcs.SpoolingService.Start(); err != nil {
 		log.Fatalf("Failed to start spooling service: %v", err)

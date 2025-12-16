@@ -134,6 +134,13 @@ func (s *SpoolingService) Stop() error {
 	return nil
 }
 
+// SetProxyStats sets the proxy stats pointer for throughput tracking on retry forwarder
+func (s *SpoolingService) SetProxyStats(stats *domain.ProxyStats) {
+	if s.retryForwarder != nil {
+		s.retryForwarder.SetProxyStats(stats)
+	}
+}
+
 // StoreRawMessage stores individual message in raw directory for later batching
 func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error {
 	if !s.config.Spooling.Enabled {
