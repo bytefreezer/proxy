@@ -46,7 +46,7 @@ config:
 
   # On-prem deployment configuration
   account_id: "s2jeovtia7zn"
-  bearer_token: "onprem-api-key-s2jeovtia7zn-12345678"
+  # bearer_token comes from AWX variable: bytefreezer_proxy_bearer_token
   control_url: "http://192.168.86.103:8082"
   config_mode: "control-only"
 
@@ -134,6 +134,5 @@ remove:
   spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
 # AWX Survey Variables
-force_reinstall: "{{ force_reinstall | default(false) }}"
 skip_validation: "{{ skip_validation | default(false) }}"
 enable_debug_logging: "{{ enable_debug_logging | default(false) }}"

@@ -46,7 +46,7 @@ config:
 
   # Managed deployment configuration
   account_id: "ejq73vgnw26p"
-  bearer_token: "-6O9pIT7fVrIr715CIwIUgZuBkY7lB5sRYHx"
+  # bearer_token comes from AWX variable: bytefreezer_proxy_bearer_token
   control_url: "http://192.168.86.103:8082"
   config_mode: "control-only"
 
@@ -134,6 +134,5 @@ remove:
   spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
 # AWX Survey Variables
-force_reinstall: "{{ force_reinstall | default(false) }}"
 skip_validation: "{{ skip_validation | default(false) }}"
 enable_debug_logging: "{{ enable_debug_logging | default(false) }}"

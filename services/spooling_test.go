@@ -60,18 +60,44 @@ func TestSpoolingService_StoreRawMessage(t *testing.T) {
 			t.Fatalf("Failed to read stored file: %v", err)
 		}
 
+		// Trim trailing whitespace (NDJSON format adds newline after each record)
+		trimmedContent := strings.TrimSpace(string(content))
+
 		// Check that stored content is valid JSON
-		var stored, expected interface{}
-		if err := sonic.Unmarshal(content, &stored); err != nil {
+		var stored map[string]interface{}
+		if err := sonic.Unmarshal([]byte(trimmedContent), &stored); err != nil {
 			t.Errorf("Stored content is not valid JSON: %v", err)
 		}
-		if err := sonic.Unmarshal(testData, &expected); err != nil {
-			t.Errorf("Test data is not valid JSON: %v", err)
+
+		// Verify original fields are preserved
+		if stored["message"] != "test message" {
+			t.Errorf("Expected message 'test message', got '%v'", stored["message"])
+		}
+		if stored["timestamp"] != "2024-01-15T10:30:45Z" {
+			t.Errorf("Expected timestamp '2024-01-15T10:30:45Z', got '%v'", stored["timestamp"])
 		}
 
-		// Verify content is compact (no unnecessary whitespace)
-		contentStr := string(content)
-		if strings.Contains(contentStr, "  ") || strings.Contains(contentStr, "\n") {
+		// Verify BfTs (ByteFreezer Timestamp) was injected
+		bfTs, hasBfTs := stored["BfTs"]
+		if !hasBfTs {
+			t.Errorf("Expected BfTs field to be injected")
+		} else {
+			// BfTs should be a valid Unix milliseconds timestamp (reasonable range check)
+			bfTsFloat, ok := bfTs.(float64)
+			if !ok {
+				t.Errorf("BfTs should be a number, got %T", bfTs)
+			} else {
+				// Should be a reasonable Unix ms timestamp (after 2020 and before 2100)
+				minTs := int64(1577836800000) // 2020-01-01
+				maxTs := int64(4102444800000) // 2100-01-01
+				if int64(bfTsFloat) < minTs || int64(bfTsFloat) > maxTs {
+					t.Errorf("BfTs %v is not a reasonable Unix milliseconds timestamp", bfTsFloat)
+				}
+			}
+		}
+
+		// Verify content is compact (no unnecessary whitespace within the JSON)
+		if strings.Contains(trimmedContent, "  ") {
 			t.Errorf("Stored content should be compact JSON without pretty formatting")
 		}
 	}

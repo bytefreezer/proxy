@@ -44,9 +44,9 @@ config:
   # Plugin-based input configuration (populated from Control)
   inputs: []
 
-  # On-prem deployment configuration
+  # Demo deployment configuration
   account_id: "3dzauc5dmov6"
-  bearer_token: "9fKiv74S3TrqQ2igBIOb7hWSiVFq3VtzLJo1"
+  # bearer_token comes from AWX variable: bytefreezer_proxy_bearer_token
   control_url: "https://api.bytefreezer.com"
   config_mode: "control-only"
 
@@ -134,6 +134,5 @@ remove:
   spooling_dir: "{{ bytefreezer_proxy_remove_spooling_dir | default(false) }}"
 
 # AWX Survey Variables
-force_reinstall: "{{ force_reinstall | default(false) }}"
 skip_validation: "{{ skip_validation | default(false) }}"
 enable_debug_logging: "{{ enable_debug_logging | default(false) }}"

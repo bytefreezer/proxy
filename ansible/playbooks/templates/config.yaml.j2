@@ -21,7 +21,7 @@ inputs: []
 # Account-based configuration - proxy polls Control for all tenants + datasets
 # IMPORTANT: bearer_token is the account-specific API key used for ALL authentication
 account_id: "{{ config.account_id }}"
-bearer_token: "{{ config.bearer_token }}"  # Account-specific API key for all auth (config polling AND health reporting)
+bearer_token: "{{ bytefreezer_proxy_bearer_token }}"  # Account-specific API key for all auth (config polling AND health reporting)
 control_url: "{{ config.control_url }}"
 config_mode: "{{ config.config_mode | default('control-only') }}"  # local-only | control-only
 

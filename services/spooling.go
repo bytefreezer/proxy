@@ -150,13 +150,17 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// Inject BfTs (ByteFreezer Timestamp) into JSON data at ingestion time
+	// This is the canonical timestamp for when data entered the system
+	processedData := s.injectBfTs(data, dataHint)
+
 	// Ensure spool directory exists
 	if err := s.ensureSpoolDirectoryExists(); err != nil {
 		return fmt.Errorf("failed to ensure spool directory exists: %w", err)
 	}
 
 	// Generate directory path based on organization strategy
-	baseDir, _, _, err := s.generateSpoolPaths(tenantID, datasetID, data)
+	baseDir, _, _, err := s.generateSpoolPaths(tenantID, datasetID, processedData)
 	if err != nil {
 		return fmt.Errorf("failed to generate spool paths: %w", err)
 	}
@@ -168,24 +172,73 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 	}
 
 	// Count lines for verification tracking
-	lineCount := s.countLines(data)
+	lineCount := s.countLines(processedData)
 
 	// Get appropriate file extension based on data hint
 	extension := getFileExtensionForDataHint(dataHint)
 
 	// Generate unique filename with line count for verification (data should already be validated at input)
 	now := time.Now()
-	filename := fmt.Sprintf("%d_%d_%d.%s", now.UnixNano(), len(data), lineCount, extension)
+	filename := fmt.Sprintf("%d_%d_%d.%s", now.UnixNano(), len(processedData), lineCount, extension)
 	filePath := filepath.Join(rawDir, filename)
 
 	// Write message (data should already be validated at input)
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := os.WriteFile(filePath, processedData, 0600); err != nil {
 		return fmt.Errorf("failed to write raw message file: %w", err)
 	}
 
 	log.Debugf("Stored raw message for tenant=%s dataset=%s: %s (%d lines, %d bytes)",
-		tenantID, datasetID, filename, lineCount, len(data))
+		tenantID, datasetID, filename, lineCount, len(processedData))
 	return nil
+}
+
+// injectBfTs adds BfTs (ByteFreezer Timestamp) to each JSON line
+// BfTs is Unix milliseconds timestamp capturing when data was ingested
+func (s *SpoolingService) injectBfTs(data []byte, dataHint string) []byte {
+	// Only process JSON/NDJSON data
+	if dataHint != "ndjson" && dataHint != "json" {
+		return data
+	}
+
+	// Get current timestamp in Unix milliseconds
+	bfTs := time.Now().UnixMilli()
+
+	// Split into lines and process each
+	lines := bytes.Split(data, []byte("\n"))
+	var result []byte
+
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+
+		// Try to parse as JSON
+		var record map[string]interface{}
+		if err := sonic.Unmarshal(trimmed, &record); err != nil {
+			// Not valid JSON, keep as-is
+			result = append(result, line...)
+			result = append(result, '\n')
+			continue
+		}
+
+		// Inject BfTs
+		record["BfTs"] = bfTs
+
+		// Marshal back
+		processed, err := sonic.Marshal(record)
+		if err != nil {
+			// Marshal failed, keep original
+			result = append(result, line...)
+			result = append(result, '\n')
+			continue
+		}
+
+		result = append(result, processed...)
+		result = append(result, '\n')
+	}
+
+	return result
 }
 
 // BatchRawFiles combines raw files into compressed batches and creates metadata
