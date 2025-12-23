@@ -152,6 +152,9 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 	bufferResult := plugins.SetUDPReadBufferWithCheck(conn, p.config.ReadBufferSize)
 	if bufferResult.Limited && bufferResult.Warning != "" {
 		spooler.ReportWarning(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning)
+	} else {
+		// Buffer is OK - resolve any previous warnings
+		spooler.ResolveWarning(p.config.DatasetID, "udp_buffer_limited")
 	}
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting NetFlow listener with direct spooling", "")

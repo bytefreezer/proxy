@@ -238,3 +238,44 @@ func (er *ErrorReporter) ReportCritical(ctx context.Context, errorType, errorMes
 func (er *ErrorReporter) ReportWarning(ctx context.Context, errorType, errorMessage string, tenantID, datasetID string) error {
 	return er.ReportErrorSimple(ctx, errorType, errorMessage, "warning", tenantID, datasetID)
 }
+
+// ResolveErrorsByType resolves all active errors of a specific type for a dataset
+// Called after successful plugin startup when no new errors occurred
+func (er *ErrorReporter) ResolveErrorsByType(ctx context.Context, errorType, datasetID string) error {
+	if !er.enabled {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/api/v1/accounts/%s/errors/resolve-by-type", er.controlURL, er.accountID)
+
+	payload := map[string]string{
+		"error_type": errorType,
+		"dataset_id": datasetID,
+	}
+
+	jsonData, err := sonic.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resolve request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create resolve request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+er.apiKey)
+
+	resp, err := er.httpClient.Do(req)
+	if err != nil {
+		log.Debugf("Failed to resolve errors (control may be unreachable): %v", err)
+		return nil // Don't fail on network errors
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Debugf("Resolved %s errors for dataset %s", errorType, datasetID)
+	}
+
+	return nil
+}

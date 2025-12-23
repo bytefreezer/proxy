@@ -41,6 +41,8 @@ type SpoolingInterface interface {
 	StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error
 	// ReportWarning reports a warning to the control service (optional - may be nil)
 	ReportWarning(tenantID, datasetID, warningType, message string)
+	// ResolveWarning resolves a previously reported warning (called when issue is fixed)
+	ResolveWarning(datasetID, warningType string)
 }
 
 // DataMessage represents raw data from any input source

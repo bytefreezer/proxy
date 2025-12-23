@@ -237,6 +237,22 @@ func (s *SpoolingService) ReportWarning(tenantID, datasetID, warningType, messag
 	}
 }
 
+// ResolveWarning resolves a previously reported warning for a dataset
+// Called when an issue is fixed (e.g., kernel buffer limit resolved after restart)
+func (s *SpoolingService) ResolveWarning(datasetID, warningType string) {
+	if s.config.ErrorReporter == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := s.config.ErrorReporter.ResolveErrorsByType(ctx, warningType, datasetID)
+	if err != nil {
+		log.Debugf("Failed to resolve warning: %v", err)
+	}
+}
+
 // injectBfTs adds BfTs (ByteFreezer Timestamp) to each JSON line
 // BfTs is Unix milliseconds timestamp capturing when data was ingested
 func (s *SpoolingService) injectBfTs(data []byte, dataHint string) []byte {

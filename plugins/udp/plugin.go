@@ -159,6 +159,9 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 	if bufferResult.Limited && bufferResult.Warning != "" {
 		// Report the kernel limitation to control service
 		spooler.ReportWarning(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning)
+	} else {
+		// Buffer is OK - resolve any previous warnings
+		spooler.ResolveWarning(p.config.DatasetID, "udp_buffer_limited")
 	}
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting UDP listener with direct spooling", "")
