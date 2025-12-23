@@ -248,26 +248,6 @@ func (p *Plugin) packetReaderWithSpooling() {
 	}
 }
 
-// ExtendedFlowRecord adds IP extraction to sFlow flow records
-type ExtendedFlowRecord struct {
-	Header struct {
-		DataFormat uint32 `json:"data-format"`
-		Length     uint32 `json:"length"`
-	} `json:"header"`
-	Data struct {
-		Protocol       uint32 `json:"protocol"`
-		FrameLength    uint32 `json:"frame-length"`
-		Stripped       uint32 `json:"stripped"`
-		OriginalLength uint32 `json:"original-length"`
-		HeaderData     string `json:"header-data"`
-	} `json:"data"`
-	// Extracted fields
-	SrcIP   string `json:"src_ip,omitempty"`
-	DstIP   string `json:"dst_ip,omitempty"`
-	SrcPort uint16 `json:"src_port,omitempty"`
-	DstPort uint16 `json:"dst_port,omitempty"`
-}
-
 // processMessageWithSpooling processes sFlow message with direct filesystem write (zero data loss)
 func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr) {
 	// Update metrics
@@ -289,16 +269,17 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 
 	p.metrics.FlowsDecoded++
 
-	// Convert decoded packet to JSON with IP extraction
-	jsonData, err := p.extractFlowRecords(packet)
+	// Convert decoded packet to flat NDJSON records with IP extraction
+	ndjsonData, err := p.extractFlowRecords(packet)
 	if err != nil {
 		log.Warnf("Failed to extract flow records from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.PacketsDropped++
 		return
 	}
 
-	// Add newline for NDJSON format
-	ndjsonData := append(jsonData, '\n')
+	if len(ndjsonData) == 0 {
+		return // No data to store
+	}
 
 	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
 	bearerToken := p.config.BearerToken
@@ -309,70 +290,141 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 		return
 	}
 
-	log.Debugf("Stored sFlow message from %s:%d as NDJSON directly to filesystem (%d bytes)",
+	log.Debugf("Stored sFlow flows from %s:%d as NDJSON directly to filesystem (%d bytes)",
 		clientAddr.IP.String(), clientAddr.Port, len(ndjsonData))
 }
 
-// extractFlowRecords processes the sFlow packet and extracts IP addresses from headers
+// extractFlowRecords processes the sFlow packet and outputs flat NDJSON records
+// Each flow record with extracted IPs becomes its own line for better queryability
 func (p *Plugin) extractFlowRecords(packet *sflowdec.Packet) ([]byte, error) {
-	// Create output structure
-	output := map[string]interface{}{
-		"version":         packet.Version,
-		"ip-version":      packet.IPVersion,
-		"agent-ip":        packet.AgentIP,
-		"sub-agent-id":    packet.SubAgentId,
-		"sequence-number": packet.SequenceNumber,
-		"uptime":          packet.Uptime,
-		"samples-count":   packet.SamplesCount,
-		"samples":         []map[string]interface{}{},
-	}
+	var result []byte
+	flowCount := 0
 
 	// Process each sample
 	for _, sample := range packet.Samples {
-		sampleData := make(map[string]interface{})
-
 		// Handle flow sample
 		if flowSample, ok := sample.(sflowdec.FlowSample); ok {
-			sampleData["header"] = flowSample.Header
-			sampleData["sampling-rate"] = flowSample.SamplingRate
-			sampleData["sample-pool"] = flowSample.SamplePool
-			sampleData["drops"] = flowSample.Drops
-			sampleData["input"] = flowSample.Input
-			sampleData["output"] = flowSample.Output
-			sampleData["flow-records-count"] = flowSample.FlowRecordsCount
-
-			// Process flow records and extract IPs
-			records := []map[string]interface{}{}
 			for _, record := range flowSample.Records {
-				recordData := map[string]interface{}{
-					"header": record.Header,
-					"data":   record.Data,
+				// Create flat record for each flow
+				flowRecord := map[string]interface{}{
+					"version":       packet.Version,
+					"agent_ip":      net.IP(packet.AgentIP).String(),
+					"sampling_rate": flowSample.SamplingRate,
+					"input_if":      flowSample.Input,
+					"output_if":     flowSample.Output,
 				}
 
-				// Try to extract IPs if this is a raw record with SampledHeader
+				// Try to extract IPs from raw packet header
 				if rawData, ok := record.Data.(sflowdec.SampledHeader); ok {
+					flowRecord["protocol"] = rawData.Protocol
+					flowRecord["frame_length"] = rawData.FrameLength
+
 					ips := extractIPsFromHeader(rawData.HeaderData)
 					if ips != nil {
-						recordData["src_ip"] = ips["src_ip"]
-						recordData["dst_ip"] = ips["dst_ip"]
-						if ips["src_port"] != 0 {
-							recordData["src_port"] = ips["src_port"]
+						flowRecord["src_ip"] = ips["src_ip"]
+						flowRecord["dst_ip"] = ips["dst_ip"]
+						if port, ok := ips["src_port"].(uint16); ok && port != 0 {
+							flowRecord["src_port"] = port
 						}
-						if ips["dst_port"] != 0 {
-							recordData["dst_port"] = ips["dst_port"]
+						if port, ok := ips["dst_port"].(uint16); ok && port != 0 {
+							flowRecord["dst_port"] = port
 						}
 					}
 				}
 
-				records = append(records, recordData)
+				// Try to extract IPs from already-decoded IPv4 data
+				if ipv4Data, ok := record.Data.(sflowdec.SampledIPv4); ok {
+					flowRecord["src_ip"] = net.IP(ipv4Data.SrcIP).String()
+					flowRecord["dst_ip"] = net.IP(ipv4Data.DstIP).String()
+					flowRecord["src_port"] = ipv4Data.SrcPort
+					flowRecord["dst_port"] = ipv4Data.DstPort
+					flowRecord["protocol"] = ipv4Data.Protocol
+				}
+
+				// Try to extract IPs from already-decoded IPv6 data
+				if ipv6Data, ok := record.Data.(sflowdec.SampledIPv6); ok {
+					flowRecord["src_ip"] = net.IP(ipv6Data.SrcIP).String()
+					flowRecord["dst_ip"] = net.IP(ipv6Data.DstIP).String()
+					flowRecord["src_port"] = ipv6Data.SrcPort
+					flowRecord["dst_port"] = ipv6Data.DstPort
+					flowRecord["protocol"] = ipv6Data.Protocol
+				}
+
+				// Marshal and append
+				jsonData, err := sonic.Marshal(flowRecord)
+				if err != nil {
+					continue
+				}
+				result = append(result, jsonData...)
+				result = append(result, '\n')
+				flowCount++
 			}
-			sampleData["records"] = records
 		}
 
-		output["samples"] = append(output["samples"].([]map[string]interface{}), sampleData)
+		// Handle expanded flow sample
+		if expandedSample, ok := sample.(sflowdec.ExpandedFlowSample); ok {
+			for _, record := range expandedSample.Records {
+				flowRecord := map[string]interface{}{
+					"version":       packet.Version,
+					"agent_ip":      net.IP(packet.AgentIP).String(),
+					"sampling_rate": expandedSample.SamplingRate,
+					"input_if":      expandedSample.InputIfValue,
+					"output_if":     expandedSample.OutputIfValue,
+				}
+
+				if rawData, ok := record.Data.(sflowdec.SampledHeader); ok {
+					flowRecord["protocol"] = rawData.Protocol
+					flowRecord["frame_length"] = rawData.FrameLength
+
+					ips := extractIPsFromHeader(rawData.HeaderData)
+					if ips != nil {
+						flowRecord["src_ip"] = ips["src_ip"]
+						flowRecord["dst_ip"] = ips["dst_ip"]
+						if port, ok := ips["src_port"].(uint16); ok && port != 0 {
+							flowRecord["src_port"] = port
+						}
+						if port, ok := ips["dst_port"].(uint16); ok && port != 0 {
+							flowRecord["dst_port"] = port
+						}
+					}
+				}
+
+				if ipv4Data, ok := record.Data.(sflowdec.SampledIPv4); ok {
+					flowRecord["src_ip"] = net.IP(ipv4Data.SrcIP).String()
+					flowRecord["dst_ip"] = net.IP(ipv4Data.DstIP).String()
+					flowRecord["src_port"] = ipv4Data.SrcPort
+					flowRecord["dst_port"] = ipv4Data.DstPort
+					flowRecord["protocol"] = ipv4Data.Protocol
+				}
+
+				jsonData, err := sonic.Marshal(flowRecord)
+				if err != nil {
+					continue
+				}
+				result = append(result, jsonData...)
+				result = append(result, '\n')
+				flowCount++
+			}
+		}
 	}
 
-	return sonic.Marshal(output)
+	if flowCount == 0 {
+		// No flow records extracted, output packet-level info
+		packetInfo := map[string]interface{}{
+			"version":         packet.Version,
+			"agent_ip":        net.IP(packet.AgentIP).String(),
+			"sequence_number": packet.SequenceNumber,
+			"samples_count":   packet.SamplesCount,
+		}
+		jsonData, err := sonic.Marshal(packetInfo)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, jsonData...)
+		result = append(result, '\n')
+	}
+
+	return result, nil
 }
 
 // extractIPsFromHeader extracts IP addresses and ports from raw packet header
