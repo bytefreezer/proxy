@@ -267,10 +267,18 @@ func (api *API) HealthCheck() usecase.Interactor {
 		pluginsByType := make(map[string]int)
 		var pluginDetails []PluginHealthDetail
 
-		totalPlugins := len(cfg.Inputs)
+		// Get plugin configs from PluginService (for config polling mode) or fallback to config file
+		var pluginConfigs []plugins.PluginConfig
+		if api.Services.PluginService != nil {
+			pluginConfigs = api.Services.PluginService.GetPluginConfigs()
+		} else {
+			pluginConfigs = cfg.Inputs
+		}
+
+		totalPlugins := len(pluginConfigs)
 		activePlugins := 0
 
-		for _, input := range cfg.Inputs {
+		for _, input := range pluginConfigs {
 			pluginsByType[input.Type]++
 			activePlugins++ // For now, assume all configured plugins are active
 
