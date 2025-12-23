@@ -5,7 +5,12 @@ package plugins
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"syscall"
 	"time"
+
+	"github.com/bytefreezer/goodies/log"
 )
 
 // InputPlugin defines the interface that all input plugins must implement
@@ -34,6 +39,8 @@ type InputPlugin interface {
 // SpoolingInterface defines the interface plugins use for direct filesystem writes
 type SpoolingInterface interface {
 	StoreRawMessage(tenantID, datasetID, bearerToken string, data []byte, dataHint string) error
+	// ReportWarning reports a warning to the control service (optional - may be nil)
+	ReportWarning(tenantID, datasetID, warningType, message string)
 }
 
 // DataMessage represents raw data from any input source
@@ -128,4 +135,91 @@ type PluginFieldSchema struct {
 	Placeholder string      `json:"placeholder,omitempty"` // Placeholder text for UI
 	Options     []string    `json:"options,omitempty"`     // Valid options for enum-like fields
 	Group       string      `json:"group,omitempty"`       // Field group for UI organization
+}
+
+// BufferCheckResult contains the result of setting UDP buffer size
+type BufferCheckResult struct {
+	RequestedSize int
+	ActualSize    int
+	Limited       bool
+	Warning       string // Warning message if kernel limited the buffer
+	SysctlCmd     string // The sysctl command to fix the issue
+}
+
+// SetUDPReadBufferWithCheck sets the UDP socket read buffer and verifies it was applied.
+// If the kernel limits the buffer to a smaller size, it logs a warning with the
+// required sysctl command to increase the limit.
+// Returns a BufferCheckResult with details about what was set and any warnings.
+func SetUDPReadBufferWithCheck(conn *net.UDPConn, requestedSize int) BufferCheckResult {
+	result := BufferCheckResult{
+		RequestedSize: requestedSize,
+	}
+
+	// Try to set the requested buffer size
+	if err := conn.SetReadBuffer(requestedSize); err != nil {
+		log.Warnf("Failed to set UDP read buffer size to %d: %v", requestedSize, err)
+		result.Warning = fmt.Sprintf("Failed to set buffer: %v", err)
+		return result
+	}
+
+	// Read back the actual buffer size using syscall
+	rawConn, err := conn.SyscallConn()
+	if err != nil {
+		log.Warnf("Could not get syscall conn to verify buffer size: %v", err)
+		result.ActualSize = requestedSize // Assume it worked
+		return result
+	}
+
+	err = rawConn.Control(func(fd uintptr) {
+		// Get the actual receive buffer size
+		// Note: Kernel doubles the value for overhead, so we read what was actually set
+		val, err := syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF)
+		if err != nil {
+			log.Warnf("Could not read socket buffer size: %v", err)
+			return
+		}
+		// Kernel doubles the requested value, so divide by 2 to get effective size
+		result.ActualSize = val / 2
+	})
+
+	if err != nil {
+		log.Warnf("Failed to verify UDP buffer size: %v", err)
+		result.ActualSize = requestedSize
+		return result
+	}
+
+	// Check if we got what we asked for
+	if result.ActualSize < requestedSize {
+		result.Limited = true
+		// Calculate required rmem_max (needs to be at least 2x the desired size due to kernel doubling)
+		requiredMax := requestedSize * 2
+		result.SysctlCmd = fmt.Sprintf("sudo sysctl -w net.core.rmem_max=%d", requiredMax)
+		result.Warning = fmt.Sprintf("UDP buffer limited by kernel: requested %s, got %s. Run: %s",
+			formatBytes(requestedSize), formatBytes(result.ActualSize), result.SysctlCmd)
+
+		log.Warnf("UDP buffer size limited by kernel: requested %s, got %s",
+			formatBytes(requestedSize), formatBytes(result.ActualSize))
+		log.Warnf("To fix, run: %s", result.SysctlCmd)
+		log.Warnf("To make permanent, add to /etc/sysctl.conf: net.core.rmem_max=%d", requiredMax)
+	} else {
+		log.Infof("UDP read buffer set to %s", formatBytes(result.ActualSize))
+	}
+
+	return result
+}
+
+// formatBytes formats bytes into human-readable format
+func formatBytes(bytes int) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+	)
+	switch {
+	case bytes >= MB:
+		return fmt.Sprintf("%dMB", bytes/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%dKB", bytes/KB)
+	default:
+		return fmt.Sprintf("%d bytes", bytes)
+	}
 }

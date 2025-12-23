@@ -94,7 +94,7 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 		return fmt.Errorf("dataset_id is required for eBPF plugin")
 	}
 	if p.config.ReadBufferSize == 0 {
-		p.config.ReadBufferSize = 65536 // 64KB default
+		p.config.ReadBufferSize = 8388608 // 8MB default for burst handling
 	}
 	if p.config.WorkerCount == 0 {
 		p.config.WorkerCount = 4 // Default 4 workers
@@ -135,9 +135,10 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 
 	p.conn = conn
 
-	// Set read buffer size
-	if err := conn.SetReadBuffer(p.config.ReadBufferSize); err != nil {
-		log.Warnf("Failed to set UDP read buffer size to %d: %v", p.config.ReadBufferSize, err)
+	// Set read buffer size with verification and report if limited
+	bufferResult := plugins.SetUDPReadBufferWithCheck(conn, p.config.ReadBufferSize)
+	if bufferResult.Limited && bufferResult.Warning != "" {
+		spooler.ReportWarning(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning)
 	}
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting eBPF listener with direct spooling", "")

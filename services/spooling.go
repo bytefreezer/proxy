@@ -23,6 +23,32 @@ import (
 	"github.com/bytefreezer/proxy/domain"
 )
 
+// writeFileSync writes data to a file and ensures it is fsynced to disk.
+// This guarantees data durability even in case of power failure or system crash.
+// Unlike os.WriteFile, this function forces the OS to flush all buffers to disk
+// before returning, preventing data loss in the kernel buffer cache.
+// Note: paths are constructed internally by the spooling service, not from user input.
+func writeFileSync(path string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm) // #nosec G304 - path is constructed internally
+	if err != nil {
+		return err
+	}
+
+	// Write data
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+
+	// Sync to disk - this is the critical call that ensures durability
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	return f.Close()
+}
+
 // SpoolingService handles local file spooling for failed uploads
 type SpoolingService struct {
 	config          *config.Config
@@ -183,13 +209,32 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 	filePath := filepath.Join(rawDir, filename)
 
 	// Write message (data should already be validated at input)
-	if err := os.WriteFile(filePath, processedData, 0600); err != nil {
+	if err := writeFileSync(filePath, processedData, 0600); err != nil {
 		return fmt.Errorf("failed to write raw message file: %w", err)
 	}
 
 	log.Debugf("Stored raw message for tenant=%s dataset=%s: %s (%d lines, %d bytes)",
 		tenantID, datasetID, filename, lineCount, len(processedData))
 	return nil
+}
+
+// ReportWarning reports a warning to the control service via the error reporter
+// This is used by plugins to report configuration issues like kernel buffer limits
+func (s *SpoolingService) ReportWarning(tenantID, datasetID, warningType, message string) {
+	if s.config.ErrorReporter == nil {
+		log.Warnf("Warning (no reporter): [%s] %s (tenant=%s, dataset=%s)", warningType, message, tenantID, datasetID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := s.config.ErrorReporter.ReportWarning(ctx, warningType, message, tenantID, datasetID)
+	if err != nil {
+		log.Warnf("Failed to report warning to control: %v", err)
+	} else {
+		log.Infof("Warning reported to control: [%s] %s", warningType, message)
+	}
 }
 
 // injectBfTs adds BfTs (ByteFreezer Timestamp) to each JSON line
@@ -348,7 +393,7 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		// Write compressed batch to queue - filename already in new format
 		batchFilePath := filepath.Join(queueDir, batchFileName)
 
-		if err := os.WriteFile(batchFilePath, compressed.Bytes(), 0600); err != nil {
+		if err := writeFileSync(batchFilePath, compressed.Bytes(), 0600); err != nil {
 			log.Errorf("Failed to write compressed batch for %s: %v", dataHint, err)
 			continue
 		}
@@ -414,7 +459,7 @@ func (s *SpoolingService) StoreBatchToQueue(tenantID, datasetID, bearerToken str
 	}
 	batchFilePath := filepath.Join(queueDir, batchFileName)
 
-	if err := os.WriteFile(batchFilePath, data, 0600); err != nil {
+	if err := writeFileSync(batchFilePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write batch to queue: %w", err)
 	}
 
@@ -484,7 +529,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 	metaFilepath := filepath.Join(spoolDir, fmt.Sprintf("%s.meta", id))
 
 	// Write data file
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := writeFileSync(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write spooled data file: %w", err)
 	}
 
@@ -522,7 +567,7 @@ func (s *SpoolingService) SpoolData(tenantID, datasetID, bearerToken string, dat
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metaFilepath, metaData, 0600); err != nil {
+	if err := writeFileSync(metaFilepath, metaData, 0600); err != nil {
 		// Clean up data file on metadata error
 		os.Remove(filePath)
 		return fmt.Errorf("failed to write metadata file: %w", err)
@@ -669,7 +714,7 @@ func (s *SpoolingService) moveToNewDLQ(file SpooledFile) error {
 
 	// Write metadata to DLQ directory
 	dlqMetaPath := filepath.Join(dlqDir, fmt.Sprintf("%s.meta", file.ID))
-	if err := os.WriteFile(dlqMetaPath, metaData, 0600); err != nil {
+	if err := writeFileSync(dlqMetaPath, metaData, 0600); err != nil {
 		return fmt.Errorf("failed to write DLQ metadata: %w", err)
 	}
 
@@ -1204,7 +1249,7 @@ func (s *SpoolingService) updateRetryMetadata(metadata *SpooledFile) error {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
+	if err := writeFileSync(metaPath, metaData, 0600); err != nil {
 		return fmt.Errorf("failed to write metadata file %s: %w", metaPath, err)
 	}
 
@@ -2514,7 +2559,7 @@ func (s *SpoolingService) RetryDLQFiles(tenantID, datasetID string) (*DLQRetryRe
 							// Write updated metadata
 							updatedMetaData, err := sonic.Marshal(spooledFile)
 							if err == nil {
-								if err := os.WriteFile(dstMetaPath, updatedMetaData, 0600); err == nil {
+								if err := writeFileSync(dstMetaPath, updatedMetaData, 0600); err == nil {
 									os.Remove(srcMetaPath) // Remove old metadata
 								}
 							}
@@ -2754,7 +2799,7 @@ func (s *SpoolingService) MoveQueueToRetry(tenantID, datasetID, batchID, failure
 	// Write metadata to retry directory
 	metaData, err := sonic.Marshal(metadata)
 	if err == nil {
-		if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
+		if err := writeFileSync(dstMetaFile, metaData, 0600); err != nil {
 			log.Warnf("Failed to write retry metadata for %s: %v", batchID, err)
 		}
 	}
@@ -2860,7 +2905,7 @@ func (s *SpoolingService) MoveQueueToDLQ(tenantID, datasetID, batchID, failureRe
 	// Write metadata to DLQ directory
 	metaData, err := sonic.Marshal(metadata)
 	if err == nil {
-		if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
+		if err := writeFileSync(dstMetaFile, metaData, 0600); err != nil {
 			log.Warnf("Failed to write DLQ metadata for %s: %v", batchID, err)
 		}
 	}
@@ -3078,7 +3123,7 @@ func (s *SpoolingService) moveOrphanedQueueFileToRetry(tenantID, datasetID, batc
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(dstMetaFile, metaData, 0600); err != nil {
+	if err := writeFileSync(dstMetaFile, metaData, 0600); err != nil {
 		// Clean up moved data file on metadata error
 		os.Remove(dstDataFile)
 		return fmt.Errorf("failed to write metadata: %w", err)

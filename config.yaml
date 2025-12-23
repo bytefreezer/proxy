@@ -1,3 +1,26 @@
+# ByteFreezer Proxy Configuration
+#
+# IMPORTANT: Kernel Tuning for High-Volume UDP
+# =============================================
+# For reliable UDP ingestion at high rates, configure these kernel parameters:
+#
+#   # Maximum socket receive buffer size (16MB allows 8MB request)
+#   sudo sysctl -w net.core.rmem_max=16777216
+#
+#   # Default socket receive buffer size
+#   sudo sysctl -w net.core.rmem_default=8388608
+#
+#   # Network backlog queue length
+#   sudo sysctl -w net.core.netdev_max_backlog=50000
+#
+# To make permanent, add to /etc/sysctl.conf:
+#   net.core.rmem_max=16777216
+#   net.core.rmem_default=8388608
+#   net.core.netdev_max_backlog=50000
+#
+# Then run: sudo sysctl -p
+#
+
 app:
   name: bytefreezer-proxy
   version: 0.0.2

@@ -100,7 +100,7 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 		p.config.Protocol = "udp"
 	}
 	if p.config.ReadBufferSize == 0 {
-		p.config.ReadBufferSize = 65536 // 64KB default
+		p.config.ReadBufferSize = 8388608 // 8MB default for burst handling
 	}
 	if p.config.DataFormat == "" {
 		p.config.DataFormat = plugins.DataFormatAuto // default to auto-detect
@@ -154,9 +154,11 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 
 	p.conn = conn
 
-	// Set read buffer size
-	if err := conn.SetReadBuffer(p.config.ReadBufferSize); err != nil {
-		log.Warnf("Failed to set UDP read buffer size to %d: %v", p.config.ReadBufferSize, err)
+	// Set read buffer size with verification and report if limited
+	bufferResult := plugins.SetUDPReadBufferWithCheck(conn, p.config.ReadBufferSize)
+	if bufferResult.Limited && bufferResult.Warning != "" {
+		// Report the kernel limitation to control service
+		spooler.ReportWarning(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning)
 	}
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting UDP listener with direct spooling", "")
@@ -357,10 +359,10 @@ func (p *Plugin) Schema() plugins.PluginSchema {
 				Name:        "read_buffer_size",
 				Type:        "int",
 				Required:    false,
-				Default:     65536,
-				Description: "UDP read buffer size in bytes (64KB default)",
-				Validation:  "min:1024,max:1048576",
-				Placeholder: "65536",
+				Default:     8388608,
+				Description: "UDP socket read buffer size in bytes (8MB default for burst handling). Requires kernel sysctl: net.core.rmem_max=16777216",
+				Validation:  "min:65536,max:16777216",
+				Placeholder: "8388608",
 				Group:       "Performance",
 			},
 		},
