@@ -283,7 +283,15 @@ func (s *SpoolingService) injectBfTs(data []byte, dataHint string) []byte {
 			continue
 		}
 
-		// Inject BfTs
+		// Remove any existing BfTs variants (case-insensitive) before injecting
+		// This prevents duplicates like Bfts/BfTs/bfts in the data
+		for key := range record {
+			if strings.EqualFold(key, "bfts") {
+				delete(record, key)
+			}
+		}
+
+		// Inject BfTs (canonical name)
 		record["BfTs"] = bfTs
 
 		// Marshal back
