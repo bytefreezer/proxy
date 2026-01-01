@@ -6,30 +6,35 @@ package ipfix
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/plugins"
 	"github.com/mitchellh/mapstructure"
 	netflowdec "github.com/netsampler/goflow2/v2/decoders/netflow"
+	flowmessage "github.com/netsampler/goflow2/v2/pb"
+	protoproducer "github.com/netsampler/goflow2/v2/producer/proto"
 )
 
 // Plugin implements the IPFIX input plugin with direct filesystem writes
 type Plugin struct {
-	config    Config
-	conn      *net.UDPConn
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	health    plugins.PluginHealth
-	mu        sync.RWMutex
-	spooler   plugins.SpoolingInterface
-	metrics   PluginMetrics
-	templates netflowdec.NetFlowTemplateSystem
+	config         Config
+	conn           *net.UDPConn
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	health         plugins.PluginHealth
+	mu             sync.RWMutex
+	spooler        plugins.SpoolingInterface
+	metrics        PluginMetrics
+	templates      netflowdec.NetFlowTemplateSystem
+	producerConfig protoproducer.ProtoProducerConfig
+	samplingRate   protoproducer.SamplingRateSystem
 }
 
 // Config represents IPFIX plugin configuration
@@ -112,6 +117,16 @@ func (p *Plugin) Configure(config map[string]interface{}) error {
 
 	// Initialize IPFIX template system
 	p.templates = netflowdec.CreateTemplateSystem()
+
+	// Initialize producer config for converting IPFIX to FlowMessage
+	// Use default mapping config which maps standard IPFIX fields to FlowMessage
+	defaultConfig := &protoproducer.ProducerConfig{}
+	compiledConfig, err := defaultConfig.Compile()
+	if err != nil {
+		return fmt.Errorf("failed to compile producer config: %w", err)
+	}
+	p.producerConfig = compiledConfig
+	p.samplingRate = protoproducer.CreateSamplingSystem()
 
 	p.updateHealth(plugins.HealthStatusStopped, "Plugin configured successfully", "")
 	log.Infof("IPFIX plugin configured: %s:%d -> %s/%s (data_hint: %s)",
@@ -270,30 +285,246 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 		return
 	}
 
-	p.metrics.FlowsDecoded++
-
-	// Convert decoded packet to JSON
-	jsonData, err := sonic.Marshal(packet)
+	// Convert decoded IPFIX packet to FlowMessage records using the producer
+	flowMessages, err := protoproducer.ProcessMessageIPFIXConfig(packet, p.samplingRate, p.producerConfig)
 	if err != nil {
-		log.Warnf("Failed to marshal IPFIX message to JSON from %s: %v", clientAddr.IP.String(), err)
+		log.Warnf("Failed to process IPFIX message from %s: %v", clientAddr.IP.String(), err)
 		p.metrics.PacketsDropped++
 		return
 	}
 
-	// Add newline for NDJSON format
-	ndjsonData := append(jsonData, '\n')
+	if len(flowMessages) == 0 {
+		// No flow records produced (might be template-only packet)
+		log.Debugf("No flow records produced from IPFIX packet from %s (template-only?)", clientAddr.IP.String())
+		return
+	}
 
-	// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+	p.metrics.FlowsDecoded += uint64(len(flowMessages))
+
+	// Store each flow message as a separate NDJSON line
 	bearerToken := p.config.BearerToken
 	dataHint := p.config.DataHint
-	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, ndjsonData, dataHint); err != nil {
-		log.Errorf("Failed to store IPFIX message to filesystem from %s: %v", clientAddr.IP.String(), err)
-		p.metrics.PacketsDropped++
-		return
+
+	for _, msg := range flowMessages {
+		// Get the FlowMessage from the producer message
+		flowMsg, ok := msg.(*protoproducer.ProtoProducerMessage)
+		if !ok {
+			log.Warnf("Unexpected message type from IPFIX producer")
+			continue
+		}
+
+		// Convert FlowMessage to a map for JSON with proper IP address formatting
+		record := flowMessageToMap(&flowMsg.FlowMessage)
+
+		// Convert to JSON
+		jsonData, err := sonic.Marshal(record)
+		if err != nil {
+			log.Warnf("Failed to marshal IPFIX FlowMessage to JSON from %s: %v", clientAddr.IP.String(), err)
+			p.metrics.PacketsDropped++
+			continue
+		}
+
+		// Add newline for NDJSON format
+		ndjsonData := append(jsonData, '\n')
+
+		// Write directly to filesystem - NO CHANNEL DROPS POSSIBLE
+		if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, ndjsonData, dataHint); err != nil {
+			log.Errorf("Failed to store IPFIX message to filesystem from %s: %v", clientAddr.IP.String(), err)
+			p.metrics.PacketsDropped++
+			continue
+		}
 	}
 
-	log.Debugf("Stored IPFIX message from %s:%d as NDJSON directly to filesystem (%d bytes)",
-		clientAddr.IP.String(), clientAddr.Port, len(ndjsonData))
+	log.Debugf("Stored %d IPFIX flow records from %s:%d to filesystem",
+		len(flowMessages), clientAddr.IP.String(), clientAddr.Port)
+}
+
+// flowMessageToMap converts a FlowMessage protobuf to a map with proper field formatting
+// IP addresses are converted from bytes to readable strings
+func flowMessageToMap(fm *flowmessage.FlowMessage) map[string]interface{} {
+	record := make(map[string]interface{})
+
+	// Add flow type
+	record["Type"] = fm.Type.String()
+
+	// Time fields
+	if fm.TimeReceivedNs > 0 {
+		record["TimeReceivedNs"] = fm.TimeReceivedNs
+	}
+	if fm.TimeFlowStartNs > 0 {
+		record["TimeFlowStartNs"] = fm.TimeFlowStartNs
+	}
+	if fm.TimeFlowEndNs > 0 {
+		record["TimeFlowEndNs"] = fm.TimeFlowEndNs
+	}
+
+	// Sequence and sampling
+	if fm.SequenceNum > 0 {
+		record["SequenceNum"] = fm.SequenceNum
+	}
+	if fm.SamplingRate > 0 {
+		record["SamplingRate"] = fm.SamplingRate
+	}
+
+	// Sampler address (convert bytes to IP string)
+	if len(fm.SamplerAddress) > 0 {
+		record["SamplerAddress"] = bytesToIPString(fm.SamplerAddress)
+	}
+
+	// Source and destination addresses (convert bytes to IP strings)
+	if len(fm.SrcAddr) > 0 {
+		record["SrcAddr"] = bytesToIPString(fm.SrcAddr)
+	}
+	if len(fm.DstAddr) > 0 {
+		record["DstAddr"] = bytesToIPString(fm.DstAddr)
+	}
+
+	// Packet size
+	if fm.Bytes > 0 {
+		record["Bytes"] = fm.Bytes
+	}
+	if fm.Packets > 0 {
+		record["Packets"] = fm.Packets
+	}
+
+	// Layer 3 protocol
+	if fm.Etype > 0 {
+		record["Etype"] = fm.Etype
+	}
+
+	// Layer 4 protocol
+	if fm.Proto > 0 {
+		record["Proto"] = fm.Proto
+	}
+
+	// Ports
+	if fm.SrcPort > 0 {
+		record["SrcPort"] = fm.SrcPort
+	}
+	if fm.DstPort > 0 {
+		record["DstPort"] = fm.DstPort
+	}
+
+	// Interfaces
+	if fm.InIf > 0 {
+		record["InIf"] = fm.InIf
+	}
+	if fm.OutIf > 0 {
+		record["OutIf"] = fm.OutIf
+	}
+
+	// MAC addresses
+	if fm.SrcMac > 0 {
+		record["SrcMac"] = fm.SrcMac
+	}
+	if fm.DstMac > 0 {
+		record["DstMac"] = fm.DstMac
+	}
+
+	// VLANs
+	if fm.SrcVlan > 0 {
+		record["SrcVlan"] = fm.SrcVlan
+	}
+	if fm.DstVlan > 0 {
+		record["DstVlan"] = fm.DstVlan
+	}
+	if fm.VlanId > 0 {
+		record["VlanId"] = fm.VlanId
+	}
+
+	// IP flags
+	if fm.IpTos > 0 {
+		record["IpTos"] = fm.IpTos
+	}
+	if fm.IpTtl > 0 {
+		record["IpTtl"] = fm.IpTtl
+	}
+	if fm.IpFlags > 0 {
+		record["IpFlags"] = fm.IpFlags
+	}
+	if fm.TcpFlags > 0 {
+		record["TcpFlags"] = fm.TcpFlags
+	}
+	if fm.Ipv6FlowLabel > 0 {
+		record["Ipv6FlowLabel"] = fm.Ipv6FlowLabel
+	}
+
+	// ICMP
+	if fm.IcmpType > 0 {
+		record["IcmpType"] = fm.IcmpType
+	}
+	if fm.IcmpCode > 0 {
+		record["IcmpCode"] = fm.IcmpCode
+	}
+
+	// Fragments
+	if fm.FragmentId > 0 {
+		record["FragmentId"] = fm.FragmentId
+	}
+	if fm.FragmentOffset > 0 {
+		record["FragmentOffset"] = fm.FragmentOffset
+	}
+
+	// AS information
+	if fm.SrcAs > 0 {
+		record["SrcAs"] = fm.SrcAs
+	}
+	if fm.DstAs > 0 {
+		record["DstAs"] = fm.DstAs
+	}
+	if len(fm.NextHop) > 0 {
+		record["NextHop"] = bytesToIPString(fm.NextHop)
+	}
+	if fm.NextHopAs > 0 {
+		record["NextHopAs"] = fm.NextHopAs
+	}
+
+	// Prefix sizes
+	if fm.SrcNet > 0 {
+		record["SrcNet"] = fm.SrcNet
+	}
+	if fm.DstNet > 0 {
+		record["DstNet"] = fm.DstNet
+	}
+
+	// BGP
+	if len(fm.BgpNextHop) > 0 {
+		record["BgpNextHop"] = bytesToIPString(fm.BgpNextHop)
+	}
+	if len(fm.BgpCommunities) > 0 {
+		record["BgpCommunities"] = fm.BgpCommunities
+	}
+	if len(fm.AsPath) > 0 {
+		record["AsPath"] = fm.AsPath
+	}
+
+	// Observation domain
+	if fm.ObservationDomainId > 0 {
+		record["ObservationDomainId"] = fm.ObservationDomainId
+	}
+	if fm.ObservationPointId > 0 {
+		record["ObservationPointId"] = fm.ObservationPointId
+	}
+
+	// Forwarding status
+	if fm.ForwardingStatus > 0 {
+		record["ForwardingStatus"] = fm.ForwardingStatus
+	}
+
+	return record
+}
+
+// bytesToIPString converts a byte slice to an IP address string
+func bytesToIPString(b []byte) string {
+	if len(b) == 4 {
+		// IPv4
+		return net.IP(b).String()
+	} else if len(b) == 16 {
+		// IPv6
+		return net.IP(b).String()
+	}
+	// Return base64 for unknown formats
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 // Schema returns the IPFIX plugin configuration schema

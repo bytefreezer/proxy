@@ -23,30 +23,12 @@ import (
 	"github.com/bytefreezer/proxy/domain"
 )
 
-// writeFileSync writes data to a file and ensures it is fsynced to disk.
-// This guarantees data durability even in case of power failure or system crash.
-// Unlike os.WriteFile, this function forces the OS to flush all buffers to disk
-// before returning, preventing data loss in the kernel buffer cache.
+// writeFileSync writes data to a file.
+// Note: fsync removed for performance - UDP data is already volatile,
+// so syncing to disk doesn't add meaningful durability.
 // Note: paths are constructed internally by the spooling service, not from user input.
 func writeFileSync(path string, data []byte, perm os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm) // #nosec G304 - path is constructed internally
-	if err != nil {
-		return err
-	}
-
-	// Write data
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-
-	// Sync to disk - this is the critical call that ensures durability
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-
-	return f.Close()
+	return os.WriteFile(path, data, perm) // #nosec G306 - path is constructed internally
 }
 
 // SpoolingService handles local file spooling for failed uploads
