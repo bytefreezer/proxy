@@ -266,7 +266,7 @@ type UDPSocketStats struct {
 	RxBufferKB int64 `json:"rx_buffer_kb"`
 }
 
-// CollectUDPSocketDrops reads /proc/net/udp and returns drop counts for specified ports
+// CollectUDPSocketDrops reads /proc/net/udp and /proc/net/udp6 and returns drop counts for specified ports
 func CollectUDPSocketDrops(ports []int) map[int]*UDPSocketStats {
 	result := make(map[int]*UDPSocketStats)
 
@@ -287,10 +287,20 @@ func CollectUDPSocketDrops(ports []int) map[int]*UDPSocketStats {
 		portSet[hexPort] = port
 	}
 
-	file, err := os.Open("/proc/net/udp")
+	// Read both IPv4 and IPv6 UDP sockets
+	// Sockets bound to *:port appear in udp6, not udp
+	parseUDPFile("/proc/net/udp", portSet, result)
+	parseUDPFile("/proc/net/udp6", portSet, result)
+
+	return result
+}
+
+// parseUDPFile reads a /proc/net/udp or /proc/net/udp6 file and updates stats
+func parseUDPFile(filePath string, portSet map[string]int, result map[int]*UDPSocketStats) {
+	file, err := os.Open(filePath) // #nosec G304 - filePath is always a hardcoded /proc path
 	if err != nil {
-		log.Debugf("Failed to open /proc/net/udp: %v", err)
-		return result
+		log.Debugf("Failed to open %s: %v", filePath, err)
+		return
 	}
 	defer file.Close()
 
@@ -310,6 +320,8 @@ func CollectUDPSocketDrops(ports []int) map[int]*UDPSocketStats {
 		}
 
 		// local_address is field[1] in format "IP:PORT" (hex)
+		// IPv4: 00000000:0808
+		// IPv6: 00000000000000000000000000000000:0808
 		localAddr := fields[1]
 		parts := strings.Split(localAddr, ":")
 		if len(parts) != 2 {
@@ -326,17 +338,17 @@ func CollectUDPSocketDrops(ports []int) map[int]*UDPSocketStats {
 		queues := strings.Split(fields[4], ":")
 		if len(queues) == 2 {
 			rxQueue, _ := strconv.ParseInt(queues[1], 16, 64)
-			result[port].RxQueue = rxQueue
+			// Add to existing value (could have entries in both files)
+			result[port].RxQueue += rxQueue
 		}
 
 		// drops is the last field (field[12] or later depending on kernel)
 		// Format: sl local_address rem_address st tx_queue:rx_queue tr tm->when retrnsmt uid timeout inode ref pointer drops
 		dropsField := fields[len(fields)-1]
 		drops, _ := strconv.ParseInt(dropsField, 10, 64)
-		result[port].Drops = drops
+		// Add to existing value (could have entries in both files)
+		result[port].Drops += drops
 	}
-
-	return result
 }
 
 // GetTotalUDPDrops returns total drops across all specified ports

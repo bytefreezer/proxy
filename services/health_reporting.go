@@ -39,6 +39,7 @@ type HealthReportingService struct {
 	proxyStats       *domain.ProxyStats     // Pointer to proxy stats for throughput metrics
 	startTime        time.Time              // Service start time for uptime calculation
 	udpPortsProvider UDPPortsProvider       // Provider for getting active UDP ports
+	lastUDPDrops     int64                  // Track previous UDP drops to detect new drops
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -64,6 +65,7 @@ type HealthReportRequest struct {
 	ServiceID     string                 `json:"service_id"`
 	InstanceAPI   string                 `json:"instance_api"`
 	Healthy       bool                   `json:"healthy"`
+	Status        string                 `json:"status,omitempty"` // "healthy", "degraded", "unhealthy"
 	Configuration map[string]interface{} `json:"configuration,omitempty"`
 	Metrics       map[string]interface{} `json:"metrics,omitempty"`
 }
@@ -193,7 +195,7 @@ func (h *HealthReportingService) RegisterService() error {
 }
 
 // SendHealthReport sends a health report to the control service
-func (h *HealthReportingService) SendHealthReport(healthy bool, configuration map[string]interface{}, metrics map[string]interface{}) error {
+func (h *HealthReportingService) SendHealthReport(healthy bool, status string, configuration map[string]interface{}, metrics map[string]interface{}) error {
 	if !h.enabled {
 		return nil
 	}
@@ -203,6 +205,7 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, configuration ma
 		ServiceID:     h.instanceID,
 		InstanceAPI:   h.instanceAPI,
 		Healthy:       healthy,
+		Status:        status,
 		Configuration: configuration,
 		Metrics:       metrics,
 	}
@@ -251,7 +254,10 @@ func (h *HealthReportingService) reportingLoop() {
 			configuration := h.config // Configuration updated on every report
 			metrics := h.generateMetrics()
 
-			if err := h.SendHealthReport(healthy, configuration, metrics); err != nil {
+			// Determine status based on health and UDP drops
+			status := h.determineStatus(healthy, metrics)
+
+			if err := h.SendHealthReport(healthy, status, configuration, metrics); err != nil {
 				log.Warnf("Failed to send health report: %v", err)
 			}
 
@@ -259,6 +265,25 @@ func (h *HealthReportingService) reportingLoop() {
 			return
 		}
 	}
+}
+
+// determineStatus determines the service status based on health and metrics
+func (h *HealthReportingService) determineStatus(healthy bool, metrics map[string]interface{}) string {
+	if !healthy {
+		return "unhealthy"
+	}
+
+	// Check for UDP socket drops - if drops increased since last check, we're degraded
+	if drops, ok := metrics["udp_socket_drops_total"].(int64); ok && drops > 0 {
+		if drops > h.lastUDPDrops {
+			// New drops occurred since last check
+			h.lastUDPDrops = drops
+			return "degraded"
+		}
+		h.lastUDPDrops = drops
+	}
+
+	return "healthy"
 }
 
 // isServiceHealthy performs basic health checks
