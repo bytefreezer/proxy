@@ -11,9 +11,45 @@
         path: "{{ paths.service_path }}"
       register: service_exists
 
-    - name: Fail if service already installed
-      fail:
-        msg: "ByteFreezer Proxy service is already installed. Use remove playbook first."
+    - name: Display update mode
+      debug:
+        msg: "Existing installation found - removing before reinstall"
+      when: service_exists.stat.exists
+
+    - name: Stop and disable existing service
+      ansible.builtin.shell: |
+        systemctl stop {{ service.name }} || true
+        systemctl disable {{ service.name }} || true
+      when: service_exists.stat.exists
+      ignore_errors: yes
+
+    - name: Remove existing systemd service file
+      ansible.builtin.file:
+        path: "{{ paths.service_path }}"
+        state: absent
+      when: service_exists.stat.exists
+
+    - name: Remove existing binary
+      ansible.builtin.file:
+        path: "{{ paths.binary_path }}"
+        state: absent
+      when: service_exists.stat.exists
+
+    - name: Remove existing configuration
+      ansible.builtin.file:
+        path: "{{ paths.config_dir }}"
+        state: absent
+      when: service_exists.stat.exists
+
+    - name: Remove existing logrotate config
+      ansible.builtin.file:
+        path: "{{ paths.logrotate_path }}"
+        state: absent
+      when: service_exists.stat.exists
+
+    - name: Reload systemd after removal
+      ansible.builtin.systemd:
+        daemon_reload: yes
       when: service_exists.stat.exists
 
   tasks:
