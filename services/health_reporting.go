@@ -21,6 +21,12 @@ type UDPPortsProvider interface {
 	GetUDPPorts() []int
 }
 
+// PluginHealthProvider is an interface for checking plugin health
+type PluginHealthProvider interface {
+	GetPluginCount() int
+	GetExpectedPluginCount() int
+}
+
 // HealthReportingService handles health reporting to the control service
 type HealthReportingService struct {
 	controlURL       string
@@ -38,8 +44,9 @@ type HealthReportingService struct {
 	diskPath         string                 // Path to monitor for disk metrics (defaults to /)
 	proxyStats       *domain.ProxyStats     // Pointer to proxy stats for throughput metrics
 	startTime        time.Time              // Service start time for uptime calculation
-	udpPortsProvider UDPPortsProvider       // Provider for getting active UDP ports
-	lastUDPDrops     int64                  // Track previous UDP drops to detect new drops
+	udpPortsProvider     UDPPortsProvider     // Provider for getting active UDP ports
+	pluginHealthProvider PluginHealthProvider // Provider for checking plugin health
+	lastUDPDrops         int64                // Track previous UDP drops to detect new drops
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -270,6 +277,17 @@ func (h *HealthReportingService) reportingLoop() {
 // determineStatus determines the service status based on health and metrics
 func (h *HealthReportingService) determineStatus(healthy bool, metrics map[string]interface{}) string {
 	if !healthy {
+		// Check if unhealthy due to no plugins running
+		if h.pluginHealthProvider != nil {
+			running := h.pluginHealthProvider.GetPluginCount()
+			expected := h.pluginHealthProvider.GetExpectedPluginCount()
+			if expected > 0 && running == 0 {
+				// Add context to metrics about why we're unhealthy
+				metrics["plugins_running"] = running
+				metrics["plugins_expected"] = expected
+				metrics["unhealthy_reason"] = "no_plugins_running"
+			}
+		}
 		return "unhealthy"
 	}
 
@@ -288,13 +306,15 @@ func (h *HealthReportingService) determineStatus(healthy bool, metrics map[strin
 
 // isServiceHealthy performs basic health checks
 func (h *HealthReportingService) isServiceHealthy() bool {
-	// Basic health check - service is healthy if we can execute this function
-	// In a real implementation, this would check:
-	// - UDP listener health
-	// - Receiver connectivity
-	// - Spooling directory availability
-	// - Memory usage
-	// - Disk space
+	// Check if plugins are running
+	if h.pluginHealthProvider != nil {
+		running := h.pluginHealthProvider.GetPluginCount()
+		expected := h.pluginHealthProvider.GetExpectedPluginCount()
+		if expected > 0 && running == 0 {
+			// No plugins running when we expect some - unhealthy
+			return false
+		}
+	}
 	return true
 }
 
@@ -359,6 +379,11 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 // SetUDPPortsProvider sets the provider for getting active UDP ports
 func (h *HealthReportingService) SetUDPPortsProvider(provider UDPPortsProvider) {
 	h.udpPortsProvider = provider
+}
+
+// SetPluginHealthProvider sets the provider for checking plugin health
+func (h *HealthReportingService) SetPluginHealthProvider(provider PluginHealthProvider) {
+	h.pluginHealthProvider = provider
 }
 
 // getUDPPortsFromConfig extracts UDP listening ports from the configuration or provider

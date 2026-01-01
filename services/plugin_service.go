@@ -27,19 +27,21 @@ type UploadWorker struct {
 
 // PluginService manages input plugins and data batching
 type PluginService struct {
-	config          *config.Config
-	pluginManager   *plugins.Manager
-	batchProcessor  *BatchProcessor
-	forwarder       *HTTPForwarder
-	spoolingService *SpoolingService
-	ctx             context.Context
-	cancel          context.CancelFunc
-	wg              sync.WaitGroup
-	inputChannel    chan *plugins.DataMessage
-	uploadChannel   chan *domain.DataBatch // Channel for immediate upload notifications
-	batchingEnabled bool
-	uploadWorkers   []*UploadWorker // Upload worker instances (aligned with receiver)
-	workerCount     int             // Number of upload workers
+	config              *config.Config
+	pluginManager       *plugins.Manager
+	batchProcessor      *BatchProcessor
+	forwarder           *HTTPForwarder
+	spoolingService     *SpoolingService
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
+	inputChannel        chan *plugins.DataMessage
+	uploadChannel       chan *domain.DataBatch // Channel for immediate upload notifications
+	batchingEnabled     bool
+	uploadWorkers       []*UploadWorker // Upload worker instances (aligned with receiver)
+	workerCount         int             // Number of upload workers
+	expectedPluginCount int             // Expected number of plugins from config
+	mu                  sync.RWMutex    // Protects expectedPluginCount
 }
 
 // NewPluginService creates a new plugin service
@@ -166,6 +168,9 @@ func (ps *PluginService) Stop() error {
 // Includes port change detection, verification, and error handling
 func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 	log.Info("Reloading plugin service with new configuration")
+
+	// Update expected plugin count immediately so health checks know what we're aiming for
+	ps.SetExpectedPluginCount(len(newInputConfigs))
 
 	// Extract ports from old and new configs for comparison
 	oldPorts := extractPortsFromConfigs(ps.pluginManager.GetConfigs())
@@ -468,6 +473,30 @@ func (ps *PluginService) GetUDPPorts() []int {
 		return []int{}
 	}
 	return ps.pluginManager.GetUDPPorts()
+}
+
+// GetPluginCount returns the number of currently running plugins
+// This implements part of the PluginHealthProvider interface
+func (ps *PluginService) GetPluginCount() int {
+	if ps.pluginManager == nil {
+		return 0
+	}
+	return ps.pluginManager.GetPluginCount()
+}
+
+// GetExpectedPluginCount returns the number of plugins we expect to be running
+// This implements part of the PluginHealthProvider interface
+func (ps *PluginService) GetExpectedPluginCount() int {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return ps.expectedPluginCount
+}
+
+// SetExpectedPluginCount sets the expected number of plugins
+func (ps *PluginService) SetExpectedPluginCount(count int) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.expectedPluginCount = count
 }
 
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format

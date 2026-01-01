@@ -241,6 +241,7 @@ func main() {
 	// Wire up plugin service as UDP ports provider for health reporting
 	if healthReportingService != nil {
 		healthReportingService.SetUDPPortsProvider(pluginService)
+		healthReportingService.SetPluginHealthProvider(pluginService)
 	}
 
 	// Initialize config polling service if control-only mode is enabled
