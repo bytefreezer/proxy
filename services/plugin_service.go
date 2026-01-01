@@ -169,7 +169,14 @@ func (ps *PluginService) Stop() error {
 func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 	log.Info("Reloading plugin service with new configuration")
 
-	// Update expected plugin count immediately so health checks know what we're aiming for
+	// CRITICAL: Validate config BEFORE stopping any plugins
+	// This prevents breaking working plugins due to bad config
+	if err := validatePluginConfigs(newInputConfigs); err != nil {
+		log.Errorf("Config validation failed - keeping existing plugins running: %v", err)
+		return fmt.Errorf("invalid config (existing plugins preserved): %w", err)
+	}
+
+	// Update expected plugin count after validation passes
 	ps.SetExpectedPluginCount(len(newInputConfigs))
 
 	// Extract ports from old and new configs for comparison
@@ -502,6 +509,68 @@ func (ps *PluginService) SetExpectedPluginCount(count int) {
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
 func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
 	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)
+}
+
+// validatePluginConfigs validates all plugin configurations before applying
+// This MUST be called before stopping any existing plugins
+func validatePluginConfigs(configs []plugins.PluginConfig) error {
+	var errors []string
+
+	for _, cfg := range configs {
+		pluginName := fmt.Sprintf("%s[%s]", cfg.Type, cfg.Name)
+
+		// Validate port if present
+		if portValue, exists := cfg.Config["port"]; exists {
+			var port int
+			switch p := portValue.(type) {
+			case int:
+				port = p
+			case float64:
+				port = int(p)
+			case int64:
+				port = int(p)
+			}
+
+			// Port must be in valid range (1-65535)
+			if port < 1 || port > 65535 {
+				errors = append(errors, fmt.Sprintf("%s: invalid port %d (must be 1-65535)", pluginName, port))
+			}
+		}
+
+		// Validate buffer_size and read_buffer_size if present (both field names are used)
+		for _, fieldName := range []string{"buffer_size", "read_buffer_size"} {
+			if bufferValue, exists := cfg.Config[fieldName]; exists {
+				var bufferSize int
+				switch b := bufferValue.(type) {
+				case int:
+					bufferSize = b
+				case float64:
+					bufferSize = int(b)
+				case int64:
+					bufferSize = int(b)
+				}
+
+				// Buffer size sanity check (1KB to 1GB)
+				if bufferSize < 1024 || bufferSize > 1073741824 {
+					errors = append(errors, fmt.Sprintf("%s: invalid %s %d (must be 1KB-1GB)", pluginName, fieldName, bufferSize))
+				}
+			}
+		}
+
+		// Validate required fields based on plugin type
+		switch cfg.Type {
+		case "udp", "syslog", "netflow", "sflow", "ipfix", "ebpf":
+			if _, exists := cfg.Config["port"]; !exists {
+				errors = append(errors, fmt.Sprintf("%s: missing required port", pluginName))
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("validation errors: %v", errors)
+	}
+
+	return nil
 }
 
 // extractPortsFromConfigs extracts all port numbers from plugin configurations
