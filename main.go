@@ -242,6 +242,10 @@ func main() {
 	if healthReportingService != nil {
 		healthReportingService.SetUDPPortsProvider(pluginService)
 		healthReportingService.SetPluginHealthProvider(pluginService)
+		// Wire up error reporter for per-dataset UDP drop error reporting
+		if cfg.ErrorReporter != nil {
+			healthReportingService.SetErrorReporter(cfg.ErrorReporter)
+		}
 	}
 
 	// Initialize config polling service if control-only mode is enabled

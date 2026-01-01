@@ -5,6 +5,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,9 +17,17 @@ import (
 	"github.com/bytefreezer/proxy/domain"
 )
 
+// PortDatasetInfo contains dataset info for a specific port
+type PortDatasetInfo struct {
+	Port      int
+	TenantID  string
+	DatasetID string
+}
+
 // UDPPortsProvider is an interface for getting active UDP ports
 type UDPPortsProvider interface {
 	GetUDPPorts() []int
+	GetPortDatasetMap() []PortDatasetInfo
 }
 
 // PluginHealthProvider is an interface for checking plugin health
@@ -47,6 +56,14 @@ type HealthReportingService struct {
 	udpPortsProvider     UDPPortsProvider     // Provider for getting active UDP ports
 	pluginHealthProvider PluginHealthProvider // Provider for checking plugin health
 	lastUDPDrops         int64                // Track previous UDP drops to detect new drops
+	lastPortDrops        map[int]int64        // Track drops per port to detect new drops
+	errorReporter        ErrorReporter        // Error reporter for reporting per-dataset errors
+}
+
+// ErrorReporter is an interface for reporting errors to control
+type ErrorReporter interface {
+	ReportWarning(ctx context.Context, errorType, errorMessage string, tenantID, datasetID string) error
+	ResolveErrorsByType(ctx context.Context, errorType, datasetID string) error
 }
 
 // ServiceRegistrationRequest represents a service registration request
@@ -103,11 +120,12 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		enabled:   true,
-		stopChan:  make(chan bool),
-		config:    config,
-		diskPath:  "/", // Default to root filesystem
-		startTime: time.Now(),
+		enabled:       true,
+		stopChan:      make(chan bool),
+		config:        config,
+		diskPath:      "/", // Default to root filesystem
+		startTime:     time.Now(),
+		lastPortDrops: make(map[int]int64),
 	}
 }
 
@@ -365,9 +383,54 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 		socketStats := CollectUDPSocketDrops(udpPorts)
 		var totalDrops int64
 		portDrops := make(map[string]int64)
+
+		// Get port-to-dataset mapping for error reporting
+		var portDatasetMap []PortDatasetInfo
+		if h.udpPortsProvider != nil {
+			portDatasetMap = h.udpPortsProvider.GetPortDatasetMap()
+		}
+		portToDataset := make(map[int]PortDatasetInfo)
+		for _, info := range portDatasetMap {
+			portToDataset[info.Port] = info
+		}
+
 		for port, stats := range socketStats {
 			totalDrops += stats.Drops
 			portDrops[fmt.Sprintf("port_%d", port)] = stats.Drops
+
+			// Check if drops increased for this port and report per-dataset error
+			lastDrops := h.lastPortDrops[port]
+			if stats.Drops > lastDrops && h.errorReporter != nil {
+				newDrops := stats.Drops - lastDrops
+				if info, ok := portToDataset[port]; ok && info.DatasetID != "" {
+					// Report warning for this specific dataset
+					errorMsg := fmt.Sprintf("UDP socket drops detected on port %d: %d new drops (%d total). Data loss is occurring.",
+						port, newDrops, stats.Drops)
+					if err := h.errorReporter.ReportWarning(
+						context.Background(),
+						"udp_buffer_limited",
+						errorMsg,
+						info.TenantID,
+						info.DatasetID,
+					); err != nil {
+						log.Warnf("Failed to report UDP drop error for dataset %s: %v", info.DatasetID, err)
+					} else {
+						log.Debugf("Reported UDP drops for dataset %s (port %d): %d new drops", info.DatasetID, port, newDrops)
+					}
+				}
+			} else if stats.Drops == 0 && lastDrops > 0 && h.errorReporter != nil {
+				// Drops went to zero (proxy restarted) - resolve the error
+				if info, ok := portToDataset[port]; ok && info.DatasetID != "" {
+					if err := h.errorReporter.ResolveErrorsByType(
+						context.Background(),
+						"udp_buffer_limited",
+						info.DatasetID,
+					); err != nil {
+						log.Debugf("Failed to resolve UDP drop error for dataset %s: %v", info.DatasetID, err)
+					}
+				}
+			}
+			h.lastPortDrops[port] = stats.Drops
 		}
 		metrics["udp_socket_drops_total"] = totalDrops
 		metrics["udp_socket_drops_by_port"] = portDrops
@@ -384,6 +447,11 @@ func (h *HealthReportingService) SetUDPPortsProvider(provider UDPPortsProvider) 
 // SetPluginHealthProvider sets the provider for checking plugin health
 func (h *HealthReportingService) SetPluginHealthProvider(provider PluginHealthProvider) {
 	h.pluginHealthProvider = provider
+}
+
+// SetErrorReporter sets the error reporter for reporting per-dataset errors
+func (h *HealthReportingService) SetErrorReporter(reporter ErrorReporter) {
+	h.errorReporter = reporter
 }
 
 // getUDPPortsFromConfig extracts UDP listening ports from the configuration or provider

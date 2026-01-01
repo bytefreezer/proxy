@@ -482,6 +482,62 @@ func (ps *PluginService) GetUDPPorts() []int {
 	return ps.pluginManager.GetUDPPorts()
 }
 
+// GetPortDatasetMap returns port-to-dataset mapping for all active UDP plugins
+// This implements the UDPPortsProvider interface for health reporting
+func (ps *PluginService) GetPortDatasetMap() []PortDatasetInfo {
+	if ps.pluginManager == nil {
+		return []PortDatasetInfo{}
+	}
+
+	configs := ps.pluginManager.GetConfigs()
+	var result []PortDatasetInfo
+
+	// UDP-based plugin types
+	udpPluginTypes := map[string]bool{
+		"udp":     true,
+		"syslog":  true,
+		"netflow": true,
+		"sflow":   true,
+		"ipfix":   true,
+		"ebpf":    true,
+	}
+
+	for _, cfg := range configs {
+		if !udpPluginTypes[cfg.Type] {
+			continue
+		}
+
+		// Get port from config
+		var port int
+		if portVal, ok := cfg.Config["port"]; ok {
+			switch p := portVal.(type) {
+			case int:
+				port = p
+			case float64:
+				port = int(p)
+			case int64:
+				port = int(p)
+			}
+		}
+
+		if port == 0 {
+			continue
+		}
+
+		// Get tenant_id and dataset_id from config
+		tenantID, _ := cfg.Config["tenant_id"].(string)
+		datasetID, _ := cfg.Config["dataset_id"].(string)
+
+		result = append(result, PortDatasetInfo{
+			Port:      port,
+			TenantID:  tenantID,
+			DatasetID: datasetID,
+		})
+	}
+
+	return result
+}
+
 // GetPluginCount returns the number of currently running plugins
 // This implements part of the PluginHealthProvider interface
 func (ps *PluginService) GetPluginCount() int {
