@@ -461,6 +461,15 @@ func (ps *PluginService) GetPluginConfigs() []plugins.PluginConfig {
 	return ps.pluginManager.GetConfigs()
 }
 
+// GetUDPPorts returns the UDP listening ports for all active UDP-based plugins
+// This implements the UDPPortsProvider interface for health reporting
+func (ps *PluginService) GetUDPPorts() []int {
+	if ps.pluginManager == nil {
+		return []int{}
+	}
+	return ps.pluginManager.GetUDPPorts()
+}
+
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
 func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
 	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)

@@ -238,6 +238,11 @@ func main() {
 	// Store plugin service in svcs for access by config polling
 	svcs.PluginService = pluginService
 
+	// Wire up plugin service as UDP ports provider for health reporting
+	if healthReportingService != nil {
+		healthReportingService.SetUDPPortsProvider(pluginService)
+	}
+
 	// Initialize config polling service if control-only mode is enabled
 	if cfg.ConfigMode == "control-only" && cfg.ControlURL != "" && cfg.ConfigPolling.Enabled {
 		log.Infof("Initializing config polling service (mode: %s, account_id: %s)",

@@ -239,3 +239,42 @@ func (m *Manager) GetConfigs() []PluginConfig {
 	copy(configsCopy, m.configs)
 	return configsCopy
 }
+
+// GetUDPPorts returns the UDP listening ports for all active UDP-based plugins
+func (m *Manager) GetUDPPorts() []int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// UDP-based plugin types
+	udpPluginTypes := map[string]bool{
+		"udp":     true,
+		"syslog":  true,
+		"netflow": true,
+		"sflow":   true,
+		"ipfix":   true,
+		"ebpf":    true,
+	}
+
+	var ports []int
+	for _, cfg := range m.configs {
+		if !udpPluginTypes[cfg.Type] {
+			continue
+		}
+
+		// Get port from config
+		if cfg.Config == nil {
+			continue
+		}
+
+		switch p := cfg.Config["port"].(type) {
+		case int:
+			ports = append(ports, p)
+		case float64:
+			ports = append(ports, int(p))
+		case int64:
+			ports = append(ports, int(p))
+		}
+	}
+
+	return ports
+}
