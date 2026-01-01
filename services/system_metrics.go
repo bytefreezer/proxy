@@ -257,3 +257,94 @@ func (m *SystemMetrics) ToMap() map[string]interface{} {
 		"load_avg_15":          m.LoadAvg15,
 	}
 }
+
+// UDPSocketStats contains UDP socket statistics for a port
+type UDPSocketStats struct {
+	Port       int   `json:"port"`
+	Drops      int64 `json:"drops"`
+	RxQueue    int64 `json:"rx_queue"`
+	RxBufferKB int64 `json:"rx_buffer_kb"`
+}
+
+// CollectUDPSocketDrops reads /proc/net/udp and returns drop counts for specified ports
+func CollectUDPSocketDrops(ports []int) map[int]*UDPSocketStats {
+	result := make(map[int]*UDPSocketStats)
+
+	// Initialize result for all requested ports
+	for _, port := range ports {
+		result[port] = &UDPSocketStats{Port: port}
+	}
+
+	// Create a set of ports for quick lookup (in hex)
+	portSet := make(map[string]int)
+	for _, port := range ports {
+		// Convert port to hex format used in /proc/net/udp (uppercase, 4 chars)
+		hexPort := strings.ToUpper(strconv.FormatInt(int64(port), 16))
+		// Pad to 4 characters
+		for len(hexPort) < 4 {
+			hexPort = "0" + hexPort
+		}
+		portSet[hexPort] = port
+	}
+
+	file, err := os.Open("/proc/net/udp")
+	if err != nil {
+		log.Debugf("Failed to open /proc/net/udp: %v", err)
+		return result
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		if lineNum == 1 {
+			// Skip header line
+			continue
+		}
+
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 13 {
+			continue
+		}
+
+		// local_address is field[1] in format "IP:PORT" (hex)
+		localAddr := fields[1]
+		parts := strings.Split(localAddr, ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		hexPort := strings.ToUpper(parts[1])
+		port, exists := portSet[hexPort]
+		if !exists {
+			continue
+		}
+
+		// rx_queue is field[4] in format "tx_queue:rx_queue" (hex)
+		queues := strings.Split(fields[4], ":")
+		if len(queues) == 2 {
+			rxQueue, _ := strconv.ParseInt(queues[1], 16, 64)
+			result[port].RxQueue = rxQueue
+		}
+
+		// drops is the last field (field[12] or later depending on kernel)
+		// Format: sl local_address rem_address st tx_queue:rx_queue tr tm->when retrnsmt uid timeout inode ref pointer drops
+		dropsField := fields[len(fields)-1]
+		drops, _ := strconv.ParseInt(dropsField, 10, 64)
+		result[port].Drops = drops
+	}
+
+	return result
+}
+
+// GetTotalUDPDrops returns total drops across all specified ports
+func GetTotalUDPDrops(ports []int) int64 {
+	stats := CollectUDPSocketDrops(ports)
+	var total int64
+	for _, s := range stats {
+		total += s.Drops
+	}
+	return total
+}

@@ -308,5 +308,79 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 		metrics["messages_received_per_sec"] = float64(messagesReceived) / float64(uptimeSeconds)
 	}
 
+	// Collect UDP socket drop statistics
+	udpPorts := h.getUDPPortsFromConfig()
+	if len(udpPorts) > 0 {
+		socketStats := CollectUDPSocketDrops(udpPorts)
+		var totalDrops int64
+		portDrops := make(map[string]int64)
+		for port, stats := range socketStats {
+			totalDrops += stats.Drops
+			portDrops[fmt.Sprintf("port_%d", port)] = stats.Drops
+		}
+		metrics["udp_socket_drops_total"] = totalDrops
+		metrics["udp_socket_drops_by_port"] = portDrops
+	}
+
 	return metrics
+}
+
+// getUDPPortsFromConfig extracts UDP listening ports from the configuration
+func (h *HealthReportingService) getUDPPortsFromConfig() []int {
+	var ports []int
+
+	if h.config == nil {
+		return ports
+	}
+
+	// Look for inputs in the configuration
+	inputs, ok := h.config["inputs"]
+	if !ok {
+		return ports
+	}
+
+	inputsList, ok := inputs.([]interface{})
+	if !ok {
+		return ports
+	}
+
+	// UDP-based plugin types
+	udpPluginTypes := map[string]bool{
+		"udp":     true,
+		"syslog":  true,
+		"netflow": true,
+		"sflow":   true,
+		"ipfix":   true,
+		"ebpf":    true,
+	}
+
+	for _, input := range inputsList {
+		inputMap, ok := input.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		pluginType, _ := inputMap["type"].(string)
+		if !udpPluginTypes[pluginType] {
+			continue
+		}
+
+		// Get port from config section
+		configSection, ok := inputMap["config"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Port can be int, float64 (from JSON), or string
+		switch p := configSection["port"].(type) {
+		case int:
+			ports = append(ports, p)
+		case float64:
+			ports = append(ports, int(p))
+		case int64:
+			ports = append(ports, int(p))
+		}
+	}
+
+	return ports
 }
