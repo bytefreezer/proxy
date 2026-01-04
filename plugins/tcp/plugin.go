@@ -43,20 +43,20 @@ type Config struct {
 	DataHint       string `mapstructure:"data_hint,omitempty"`   // Data format hint for downstream processing (defaults to "raw")
 	DataFormat     string `mapstructure:"data_format,omitempty"` // data format mode: "ndjson", "text", "auto" (default)
 	MaxConnections int    `mapstructure:"max_connections,omitempty"`
-	ReadTimeout    int    `mapstructure:"read_timeout,omitempty"`    // seconds
-	MaxLineSize    int    `mapstructure:"max_line_size,omitempty"`   // bytes
-	Delimiter      string `mapstructure:"delimiter,omitempty"`       // line delimiter (default: newline)
+	ReadTimeout    int    `mapstructure:"read_timeout,omitempty"`  // seconds
+	MaxLineSize    int    `mapstructure:"max_line_size,omitempty"` // bytes
+	Delimiter      string `mapstructure:"delimiter,omitempty"`     // line delimiter (default: newline)
 }
 
 // PluginMetrics tracks TCP plugin metrics
 type PluginMetrics struct {
-	ConnectionsTotal   uint64
-	ConnectionsActive  uint64
-	MessagesReceived   uint64
-	BytesReceived      uint64
-	MessagesDropped    uint64
-	LastMessageTime    time.Time
-	StartTime          time.Time
+	ConnectionsTotal  uint64
+	ConnectionsActive uint64
+	MessagesReceived  uint64
+	BytesReceived     uint64
+	MessagesDropped   uint64
+	LastMessageTime   time.Time
+	StartTime         time.Time
 }
 
 // NewPlugin creates a new TCP plugin instance

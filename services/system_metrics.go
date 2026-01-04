@@ -30,9 +30,9 @@ type SystemMetrics struct {
 	MemUsedPercent    float64 `json:"mem_used_percent"`
 
 	// CPU metrics
-	CPUUsedPercent  float64 `json:"cpu_used_percent"`
+	CPUUsedPercent   float64 `json:"cpu_used_percent"`
 	CPUIOWaitPercent float64 `json:"cpu_iowait_percent"`
-	CPUCores        int     `json:"cpu_cores"`
+	CPUCores         int     `json:"cpu_cores"`
 
 	// Load average (Linux only)
 	LoadAvg1  float64 `json:"load_avg_1"`

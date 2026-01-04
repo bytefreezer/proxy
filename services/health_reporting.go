@@ -38,26 +38,26 @@ type PluginHealthProvider interface {
 
 // HealthReportingService handles health reporting to the control service
 type HealthReportingService struct {
-	controlURL       string
-	accountID        string
-	bearerToken      string
-	serviceType      string
-	instanceID       string
-	instanceAPI      string
-	reportInterval   time.Duration
-	timeout          time.Duration
-	httpClient       *http.Client
-	enabled          bool
-	stopChan         chan bool
-	config           map[string]interface{} // Full configuration data to report
-	diskPath         string                 // Path to monitor for disk metrics (defaults to /)
-	proxyStats       *domain.ProxyStats     // Pointer to proxy stats for throughput metrics
-	startTime        time.Time              // Service start time for uptime calculation
-	udpPortsProvider     UDPPortsProvider     // Provider for getting active UDP ports
-	pluginHealthProvider PluginHealthProvider // Provider for checking plugin health
-	lastUDPDrops         int64                // Track previous UDP drops to detect new drops
-	lastPortDrops        map[int]int64        // Track drops per port to detect new drops
-	errorReporter        ErrorReporter        // Error reporter for reporting per-dataset errors
+	controlURL           string
+	accountID            string
+	bearerToken          string
+	serviceType          string
+	instanceID           string
+	instanceAPI          string
+	reportInterval       time.Duration
+	timeout              time.Duration
+	httpClient           *http.Client
+	enabled              bool
+	stopChan             chan bool
+	config               map[string]interface{} // Full configuration data to report
+	diskPath             string                 // Path to monitor for disk metrics (defaults to /)
+	proxyStats           *domain.ProxyStats     // Pointer to proxy stats for throughput metrics
+	startTime            time.Time              // Service start time for uptime calculation
+	udpPortsProvider     UDPPortsProvider       // Provider for getting active UDP ports
+	pluginHealthProvider PluginHealthProvider   // Provider for checking plugin health
+	lastUDPDrops         int64                  // Track previous UDP drops to detect new drops
+	lastPortDrops        map[int]int64          // Track drops per port to detect new drops
+	errorReporter        ErrorReporter          // Error reporter for reporting per-dataset errors
 }
 
 // ErrorReporter is an interface for reporting errors to control

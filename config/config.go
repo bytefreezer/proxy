@@ -105,9 +105,9 @@ type Otel struct {
 	MetricsHost         string `mapstructure:"metrics_host"`
 	MetricsPort         int    `mapstructure:"metrics_port"`
 	// Deprecated fields for backwards compatibility
-	Endpoint              string `mapstructure:"endpoint"`                // Deprecated: use otlp_endpoint
-	ScrapeIntervalSeconds int    `mapstructure:"scrapeIntervalseconds"`   // Deprecated: use push_interval_seconds
-	PrometheusMode        bool   `mapstructure:"prometheus_mode"`         // Deprecated: use mode
+	Endpoint              string `mapstructure:"endpoint"`              // Deprecated: use otlp_endpoint
+	ScrapeIntervalSeconds int    `mapstructure:"scrapeIntervalseconds"` // Deprecated: use push_interval_seconds
+	PrometheusMode        bool   `mapstructure:"prometheus_mode"`       // Deprecated: use mode
 }
 
 type ConfigPollingConfig struct {
