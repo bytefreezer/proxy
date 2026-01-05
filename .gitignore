@@ -40,4 +40,4 @@ distribution/docker/bytefreezer-cache
 todo
 test-spool
 CLAUDE.md
-ansible/playbooks/dist/
+#ansible/playbooks/dist/
