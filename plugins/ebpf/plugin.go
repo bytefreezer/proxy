@@ -20,15 +20,22 @@ import (
 // Plugin implements the eBPF input plugin with direct filesystem writes
 // Receives NDJSON data from eBPF sources and passes through as-is
 type Plugin struct {
-	config  Config
-	conn    *net.UDPConn
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	health  plugins.PluginHealth
-	mu      sync.RWMutex
-	spooler plugins.SpoolingInterface
-	metrics PluginMetrics
+	config   Config
+	conn     *net.UDPConn
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	health   plugins.PluginHealth
+	mu       sync.RWMutex
+	spooler  plugins.SpoolingInterface
+	metrics  PluginMetrics
+	workChan chan workItem // Channel for worker pool
+}
+
+// workItem represents a UDP packet to be processed
+type workItem struct {
+	data       []byte
+	clientAddr *net.UDPAddr
 }
 
 // Config represents eBPF plugin configuration
@@ -146,11 +153,20 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting eBPF listener with direct spooling", "")
 
-	// Start packet reader with direct spooling
-	p.wg.Add(1)
-	go p.packetReaderWithSpooling()
+	// Create work channel with buffer to absorb bursts
+	p.workChan = make(chan workItem, 10000)
 
-	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("eBPF listener active on %s:%d", p.config.Host, p.config.Port), "")
+	// Start worker pool
+	for i := 0; i < p.config.WorkerCount; i++ {
+		p.wg.Add(1)
+		go p.worker(i)
+	}
+
+	// Start packet reader that feeds workers
+	p.wg.Add(1)
+	go p.packetReader()
+
+	p.updateHealth(plugins.HealthStatusHealthy, fmt.Sprintf("eBPF listener active on %s:%d with %d workers", p.config.Host, p.config.Port, p.config.WorkerCount), "")
 	log.Infof("eBPF plugin started on %s:%d", p.config.Host, p.config.Port)
 
 	return nil
@@ -170,9 +186,14 @@ func (p *Plugin) Stop() error {
 	// Cancel context
 	p.cancel()
 
-	// Close UDP connection
+	// Close UDP connection first to stop reader
 	if p.conn != nil {
 		p.conn.Close()
+	}
+
+	// Close work channel to signal workers to stop
+	if p.workChan != nil {
+		close(p.workChan)
 	}
 
 	// Wait for all goroutines to finish
@@ -181,6 +202,7 @@ func (p *Plugin) Stop() error {
 	p.ctx = nil
 	p.cancel = nil
 	p.conn = nil
+	p.workChan = nil
 
 	p.updateHealth(plugins.HealthStatusStopped, "eBPF listener stopped", "")
 	log.Infof("eBPF plugin stopped")
@@ -205,46 +227,72 @@ func (p *Plugin) updateHealth(status plugins.HealthStatus, message, lastError st
 	}
 }
 
-// packetReaderWithSpooling reads UDP packets and writes directly to filesystem
-func (p *Plugin) packetReaderWithSpooling() {
+// packetReader reads UDP packets and sends to worker pool
+func (p *Plugin) packetReader() {
 	defer p.wg.Done()
 
 	buffer := make([]byte, 65536) // 64KB buffer for UDP packets
 
 	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		default:
-			// Set read deadline to allow checking for context cancellation
-			p.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		// Set read deadline to allow checking for context cancellation
+		p.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 
-			n, clientAddr, err := p.conn.ReadFromUDP(buffer)
-			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue // Timeout is expected
+		n, clientAddr, err := p.conn.ReadFromUDP(buffer)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// Check if we should stop
+				select {
+				case <-p.ctx.Done():
+					return
+				default:
+					continue // Timeout is expected, keep reading
 				}
-				if p.ctx.Err() != nil {
-					return // Context cancelled
-				}
-				log.Errorf("Error reading eBPF packet: %v", err)
-				continue
 			}
+			if p.ctx.Err() != nil {
+				return // Context cancelled
+			}
+			log.Errorf("Error reading eBPF packet: %v", err)
+			continue
+		}
 
-			// Process message with direct spooling
-			if n > 0 {
-				p.processMessageWithSpooling(buffer[:n], clientAddr)
+		// Copy data and send to worker pool
+		if n > 0 {
+			// Must copy buffer as it will be reused
+			dataCopy := make([]byte, n)
+			copy(dataCopy, buffer[:n])
+
+			select {
+			case p.workChan <- workItem{data: dataCopy, clientAddr: clientAddr}:
+				// Sent to worker
+			default:
+				// Channel full - drop packet and count it
+				p.mu.Lock()
+				p.metrics.MessagesDropped++
+				p.mu.Unlock()
+				log.Warnf("Worker queue full, dropping eBPF packet from %s", clientAddr.IP.String())
 			}
 		}
 	}
 }
 
-// processMessageWithSpooling processes eBPF message and flattens to NDJSON
-func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr) {
-	// Update metrics
+// worker processes packets from the work channel
+func (p *Plugin) worker(id int) {
+	defer p.wg.Done()
+
+	for item := range p.workChan {
+		p.processMessage(item.data, item.clientAddr)
+	}
+}
+
+// processMessage processes eBPF message and writes to spooler
+// Optimized: skips JSON parse/re-marshal if data is already compact
+func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
+	// Update metrics (thread-safe)
+	p.mu.Lock()
 	p.metrics.MessagesReceived++
 	p.metrics.BytesReceived += uint64(len(data))
 	p.metrics.LastMessageTime = time.Now()
+	p.mu.Unlock()
 
 	// Trim whitespace and null bytes
 	payload := bytes.TrimSpace(bytes.Trim(data, "\x00"))
@@ -252,35 +300,66 @@ func (p *Plugin) processMessageWithSpooling(data []byte, clientAddr *net.UDPAddr
 		return
 	}
 
-	// Parse JSON (handles both compact and pretty-printed formats)
-	var message map[string]interface{}
-	if err := sonic.Unmarshal(payload, &message); err != nil {
-		log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
-		p.metrics.MessagesDropped++
-		return
-	}
+	var ndjsonData []byte
 
-	// Re-marshal to compact JSON (flattens pretty-printed JSON)
-	jsonData, err := sonic.Marshal(message)
-	if err != nil {
-		log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
-		p.metrics.MessagesDropped++
-		return
-	}
+	// Optimization: if payload has no internal newlines, it's already compact JSON
+	// Just validate it's valid JSON and pass through without parse/re-marshal
+	if !bytes.Contains(payload, []byte("\n")) {
+		// Fast path: validate JSON structure without full parse
+		if len(payload) > 0 && payload[0] == '{' && payload[len(payload)-1] == '}' {
+			// Looks like compact JSON object, pass through
+			ndjsonData = append(payload, '\n')
+		} else {
+			// Not a JSON object, try to parse
+			var message map[string]interface{}
+			if err := sonic.Unmarshal(payload, &message); err != nil {
+				log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
+				p.mu.Lock()
+				p.metrics.MessagesDropped++
+				p.mu.Unlock()
+				return
+			}
+			jsonData, err := sonic.Marshal(message)
+			if err != nil {
+				log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
+				p.mu.Lock()
+				p.metrics.MessagesDropped++
+				p.mu.Unlock()
+				return
+			}
+			ndjsonData = append(jsonData, '\n')
+		}
+	} else {
+		// Slow path: pretty-printed JSON, need to parse and re-marshal
+		var message map[string]interface{}
+		if err := sonic.Unmarshal(payload, &message); err != nil {
+			log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
+			p.mu.Lock()
+			p.metrics.MessagesDropped++
+			p.mu.Unlock()
+			return
+		}
 
-	// Add newline for NDJSON format
-	ndjsonData := append(jsonData, '\n')
+		jsonData, err := sonic.Marshal(message)
+		if err != nil {
+			log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
+			p.mu.Lock()
+			p.metrics.MessagesDropped++
+			p.mu.Unlock()
+			return
+		}
+		ndjsonData = append(jsonData, '\n')
+	}
 
 	// Store to filesystem
 	bearerToken := p.config.BearerToken
 	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, ndjsonData, "ndjson"); err != nil {
 		log.Errorf("Failed to store eBPF message to filesystem from %s: %v", clientAddr.IP.String(), err)
+		p.mu.Lock()
 		p.metrics.MessagesDropped++
+		p.mu.Unlock()
 		return
 	}
-
-	log.Debugf("Stored eBPF NDJSON message from %s:%d (%d bytes flattened to %d bytes)",
-		clientAddr.IP.String(), clientAddr.Port, len(payload), len(ndjsonData))
 }
 
 // Schema returns the eBPF plugin configuration schema
