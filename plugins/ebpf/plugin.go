@@ -7,11 +7,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/plugins"
 	"github.com/mitchellh/mapstructure"
@@ -266,9 +267,7 @@ func (p *Plugin) packetReader() {
 				// Sent to worker
 			default:
 				// Channel full - drop packet and count it
-				p.mu.Lock()
-				p.metrics.MessagesDropped++
-				p.mu.Unlock()
+				atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 				log.Warnf("Worker queue full, dropping eBPF packet from %s", clientAddr.IP.String())
 			}
 		}
@@ -287,12 +286,9 @@ func (p *Plugin) worker(id int) {
 // processMessage processes eBPF message and writes to spooler
 // Optimized: skips JSON parse/re-marshal if data is already compact
 func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
-	// Update metrics (thread-safe)
-	p.mu.Lock()
-	p.metrics.MessagesReceived++
-	p.metrics.BytesReceived += uint64(len(data))
-	p.metrics.LastMessageTime = time.Now()
-	p.mu.Unlock()
+	// Update metrics using atomic operations (lock-free)
+	atomic.AddUint64(&p.metrics.MessagesReceived, 1)
+	atomic.AddUint64(&p.metrics.BytesReceived, uint64(len(data)))
 
 	// Trim whitespace and null bytes
 	payload := bytes.TrimSpace(bytes.Trim(data, "\x00"))
@@ -314,17 +310,13 @@ func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
 			var message map[string]interface{}
 			if err := sonic.Unmarshal(payload, &message); err != nil {
 				log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
-				p.mu.Lock()
-				p.metrics.MessagesDropped++
-				p.mu.Unlock()
+				atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 				return
 			}
 			jsonData, err := sonic.Marshal(message)
 			if err != nil {
 				log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
-				p.mu.Lock()
-				p.metrics.MessagesDropped++
-				p.mu.Unlock()
+				atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 				return
 			}
 			ndjsonData = append(jsonData, '\n')
@@ -334,18 +326,14 @@ func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
 		var message map[string]interface{}
 		if err := sonic.Unmarshal(payload, &message); err != nil {
 			log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
-			p.mu.Lock()
-			p.metrics.MessagesDropped++
-			p.mu.Unlock()
+			atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 			return
 		}
 
 		jsonData, err := sonic.Marshal(message)
 		if err != nil {
 			log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
-			p.mu.Lock()
-			p.metrics.MessagesDropped++
-			p.mu.Unlock()
+			atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 			return
 		}
 		ndjsonData = append(jsonData, '\n')
@@ -355,9 +343,7 @@ func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
 	bearerToken := p.config.BearerToken
 	if err := p.spooler.StoreRawMessage(p.config.TenantID, p.config.DatasetID, bearerToken, ndjsonData, "ndjson"); err != nil {
 		log.Errorf("Failed to store eBPF message to filesystem from %s: %v", clientAddr.IP.String(), err)
-		p.mu.Lock()
-		p.metrics.MessagesDropped++
-		p.mu.Unlock()
+		atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 		return
 	}
 }
