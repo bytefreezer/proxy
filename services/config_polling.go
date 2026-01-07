@@ -307,7 +307,7 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/api/v1/proxy/config?account_id=%s", s.controlURL, s.cfg.AccountID)
+	url := fmt.Sprintf("%s/api/v1/proxy/config?account_id=%s&proxy_instance_id=%s", s.controlURL, s.cfg.AccountID, s.instanceID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
