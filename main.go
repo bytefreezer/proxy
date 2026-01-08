@@ -141,15 +141,11 @@ func main() {
 			timeout = 30 * time.Second // Default 30 seconds
 		}
 
-		// Get instance ID from config or hostname
-		instanceID := cfg.InstanceID
-		if instanceID == "" {
-			var err error
-			instanceID, err = os.Hostname()
-			if err != nil {
-				log.Warnf("Failed to get hostname, using 'localhost': %v", err)
-				instanceID = "localhost"
-			}
+		// Get instance ID from hostname
+		instanceID, err := os.Hostname()
+		if err != nil {
+			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+			instanceID = "localhost"
 		}
 
 		// Determine instance API URL without protocol (proxy API endpoint)
