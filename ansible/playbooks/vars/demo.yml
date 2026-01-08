@@ -59,7 +59,7 @@ config:
     retry_on_error: true
 
   receiver:
-    base_url: "https://receiver.bytefreezer.com/{tenantid}/{datasetid}"
+    base_url: "https://receiver.bytefreezer.com"
     timeout_seconds: 30
     upload_worker_count: 5
     max_idle_conns: 10

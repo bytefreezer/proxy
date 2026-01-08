@@ -56,7 +56,7 @@ config_polling:
 
 # Bytefreezer-receiver configuration
 receiver:
-  base_url: "http://localhost:8081/{tenantid}/{datasetid}"
+  base_url: "http://localhost:8081"
   timeout_seconds: 30
   upload_worker_count: 5    # Number of upload workers (aligned with receiver)
   max_idle_conns: 10        # HTTP connection pool size

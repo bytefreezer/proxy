@@ -98,7 +98,7 @@ inputs:
 
 # Receiver configuration
 receiver:
-  base_url: "http://localhost:8080/data/{tenantid}/{datasetid}"
+  base_url: "http://localhost:8080/data"
   timeout_seconds: 30
   retry_count: 3
   retry_delay_seconds: 1

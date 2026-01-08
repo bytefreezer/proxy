@@ -59,7 +59,7 @@ config:
     retry_on_error: true
 
   receiver:
-    base_url: "http://192.168.86.101:8080/{tenantid}/{datasetid}"
+    base_url: "http://192.168.86.101:8080"
     timeout_seconds: 30
     upload_worker_count: 5
     max_idle_conns: 10
