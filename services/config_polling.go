@@ -1031,3 +1031,10 @@ func (s *ConfigPollingService) getEffectiveInterval() time.Duration {
 	}
 	return s.pollingInterval
 }
+
+// TriggerPoll triggers an immediate configuration poll from Control Service
+// Returns error if poll fails, nil on success
+func (s *ConfigPollingService) TriggerPoll() error {
+	log.Info("Manual configuration poll triggered via API")
+	return s.pollConfiguration()
+}

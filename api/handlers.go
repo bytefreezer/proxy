@@ -919,25 +919,27 @@ func (api *API) ReloadConfig() usecase.Interactor {
 		}
 
 		// Trigger immediate configuration poll from Control Service
-		// This will automatically reload plugins if configuration has changed
 		log.Info("Triggering immediate configuration poll from Control Service...")
 
-		// Note: pollConfiguration is not exported, so we'll document that user should
-		// call the config polling service's manual trigger if we add that feature
-		// For now, document that this endpoint is for documentation/testing purposes
+		if err := api.Services.ConfigPollingService.TriggerPoll(); err != nil {
+			output.Success = false
+			output.Message = fmt.Sprintf("Configuration reload failed: %v", err)
+			output.PluginsLoaded = 0
+			log.Errorf("Configuration reload failed: %v", err)
+			return nil
+		}
 
-		// Get current plugin count before reload
-		currentPlugins := 0
+		// Get plugin count after reload
+		pluginsLoaded := 0
 		if api.Services.PluginService != nil {
-			currentPlugins = len(api.Services.PluginService.GetPluginConfigs())
+			pluginsLoaded = len(api.Services.PluginService.GetPluginConfigs())
 		}
 
 		output.Success = true
-		output.Message = fmt.Sprintf("Configuration reload will occur on next polling cycle (every %v). Current plugins: %d",
-			api.Config.ConfigPolling.IntervalSeconds, currentPlugins)
-		output.PluginsLoaded = currentPlugins
+		output.Message = fmt.Sprintf("Configuration reloaded successfully. Plugins loaded: %d", pluginsLoaded)
+		output.PluginsLoaded = pluginsLoaded
 
-		log.Infof("Configuration reload acknowledgment sent - polling will refresh automatically")
+		log.Infof("Configuration reload completed - %d plugins loaded", pluginsLoaded)
 		return nil
 	})
 
