@@ -141,15 +141,19 @@ func main() {
 			timeout = 30 * time.Second // Default 30 seconds
 		}
 
-		// Get actual hostname
-		hostname, err := os.Hostname()
-		if err != nil {
-			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
-			hostname = "localhost"
+		// Get instance ID from config or hostname
+		instanceID := cfg.InstanceID
+		if instanceID == "" {
+			var err error
+			instanceID, err = os.Hostname()
+			if err != nil {
+				log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+				instanceID = "localhost"
+			}
 		}
 
 		// Determine instance API URL without protocol (proxy API endpoint)
-		instanceAPI := fmt.Sprintf("%s:%d", hostname, cfg.Server.ApiPort)
+		instanceAPI := fmt.Sprintf("%s:%d", instanceID, cfg.Server.ApiPort)
 
 		// Build configuration data with masked sensitive fields
 		configuration := buildHealthConfiguration(&cfg, instanceAPI)
@@ -159,6 +163,7 @@ func main() {
 			cfg.AccountID,
 			cfg.BearerToken,
 			"bytefreezer-proxy",
+			instanceID,
 			instanceAPI,
 			reportInterval,
 			timeout,

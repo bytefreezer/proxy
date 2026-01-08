@@ -101,11 +101,14 @@ type HealthReportResponse struct {
 }
 
 // NewHealthReportingService creates a new health reporting service
-func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, instanceAPI string, reportInterval, timeout time.Duration, config map[string]interface{}) *HealthReportingService {
-	// Get hostname for instance ID
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
+func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, instanceID, instanceAPI string, reportInterval, timeout time.Duration, config map[string]interface{}) *HealthReportingService {
+	// Use provided instanceID or fall back to hostname
+	if instanceID == "" {
+		var err error
+		instanceID, err = os.Hostname()
+		if err != nil {
+			instanceID = "unknown"
+		}
 	}
 
 	return &HealthReportingService{
@@ -113,7 +116,7 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		accountID:      accountID,
 		bearerToken:    bearerToken,
 		serviceType:    serviceType,
-		instanceID:     hostname,
+		instanceID:     instanceID,
 		instanceAPI:    instanceAPI,
 		reportInterval: reportInterval,
 		timeout:        timeout,

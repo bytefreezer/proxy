@@ -34,6 +34,7 @@ type Config struct {
 	BearerToken      string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
 	ControlURL       string                 `mapstructure:"control_url"`  // Centralized control service URL
 	ConfigMode       string                 `mapstructure:"config_mode"`  // local-only | control-only
+	InstanceID       string                 `mapstructure:"instance_id"`  // Custom instance ID (defaults to hostname)
 	ConfigPolling    ConfigPollingConfig    `mapstructure:"config_polling"`
 	SOC              SOCAlert               `mapstructure:"soc"`
 	Otel             Otel                   `mapstructure:"otel"`
