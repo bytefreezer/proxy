@@ -349,7 +349,7 @@ func (api *API) HealthCheck() usecase.Interactor {
 			UDPMessageErrors:    stats.UDPMessageErrors,
 			BatchesCreated:      stats.BatchesCreated,
 			BatchesForwarded:    stats.BatchesForwarded,
-			ForwardingErrors:    stats.ForwardingErrors,
+			ForwardingErrors:    stats.ForwardingErrors24h(),
 			BytesReceived:       stats.BytesReceived,
 			BytesForwarded:      stats.BytesForwarded,
 			LastActivity:        stats.LastActivity.Format(time.RFC3339),

@@ -301,9 +301,9 @@ func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
 	log.Warnf("Batch %s upload failed (%s) - %s returned HTTP %d: %s",
 		batch.ID, failureType, url, resp.StatusCode, bodyStr)
 
-	// Update error count in proxy stats
+	// Update error count in proxy stats (with 24hr rolling window)
 	if f.proxyStats != nil {
-		atomic.AddInt64(&f.proxyStats.ForwardingErrors, 1)
+		f.proxyStats.AddForwardingError()
 	}
 
 	// Return custom error with retry information

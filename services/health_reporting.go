@@ -362,14 +362,14 @@ func (h *HealthReportingService) generateMetrics() map[string]interface{} {
 		bytesForwarded := atomic.LoadInt64(&h.proxyStats.BytesForwarded)
 		messagesReceived := atomic.LoadInt64(&h.proxyStats.UDPMessagesReceived)
 		batchesForwarded := atomic.LoadInt64(&h.proxyStats.BatchesForwarded)
-		forwardingErrors := atomic.LoadInt64(&h.proxyStats.ForwardingErrors)
+		forwardingErrors24h := h.proxyStats.ForwardingErrors24h()
 
 		metrics["uptime_seconds"] = uptimeSeconds
 		metrics["bytes_received"] = bytesReceived
 		metrics["bytes_forwarded"] = bytesForwarded
 		metrics["messages_received"] = messagesReceived
 		metrics["batches_forwarded"] = batchesForwarded
-		metrics["forwarding_errors"] = forwardingErrors
+		metrics["forwarding_errors"] = forwardingErrors24h
 
 		// Calculate throughput (bytes per second)
 		metrics["bytes_received_per_sec"] = float64(bytesReceived) / float64(uptimeSeconds)
