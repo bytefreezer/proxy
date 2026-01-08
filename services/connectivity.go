@@ -137,10 +137,8 @@ func (c *ConnectivityTestService) testConnection(tenantID, datasetID, pluginName
 		BearerToken: maskToken(bearerToken),
 	}
 
-	// Build receiver URL
-	url := c.config.Receiver.BaseURL
-	url = strings.ReplaceAll(url, "{tenantid}", tenantID)
-	url = strings.ReplaceAll(url, "{datasetid}", datasetID)
+	// Build receiver URL from base URL + tenant/dataset path
+	url := strings.TrimSuffix(c.config.Receiver.BaseURL, "/") + "/" + tenantID + "/" + datasetID
 	result.ReceiverURL = url
 
 	// Create test payload (small NDJSON data)
