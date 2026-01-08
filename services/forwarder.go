@@ -181,10 +181,8 @@ func (f *HTTPForwarder) SetProxyStats(stats *domain.ProxyStats) {
 
 // ForwardBatch forwards a data batch to bytefreezer-receiver
 func (f *HTTPForwarder) ForwardBatch(batch *domain.DataBatch) error {
-	// Replace placeholders in base URL with actual tenant and dataset IDs, and add file extension
-	url := f.config.Receiver.BaseURL
-	url = strings.ReplaceAll(url, "{tenantid}", batch.TenantID)
-	url = strings.ReplaceAll(url, "{datasetid}", batch.DatasetID)
+	// Construct URL from base URL + tenant/dataset path
+	url := strings.TrimSuffix(f.config.Receiver.BaseURL, "/") + "/" + batch.TenantID + "/" + batch.DatasetID
 
 	// File extension is communicated via headers, not URL path
 
