@@ -1071,12 +1071,24 @@ func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverI
 	receiverURL = strings.TrimPrefix(receiverURL, "https://")
 	receiverURL = strings.TrimSuffix(receiverURL, "/")
 
+	// Extract port from receiver URL for fallback matching
+	var receiverPort string
+	if idx := strings.LastIndex(receiverURL, ":"); idx != -1 {
+		receiverPort = receiverURL[idx+1:]
+	}
+
 	var matchedReceiver *ReceiverInfo
 	for i := range receivers {
-		// Match by instance_api (e.g., "tp1:8084" matches receiver URL "http://tp1:8084")
+		// Match by instance_api (e.g., "tp1:8080" matches receiver URL "http://tp1:8080")
 		if strings.Contains(receiverURL, receivers[i].InstanceAPI) ||
 			strings.Contains(receivers[i].InstanceAPI, receiverURL) {
 			matchedReceiver = &receivers[i]
+			break
+		}
+		// Fallback: match by port number (handles IP vs hostname mismatch)
+		if receiverPort != "" && strings.HasSuffix(receivers[i].InstanceAPI, ":"+receiverPort) {
+			matchedReceiver = &receivers[i]
+			log.Debugf("Matched receiver %s by port %s (URL: %s)", receivers[i].InstanceID, receiverPort, receiverURL)
 			break
 		}
 	}
