@@ -293,6 +293,7 @@ func (s *SpoolingService) injectBfTs(data []byte, dataHint string) []byte {
 }
 
 // BatchRawFiles combines raw files into compressed batches and creates metadata
+// Respects batch size limits from config to prevent HTTP 413 errors
 func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string) error {
 	if !s.config.Spooling.Enabled {
 		return nil
@@ -322,6 +323,12 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		return nil // No files to process
 	}
 
+	// Get max batch size from config (default 9MB if not set - 1MB under typical 10MB receiver limit)
+	maxBatchBytes := s.config.Batching.MaxBytes
+	if maxBatchBytes <= 0 {
+		maxBatchBytes = 9 * 1024 * 1024 // 9MB default
+	}
+
 	// Group files by data hint (extension)
 	filesByDataHint := make(map[string][]string)
 
@@ -338,38 +345,10 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		filesByDataHint[dataHint] = append(filesByDataHint[dataHint], file.Name())
 	}
 
-	// Process each data hint group separately
-	for dataHint, files := range filesByDataHint {
-		if len(files) == 0 {
-			continue
-		}
-
-		// Combine files of the same data hint
-		var combinedData bytes.Buffer
-		var processedFiles []string
-		var totalBytes int64
-
-		for _, fileName := range files {
-			filePath := filepath.Join(rawDir, fileName)
-			// #nosec G304 - filePath is constructed from controlled rawDir and validated fileName
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				log.Warnf("Failed to read raw file %s: %v", filePath, err)
-				continue
-			}
-
-			// For line-based formats (ndjson, csv, syslog), ensure each file ends with newline
-			combinedData.Write(data)
-			if len(data) > 0 && isLineBasedFormat(dataHint) && data[len(data)-1] != '\n' {
-				combinedData.WriteByte('\n')
-			}
-
-			processedFiles = append(processedFiles, filePath)
-			totalBytes += int64(len(data))
-		}
-
-		if len(processedFiles) == 0 {
-			continue // No valid files processed for this data hint
+	// Helper function to flush current batch to queue
+	flushBatch := func(dataHint string, combinedData *bytes.Buffer, processedFiles []string) error {
+		if len(processedFiles) == 0 || combinedData.Len() == 0 {
+			return nil
 		}
 
 		// Generate batch file for this data hint
@@ -381,30 +360,24 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 		var compressed bytes.Buffer
 		gzipWriter, err := gzip.NewWriterLevel(&compressed, 6)
 		if err != nil {
-			log.Errorf("Failed to create gzip writer for %s: %v", dataHint, err)
-			continue
+			return fmt.Errorf("failed to create gzip writer: %w", err)
 		}
 
 		if _, err := gzipWriter.Write(combinedData.Bytes()); err != nil {
-			log.Errorf("Failed to compress %s data: %v", dataHint, err)
 			gzipWriter.Close()
-			continue
+			return fmt.Errorf("failed to compress data: %w", err)
 		}
 
 		if err := gzipWriter.Close(); err != nil {
-			log.Errorf("Failed to close gzip writer for %s: %v", dataHint, err)
-			continue
+			return fmt.Errorf("failed to close gzip writer: %w", err)
 		}
 
-		// Write compressed batch to queue - filename already in new format
+		// Write compressed batch to queue
 		batchFilePath := filepath.Join(queueDir, batchFileName)
 
 		if err := writeFileSync(batchFilePath, compressed.Bytes(), 0600); err != nil {
-			log.Errorf("Failed to write compressed batch for %s: %v", dataHint, err)
-			continue
+			return fmt.Errorf("failed to write batch: %w", err)
 		}
-
-		// Note: Queue files don't need metadata - metadata is created only when files move to retry/dlq
 
 		// Remove processed raw files
 		for _, filePath := range processedFiles {
@@ -413,8 +386,57 @@ func (s *SpoolingService) BatchRawFiles(tenantID, datasetID, bearerToken string)
 			}
 		}
 
-		log.Infof("Created batch %s from %d raw files (data hint: %s) for tenant=%s dataset=%s",
-			batchID, len(processedFiles), dataHint, tenantID, datasetID)
+		log.Infof("Created batch %s from %d raw files (data hint: %s, compressed: %d bytes) for tenant=%s dataset=%s",
+			batchID, len(processedFiles), dataHint, compressed.Len(), tenantID, datasetID)
+
+		return nil
+	}
+
+	// Process each data hint group separately
+	for dataHint, files := range filesByDataHint {
+		if len(files) == 0 {
+			continue
+		}
+
+		// Combine files of the same data hint, respecting size limits
+		var combinedData bytes.Buffer
+		var processedFiles []string
+
+		for _, fileName := range files {
+			filePath := filepath.Join(rawDir, fileName)
+			// #nosec G304 - filePath is constructed from controlled rawDir and validated fileName
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				log.Warnf("Failed to read raw file %s: %v", filePath, err)
+				continue
+			}
+
+			// Estimate compressed size (typical compression ratio ~10:1 for JSON)
+			// Use conservative 5:1 ratio to ensure we stay under limit
+			estimatedCompressedSize := int64(combinedData.Len()+len(data)) / 5
+			if estimatedCompressedSize > maxBatchBytes && combinedData.Len() > 0 {
+				// Flush current batch before adding this file
+				if err := flushBatch(dataHint, &combinedData, processedFiles); err != nil {
+					log.Errorf("Failed to flush batch for %s: %v", dataHint, err)
+				}
+				// Reset for next batch
+				combinedData.Reset()
+				processedFiles = nil
+			}
+
+			// For line-based formats (ndjson, csv, syslog), ensure each file ends with newline
+			combinedData.Write(data)
+			if len(data) > 0 && isLineBasedFormat(dataHint) && data[len(data)-1] != '\n' {
+				combinedData.WriteByte('\n')
+			}
+
+			processedFiles = append(processedFiles, filePath)
+		}
+
+		// Flush remaining data
+		if err := flushBatch(dataHint, &combinedData, processedFiles); err != nil {
+			log.Errorf("Failed to flush final batch for %s: %v", dataHint, err)
+		}
 	}
 
 	return nil

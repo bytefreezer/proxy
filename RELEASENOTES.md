@@ -17,9 +17,18 @@
   - Config polling service calls callback when batch size is adjusted
   - Health reports now show actual runtime batch size, not just startup configuration
 
+- **BatchRawFiles Size Limiting**: Raw file batching now respects batch size limits
+  - Previously BatchRawFiles combined ALL raw files into a single batch regardless of size
+  - Now splits into multiple batches based on `batching.max_bytes` config
+  - Uses conservative 5:1 compression ratio estimate to stay under receiver limits
+  - Fixes HTTP 413 errors for high-volume eBPF data streams
+  - Default limit of 9MB if not configured (1MB under typical 10MB receiver limit)
+  - Logs compressed size in batch creation messages
+
 ### Files Modified
 - `services/config_polling.go` - Added ReceiverInfo struct and applyReceiverCapacityLimits() method
 - `services/health_reporting.go` - Added UpdateBatchingConfig() method
+- `services/spooling.go` - Added size-based batch splitting in BatchRawFiles()
 - `main.go` - Wired up batch size change callback between config polling and health reporting
 
 ---
