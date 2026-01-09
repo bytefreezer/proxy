@@ -137,6 +137,25 @@ func (h *HealthReportingService) SetDiskPath(path string) {
 	h.diskPath = path
 }
 
+// UpdateConfiguration updates the configuration map for health reporting
+// This should be called when runtime configuration changes (e.g., receiver capacity adjustment)
+func (h *HealthReportingService) UpdateConfiguration(key string, value interface{}) {
+	if h.config == nil {
+		return
+	}
+	h.config[key] = value
+}
+
+// UpdateBatchingConfig updates the batching configuration in health reports
+func (h *HealthReportingService) UpdateBatchingConfig(maxBytes int64) {
+	if h.config == nil {
+		return
+	}
+	if batching, ok := h.config["batching"].(map[string]interface{}); ok {
+		batching["max_bytes"] = maxBytes
+	}
+}
+
 // SetProxyStats sets the proxy stats pointer for throughput metrics
 func (h *HealthReportingService) SetProxyStats(stats *domain.ProxyStats) {
 	h.proxyStats = stats

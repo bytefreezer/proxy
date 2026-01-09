@@ -303,6 +303,11 @@ func main() {
 		// Store in services
 		svcs.ConfigPollingService = configPollingService
 
+		// Wire up batch size change callback to update health reporting
+		if healthReportingService != nil {
+			configPollingService.SetBatchSizeChangeCallback(healthReportingService.UpdateBatchingConfig)
+		}
+
 		// Start config polling (will perform initial poll immediately)
 		configPollingService.Start()
 		log.Info("Config polling service started")

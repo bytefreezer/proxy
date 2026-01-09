@@ -178,10 +178,11 @@ type ConfigPollingService struct {
 	currentConfigHash string
 	configMutex       sync.RWMutex
 
-	ticker         *time.Ticker
-	stopChan       chan struct{}
-	httpClient     *http.Client
-	onConfigChange func(*ControlProxyConfig) error // Callback for config changes
+	ticker            *time.Ticker
+	stopChan          chan struct{}
+	httpClient        *http.Client
+	onConfigChange    func(*ControlProxyConfig) error // Callback for config changes
+	onBatchSizeChange func(int64)                     // Callback when batch size is adjusted
 
 	// Exponential backoff and circuit breaker
 	consecutiveFailures int
@@ -1051,6 +1052,11 @@ func (s *ConfigPollingService) TriggerPoll() error {
 	return s.pollConfiguration()
 }
 
+// SetBatchSizeChangeCallback sets a callback to be called when batch size is adjusted
+func (s *ConfigPollingService) SetBatchSizeChangeCallback(callback func(int64)) {
+	s.onBatchSizeChange = callback
+}
+
 // applyReceiverCapacityLimits adjusts batch size based on receiver capacity
 // This prevents HTTP 413 (Payload Too Large) errors when receiver has smaller limits
 func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverInfo) {
@@ -1120,6 +1126,10 @@ func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverI
 			log.Infof("Adjusting batch max_bytes from %d to %d based on receiver %s capacity (max_payload_size: %d)",
 				currentMaxBytes, effectiveLimit, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
 			s.cfg.Batching.MaxBytes = effectiveLimit
+			// Notify health reporting of the change
+			if s.onBatchSizeChange != nil {
+				s.onBatchSizeChange(effectiveLimit)
+			}
 		} else {
 			log.Debugf("Batch max_bytes (%d) already within receiver %s capacity with margin (%d)",
 				currentMaxBytes, matchedReceiver.InstanceID, effectiveLimit)
