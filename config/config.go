@@ -29,12 +29,12 @@ type Config struct {
 	Inputs           []plugins.PluginConfig `mapstructure:"inputs"` // Plugin-based input system
 	Batching         Batching               `mapstructure:"batching"`
 	Receiver         Receiver               `mapstructure:"receiver"`
-	AccountID     string                 `mapstructure:"account_id"`   // Account ID for multi-tenant polling
-	TenantID      string                 `mapstructure:"tenant_id"`    // Global tenant ID (fallback for plugins without tenant_id)
-	BearerToken   string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
-	ControlURL    string                 `mapstructure:"control_url"`  // Centralized control service URL
-	ConfigMode    string                 `mapstructure:"config_mode"`  // local-only | control-only
-	ConfigPolling ConfigPollingConfig    `mapstructure:"config_polling"`
+	AccountID        string                 `mapstructure:"account_id"`   // Account ID for multi-tenant polling
+	TenantID         string                 `mapstructure:"tenant_id"`    // Global tenant ID (fallback for plugins without tenant_id)
+	BearerToken      string                 `mapstructure:"bearer_token"` // Account-specific API key for authentication
+	ControlURL       string                 `mapstructure:"control_url"`  // Centralized control service URL
+	ConfigMode       string                 `mapstructure:"config_mode"`  // local-only | control-only
+	ConfigPolling    ConfigPollingConfig    `mapstructure:"config_polling"`
 	SOC              SOCAlert               `mapstructure:"soc"`
 	Otel             Otel                   `mapstructure:"otel"`
 	Spooling         Spooling               `mapstructure:"spooling"`

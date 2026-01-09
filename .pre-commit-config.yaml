@@ -3,9 +3,8 @@ repos:
     hooks:
       - id: go-fmt
         name: Go Format
-        entry: gofmt
+        entry: bash -c 'gofmt -s -w . && git diff --exit-code'
         language: system
-        args: ['-s', '-l', '.']
         pass_filenames: false
         
       - id: go-vet
