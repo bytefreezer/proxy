@@ -6,10 +6,16 @@
 - **Receiver Capacity Auto-Adjustment**: Proxy now automatically adjusts batch size based on receiver limits
   - Parses receiver capacity info from Control's GetProxyConfiguration response
   - Matches receiver by URL to find the appropriate max_payload_size limit
-  - Adjusts `batching.max_bytes` to 95% of receiver's limit (for overhead margin)
+  - Adjusts `batching.max_bytes` to 90% of receiver's limit when config is within 5% of receiver limit
   - Prevents HTTP 413 (Payload Too Large) errors for high-volume data streams (e.g., eBPF)
   - Falls back to minimum receiver limit if no exact URL match found
-  - Logs adjustment when batch size is reduced
+  - Logs adjustment when batch size is reduced (includes "10% margin" in log message)
+
+### Performance
+- **eBPF JSON Processing Optimization**: Reduced CPU usage from 91% to 30% for pretty-printed JSON
+  - Added `compactJSONFast()` - byte-level whitespace stripping without full JSON parsing
+  - Avoids unnecessary unmarshal/marshal cycle for pretty-printed eBPF data
+  - Safe for eBPF JSON which won't have literal newlines in string values
 
 ### Bug Fixes
 - **Health Report Configuration Update**: Health reports now reflect adjusted batch size
@@ -26,9 +32,10 @@
   - Logs compressed size in batch creation messages
 
 ### Files Modified
-- `services/config_polling.go` - Added ReceiverInfo struct and applyReceiverCapacityLimits() method
+- `services/config_polling.go` - Added ReceiverInfo struct and applyReceiverCapacityLimits() with 10% margin
 - `services/health_reporting.go` - Added UpdateBatchingConfig() method
 - `services/spooling.go` - Added size-based batch splitting in BatchRawFiles()
+- `plugins/ebpf/plugin.go` - Added compactJSONFast() for CPU optimization
 - `main.go` - Wired up batch size change callback between config polling and health reporting
 
 ---

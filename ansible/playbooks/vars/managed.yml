@@ -69,7 +69,7 @@ config:
   batching:
     enabled: true
     max_lines: 0
-    max_bytes: 5242880
+    max_bytes: 10485760
     timeout_seconds: 60
     compression_enabled: true
     compression_level: 6

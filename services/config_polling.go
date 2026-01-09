@@ -1107,23 +1107,28 @@ func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverI
 				minPayloadSize = r.MaxPayloadSize
 			}
 		}
-		if minPayloadSize > 0 && minPayloadSize < currentMaxBytes {
-			// Leave some margin (95%) to account for metadata overhead
-			effectiveLimit := int64(float64(minPayloadSize) * 0.95)
-			log.Warnf("No matching receiver found for URL %s - using minimum receiver limit: %d bytes (was %d)",
-				s.cfg.Receiver.BaseURL, effectiveLimit, currentMaxBytes)
-			s.cfg.Batching.MaxBytes = effectiveLimit
+		if minPayloadSize > 0 {
+			threshold := int64(float64(minPayloadSize) * 0.95)
+			if currentMaxBytes >= threshold {
+				// Config is within 5% of min receiver limit - apply 10% margin
+				effectiveLimit := int64(float64(minPayloadSize) * 0.90)
+				log.Warnf("No matching receiver found for URL %s - using minimum receiver limit with 10%% margin: %d bytes (was %d)",
+					s.cfg.Receiver.BaseURL, effectiveLimit, currentMaxBytes)
+				s.cfg.Batching.MaxBytes = effectiveLimit
+			}
 		}
 		return
 	}
 
 	// Check if receiver's limit requires adjustment
-	// Adjust when receiver limit is less than OR EQUAL to batch size (need margin for HTTP overhead)
-	if matchedReceiver.MaxPayloadSize > 0 && matchedReceiver.MaxPayloadSize <= currentMaxBytes {
-		// Leave some margin (95%) to account for HTTP headers and metadata overhead
-		effectiveLimit := int64(float64(matchedReceiver.MaxPayloadSize) * 0.95)
-		if effectiveLimit < currentMaxBytes {
-			log.Infof("Adjusting batch max_bytes from %d to %d based on receiver %s capacity (max_payload_size: %d)",
+	// If config is within 5% of receiver limit, apply 10% margin for safety
+	// This catches edge cases where config and receiver are nearly equal
+	if matchedReceiver.MaxPayloadSize > 0 {
+		threshold := int64(float64(matchedReceiver.MaxPayloadSize) * 0.95) // 5% margin threshold
+		if currentMaxBytes >= threshold {
+			// Config is within 5% of receiver limit - apply 10% margin
+			effectiveLimit := int64(float64(matchedReceiver.MaxPayloadSize) * 0.90)
+			log.Infof("Adjusting batch max_bytes from %d to %d based on receiver %s capacity (max_payload_size: %d, 10%% margin)",
 				currentMaxBytes, effectiveLimit, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
 			s.cfg.Batching.MaxBytes = effectiveLimit
 			// Notify health reporting of the change
@@ -1131,11 +1136,8 @@ func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverI
 				s.onBatchSizeChange(effectiveLimit)
 			}
 		} else {
-			log.Debugf("Batch max_bytes (%d) already within receiver %s capacity with margin (%d)",
-				currentMaxBytes, matchedReceiver.InstanceID, effectiveLimit)
+			log.Debugf("Batch max_bytes (%d) well under receiver %s capacity (%d), no adjustment needed",
+				currentMaxBytes, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
 		}
-	} else {
-		log.Debugf("Batch max_bytes (%d) within receiver %s capacity (%d)",
-			currentMaxBytes, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
 	}
 }
