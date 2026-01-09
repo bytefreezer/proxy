@@ -103,10 +103,19 @@ type SOCSettings struct {
 	Timeout  int    `json:"timeout,omitempty"`
 }
 
+// ReceiverInfo represents receiver capacity information from control
+type ReceiverInfo struct {
+	InstanceID     string `json:"instance_id"`
+	InstanceAPI    string `json:"instance_api"`
+	Status         string `json:"status"`
+	MaxPayloadSize int64  `json:"max_payload_size"`
+}
+
 // ControlConfiguration represents the full configuration from control (account-based polling)
 type ControlConfiguration struct {
-	Tenants []TenantWithDatasets `json:"tenants"`
-	Count   int                  `json:"count"`
+	Tenants   []TenantWithDatasets `json:"tenants"`
+	Count     int                  `json:"count"`
+	Receivers []ReceiverInfo       `json:"receivers,omitempty"`
 }
 
 // TenantWithDatasets represents a tenant and its datasets
@@ -351,8 +360,11 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 		return fmt.Errorf("failed to decode config response: %w", err)
 	}
 
-	log.Infof("Received configuration for account %s: %d tenants, %d total datasets",
-		s.cfg.AccountID, controlConfig.Count, s.countTotalDatasets(controlConfig))
+	log.Infof("Received configuration for account %s: %d tenants, %d total datasets, %d receivers",
+		s.cfg.AccountID, controlConfig.Count, s.countTotalDatasets(controlConfig), len(controlConfig.Receivers))
+
+	// Apply receiver capacity limits if available
+	s.applyReceiverCapacityLimits(controlConfig.Receivers)
 
 	// Record successful poll (resets backoff)
 	s.recordSuccess()
@@ -1037,4 +1049,65 @@ func (s *ConfigPollingService) getEffectiveInterval() time.Duration {
 func (s *ConfigPollingService) TriggerPoll() error {
 	log.Info("Manual configuration poll triggered via API")
 	return s.pollConfiguration()
+}
+
+// applyReceiverCapacityLimits adjusts batch size based on receiver capacity
+// This prevents HTTP 413 (Payload Too Large) errors when receiver has smaller limits
+func (s *ConfigPollingService) applyReceiverCapacityLimits(receivers []ReceiverInfo) {
+	if len(receivers) == 0 {
+		log.Debugf("No receiver capacity info received from control")
+		return
+	}
+
+	// Get current batch max_bytes
+	currentMaxBytes := s.cfg.Batching.MaxBytes
+	if currentMaxBytes <= 0 {
+		currentMaxBytes = 1048576 // Default 1MB
+	}
+
+	// Find the matching receiver based on configured receiver URL
+	// Match using instance_api (hostname:port format)
+	receiverURL := strings.TrimPrefix(s.cfg.Receiver.BaseURL, "http://")
+	receiverURL = strings.TrimPrefix(receiverURL, "https://")
+	receiverURL = strings.TrimSuffix(receiverURL, "/")
+
+	var matchedReceiver *ReceiverInfo
+	for i := range receivers {
+		// Match by instance_api (e.g., "tp1:8084" matches receiver URL "http://tp1:8084")
+		if strings.Contains(receiverURL, receivers[i].InstanceAPI) ||
+			strings.Contains(receivers[i].InstanceAPI, receiverURL) {
+			matchedReceiver = &receivers[i]
+			break
+		}
+	}
+
+	if matchedReceiver == nil {
+		// No exact match - use the smallest max_payload_size from all receivers as a safe default
+		var minPayloadSize int64 = 0
+		for _, r := range receivers {
+			if minPayloadSize == 0 || r.MaxPayloadSize < minPayloadSize {
+				minPayloadSize = r.MaxPayloadSize
+			}
+		}
+		if minPayloadSize > 0 && minPayloadSize < currentMaxBytes {
+			// Leave some margin (95%) to account for metadata overhead
+			effectiveLimit := int64(float64(minPayloadSize) * 0.95)
+			log.Warnf("No matching receiver found for URL %s - using minimum receiver limit: %d bytes (was %d)",
+				s.cfg.Receiver.BaseURL, effectiveLimit, currentMaxBytes)
+			s.cfg.Batching.MaxBytes = effectiveLimit
+		}
+		return
+	}
+
+	// Check if receiver's limit is smaller than our batch size
+	if matchedReceiver.MaxPayloadSize > 0 && matchedReceiver.MaxPayloadSize < currentMaxBytes {
+		// Leave some margin (95%) to account for HTTP headers and metadata overhead
+		effectiveLimit := int64(float64(matchedReceiver.MaxPayloadSize) * 0.95)
+		log.Infof("Adjusting batch max_bytes from %d to %d based on receiver %s capacity (max_payload_size: %d)",
+			currentMaxBytes, effectiveLimit, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
+		s.cfg.Batching.MaxBytes = effectiveLimit
+	} else {
+		log.Debugf("Batch max_bytes (%d) within receiver %s capacity (%d)",
+			currentMaxBytes, matchedReceiver.InstanceID, matchedReceiver.MaxPayloadSize)
+	}
 }
