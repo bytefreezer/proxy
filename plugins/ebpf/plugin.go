@@ -322,21 +322,9 @@ func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
 			ndjsonData = append(jsonData, '\n')
 		}
 	} else {
-		// Slow path: pretty-printed JSON, need to parse and re-marshal
-		var message map[string]interface{}
-		if err := sonic.Unmarshal(payload, &message); err != nil {
-			log.Warnf("Failed to parse eBPF JSON from %s: %v", clientAddr.IP.String(), err)
-			atomic.AddUint64(&p.metrics.MessagesDropped, 1)
-			return
-		}
-
-		jsonData, err := sonic.Marshal(message)
-		if err != nil {
-			log.Warnf("Failed to marshal eBPF message to JSON from %s: %v", clientAddr.IP.String(), err)
-			atomic.AddUint64(&p.metrics.MessagesDropped, 1)
-			return
-		}
-		ndjsonData = append(jsonData, '\n')
+		// Pretty-printed JSON - strip whitespace using fast byte scan
+		// eBPF JSON won't have literal newlines in string values, so this is safe
+		ndjsonData = compactJSONFast(payload)
 	}
 
 	// Store to filesystem
@@ -346,6 +334,36 @@ func (p *Plugin) processMessage(data []byte, clientAddr *net.UDPAddr) {
 		atomic.AddUint64(&p.metrics.MessagesDropped, 1)
 		return
 	}
+}
+
+// compactJSONFast strips whitespace from JSON without parsing
+// This is faster than json.Compact() as it doesn't validate structure
+// Safe for eBPF JSON which won't have literal newlines in string values
+func compactJSONFast(src []byte) []byte {
+	dst := make([]byte, 0, len(src))
+	inString := false
+	escape := false
+
+	for _, b := range src {
+		if escape {
+			dst = append(dst, b)
+			escape = false
+			continue
+		}
+		if b == '\\' && inString {
+			dst = append(dst, b)
+			escape = true
+			continue
+		}
+		if b == '"' {
+			inString = !inString
+		}
+		if !inString && (b == ' ' || b == '\t' || b == '\n' || b == '\r') {
+			continue
+		}
+		dst = append(dst, b)
+	}
+	return append(dst, '\n')
 }
 
 // Schema returns the eBPF plugin configuration schema
