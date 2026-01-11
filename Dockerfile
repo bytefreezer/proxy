@@ -88,8 +88,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Set working directory
 WORKDIR /
 
-# Default command
-CMD ["/app", "--config", "/etc/bytefreezer-proxy/config.yaml"]
+# Entrypoint and default arguments
+ENTRYPOINT ["/app"]
+CMD ["--config", "/etc/bytefreezer-proxy/config.yaml"]
 
 # Metadata labels following OCI standards
 ARG VERSION=unknown
