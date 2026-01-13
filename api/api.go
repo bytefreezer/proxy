@@ -16,12 +16,10 @@ import (
 	"github.com/swaggest/openapi-go/openapi3"
 	"github.com/swaggest/rest/web"
 	swgui "github.com/swaggest/swgui/v5emb"
-	"go.opentelemetry.io/otel/metric"
 )
 
 type APIServer struct {
 	Services   *services.Services
-	ApiMetrics map[string]metric.Int64Counter
 	HttpServer *http.Server
 	sync.RWMutex
 	Config *config.Config
@@ -30,9 +28,8 @@ type APIServer struct {
 // NewAPIServer creates a new API server instance
 func NewAPIServer(services *services.Services, conf *config.Config) *APIServer {
 	return &APIServer{
-		Services:   services,
-		ApiMetrics: make(map[string]metric.Int64Counter),
-		Config:     conf,
+		Services: services,
+		Config:   conf,
 	}
 }
 

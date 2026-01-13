@@ -4,8 +4,6 @@
 package services
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"net"
@@ -35,13 +33,11 @@ type PluginService struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	wg                  sync.WaitGroup
-	inputChannel        chan *plugins.DataMessage
 	uploadChannel       chan *domain.DataBatch // Channel for immediate upload notifications
-	batchingEnabled     bool
-	uploadWorkers       []*UploadWorker // Upload worker instances (aligned with receiver)
-	workerCount         int             // Number of upload workers
-	expectedPluginCount int             // Expected number of plugins from config
-	mu                  sync.RWMutex    // Protects expectedPluginCount
+	uploadWorkers       []*UploadWorker        // Upload worker instances (aligned with receiver)
+	workerCount         int                    // Number of upload workers
+	expectedPluginCount int                    // Expected number of plugins from config
+	mu                  sync.RWMutex           // Protects expectedPluginCount
 }
 
 // NewPluginService creates a new plugin service
@@ -53,9 +49,6 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 	// }
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Create input channel for plugin messages
-	inputChannel := make(chan *plugins.DataMessage, 10000)
 
 	// Create upload channel for immediate upload notifications
 	uploadChannel := make(chan *domain.DataBatch, 1000)
@@ -86,9 +79,7 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 		spoolingService: spoolingService,
 		ctx:             ctx,
 		cancel:          cancel,
-		inputChannel:    inputChannel,
 		uploadChannel:   uploadChannel,
-		batchingEnabled: true,
 		uploadWorkers:   uploadWorkers,
 		workerCount:     workerCount,
 	}
@@ -114,10 +105,6 @@ func (ps *PluginService) Start() error {
 	if err := ps.batchProcessor.Start(); err != nil {
 		return fmt.Errorf("failed to start batch processor: %w", err)
 	}
-
-	// Start input message processor
-	ps.wg.Add(1)
-	go ps.processInputMessages()
 
 	// Start batch forwarding
 	ps.wg.Add(1)
@@ -150,9 +137,6 @@ func (ps *PluginService) Stop() error {
 	if err := ps.batchProcessor.Stop(); err != nil {
 		log.Errorf("Error stopping batch processor: %v", err)
 	}
-
-	// Close input channel
-	close(ps.inputChannel)
 
 	// Close upload channel
 	close(ps.uploadChannel)
@@ -249,64 +233,6 @@ func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 		log.Info("⚠️  Port changes applied - data collection restarted on new ports")
 	}
 	return nil
-}
-
-// processInputMessages processes messages from input plugins
-func (ps *PluginService) processInputMessages() {
-	defer ps.wg.Done()
-
-	for {
-		select {
-		case <-ps.ctx.Done():
-			return
-		case msg, ok := <-ps.inputChannel:
-			if !ok {
-				return // Channel closed
-			}
-			ps.processPluginMessage(msg)
-		}
-	}
-}
-
-// processPluginMessage processes a single message from a plugin
-func (ps *PluginService) processPluginMessage(msg *plugins.DataMessage) {
-	if ps.batchingEnabled {
-		// Add to batch processor
-		ps.batchProcessor.AddMessage(msg)
-	} else {
-		// Forward immediately
-		batch := ps.createBatchFromMessage(msg)
-		ps.forwardBatch(batch)
-	}
-}
-
-// createBatchFromMessage creates a batch from a single message
-func (ps *PluginService) createBatchFromMessage(msg *plugins.DataMessage) *domain.DataBatch {
-	// Get bearer token from message metadata or config
-	bearerToken := msg.Metadata["bearer_token"]
-	if bearerToken == "" {
-		bearerToken = ps.config.BearerToken
-	}
-
-	// Compress data
-	compressedData, err := ps.compressData(msg.Data)
-	if err != nil {
-		log.Errorf("Failed to compress data: %v", err)
-		compressedData = msg.Data // Use uncompressed as fallback
-	}
-
-	return &domain.DataBatch{
-		ID:            generateBatchIDWithDataHint(msg.TenantID, msg.DatasetID, msg.DataHint),
-		TenantID:      msg.TenantID,
-		DatasetID:     msg.DatasetID,
-		Data:          compressedData,
-		LineCount:     1, // Single message
-		TotalBytes:    int64(len(msg.Data)),
-		CreatedAt:     msg.Timestamp,
-		BearerToken:   bearerToken,
-		TriggerReason: "single_message", // Single message processing (not batched)
-		DataHint:      msg.DataHint,     // Data format hint for downstream processing
-	}
 }
 
 // processBatches processes completed batches from the batch processor
@@ -420,23 +346,6 @@ func (ps *PluginService) spoolBatch(batch *domain.DataBatch) error {
 		batch.TriggerReason, // Pass the trigger reason from the batch
 		batch.DataHint,      // Data format hint for downstream processing
 	)
-}
-
-// compressData compresses raw data using gzip
-func (ps *PluginService) compressData(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	writer, _ := gzip.NewWriterLevel(&buf, 6) // Default compression level
-
-	if _, err := writer.Write(data); err != nil {
-		writer.Close()
-		return nil, err
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 // GetPluginHealth returns health status of all plugins

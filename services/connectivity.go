@@ -74,37 +74,6 @@ func (c *ConnectivityTestService) TestAllConnections() ([]ConnectivityTestResult
 	return results, nil
 }
 
-// TestSpecificConnection tests connectivity for a specific tenant/dataset
-func (c *ConnectivityTestService) TestSpecificConnection(tenantID, datasetID string) (*ConnectivityTestResult, error) {
-	// Find the plugin configuration for this tenant/dataset or use global config
-	var pluginName, pluginType string
-	var bearerToken string
-
-	// Look for plugin that matches this tenant/dataset
-	for _, input := range c.config.Inputs {
-		if configDatasetID, ok := input.Config["dataset_id"].(string); ok && configDatasetID == datasetID {
-			pluginName = input.Name
-			pluginType = input.Type
-			if pluginBearerToken, ok := input.Config["bearer_token"].(string); ok && pluginBearerToken != "" {
-				bearerToken = pluginBearerToken
-			}
-			break
-		}
-	}
-
-	// Use global config if no plugin-specific config found
-	if pluginName == "" {
-		pluginName = "global"
-		pluginType = "unknown"
-	}
-	if bearerToken == "" {
-		bearerToken = c.config.BearerToken
-	}
-
-	result := c.testConnection(tenantID, datasetID, pluginName, pluginType, bearerToken)
-	return &result, nil
-}
-
 // testPluginConnectivity tests connectivity for a specific plugin configuration
 func (c *ConnectivityTestService) testPluginConnectivity(input plugins.PluginConfig) ConnectivityTestResult {
 	// Determine tenant ID and dataset ID for this plugin
