@@ -14,6 +14,7 @@ import (
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/domain"
 	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/proxy/utils"
 )
 
 // UploadWorker handles upload processing (aligned with receiver pattern)
@@ -401,33 +402,13 @@ func (ps *PluginService) GetPortDatasetMap() []PortDatasetInfo {
 	configs := ps.pluginManager.GetConfigs()
 	var result []PortDatasetInfo
 
-	// UDP-based plugin types
-	udpPluginTypes := map[string]bool{
-		"udp":     true,
-		"syslog":  true,
-		"netflow": true,
-		"sflow":   true,
-		"ipfix":   true,
-		"ebpf":    true,
-	}
-
 	for _, cfg := range configs {
-		if !udpPluginTypes[cfg.Type] {
+		if !plugins.UDPPluginTypes[cfg.Type] {
 			continue
 		}
 
 		// Get port from config
-		var port int
-		if portVal, ok := cfg.Config["port"]; ok {
-			switch p := portVal.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			case int64:
-				port = int(p)
-			}
-		}
+		port, _ := utils.ToInt(cfg.Config["port"])
 
 		if port == 0 {
 			continue
@@ -486,15 +467,7 @@ func validatePluginConfigs(configs []plugins.PluginConfig) error {
 
 		// Validate port if present
 		if portValue, exists := cfg.Config["port"]; exists {
-			var port int
-			switch p := portValue.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			case int64:
-				port = int(p)
-			}
+			port, _ := utils.ToInt(portValue)
 
 			// Port must be in valid range (1-65535)
 			if port < 1 || port > 65535 {
@@ -505,15 +478,7 @@ func validatePluginConfigs(configs []plugins.PluginConfig) error {
 		// Validate buffer_size and read_buffer_size if present (both field names are used)
 		for _, fieldName := range []string{"buffer_size", "read_buffer_size"} {
 			if bufferValue, exists := cfg.Config[fieldName]; exists {
-				var bufferSize int
-				switch b := bufferValue.(type) {
-				case int:
-					bufferSize = b
-				case float64:
-					bufferSize = int(b)
-				case int64:
-					bufferSize = int(b)
-				}
+				bufferSize, _ := utils.ToInt(bufferValue)
 
 				// Buffer size sanity check (1KB to 1GB)
 				if bufferSize < 1024 || bufferSize > 1073741824 {
@@ -544,13 +509,7 @@ func extractPortsFromConfigs(configs []plugins.PluginConfig) map[int]string {
 
 	for _, cfg := range configs {
 		if portValue, exists := cfg.Config["port"]; exists {
-			var port int
-			switch p := portValue.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			}
+			port, _ := utils.ToInt(portValue)
 
 			if port > 0 {
 				pluginName := fmt.Sprintf("%s[%s]", cfg.Type, cfg.Name)

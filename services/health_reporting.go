@@ -15,6 +15,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/domain"
+	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/proxy/utils"
 )
 
 // PortDatasetInfo contains dataset info for a specific port
@@ -504,16 +506,6 @@ func (h *HealthReportingService) getUDPPortsFromConfig() []int {
 		return ports
 	}
 
-	// UDP-based plugin types
-	udpPluginTypes := map[string]bool{
-		"udp":     true,
-		"syslog":  true,
-		"netflow": true,
-		"sflow":   true,
-		"ipfix":   true,
-		"ebpf":    true,
-	}
-
 	for _, input := range inputsList {
 		inputMap, ok := input.(map[string]interface{})
 		if !ok {
@@ -521,7 +513,7 @@ func (h *HealthReportingService) getUDPPortsFromConfig() []int {
 		}
 
 		pluginType, _ := inputMap["type"].(string)
-		if !udpPluginTypes[pluginType] {
+		if !plugins.UDPPluginTypes[pluginType] {
 			continue
 		}
 
@@ -531,14 +523,9 @@ func (h *HealthReportingService) getUDPPortsFromConfig() []int {
 			continue
 		}
 
-		// Port can be int, float64 (from JSON), or string
-		switch p := configSection["port"].(type) {
-		case int:
-			ports = append(ports, p)
-		case float64:
-			ports = append(ports, int(p))
-		case int64:
-			ports = append(ports, int(p))
+		// Port can be int, float64 (from JSON), or int64
+		if port, ok := utils.ToInt(configSection["port"]); ok {
+			ports = append(ports, port)
 		}
 	}
 

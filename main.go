@@ -81,11 +81,8 @@ func main() {
 		log.Fatalf("Configuration validation failed: %v", err)
 	}
 
-	// Handle config validation flag
+	// Handle config validation flag (validation already passed above)
 	if *validateConfig {
-		if err := config.ValidateConfig(&cfg); err != nil {
-			log.Fatalf("Configuration validation failed: %v", err)
-		}
 		fmt.Printf("Configuration validation successful: %s\n", *configFile)
 		os.Exit(0)
 	}

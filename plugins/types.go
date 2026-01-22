@@ -114,6 +114,16 @@ const (
 	DataHintRaw = "raw" // Raw data - no specific format processing
 )
 
+// UDPPluginTypes defines plugin types that use UDP transport
+var UDPPluginTypes = map[string]bool{
+	"udp":     true,
+	"syslog":  true,
+	"netflow": true,
+	"sflow":   true,
+	"ipfix":   true,
+	"ebpf":    true,
+}
+
 // PluginSchema defines the configuration schema for a plugin
 // This allows the UI to dynamically generate forms based on plugin capabilities
 type PluginSchema struct {

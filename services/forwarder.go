@@ -69,41 +69,6 @@ type HTTPForwarder struct {
 	proxyStats           *domain.ProxyStats // Global stats for health reporting
 }
 
-// NewHTTPForwarder creates a new HTTP forwarder with connection pooling
-func NewHTTPForwarder(cfg *config.Config) *HTTPForwarder {
-	// Create custom transport with connection pooling
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        cfg.GetMaxIdleConns(),
-		MaxIdleConnsPerHost: cfg.GetMaxConnsPerHost(),
-		MaxConnsPerHost:     cfg.GetMaxConnsPerHost(),
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
-		DisableCompression:  false, // Enable gzip compression
-	}
-
-	// Extract DatasetMetricsClient from config if available
-	var datasetMetricsClient *DatasetMetricsClient
-	if cfg.DatasetMetricsClient != nil {
-		if client, ok := cfg.DatasetMetricsClient.(*DatasetMetricsClient); ok {
-			datasetMetricsClient = client
-		}
-	}
-
-	return &HTTPForwarder{
-		config: cfg,
-		httpClient: &http.Client{
-			Timeout:   cfg.GetReceiverTimeout(),
-			Transport: transport,
-		},
-		metricsService:       nil, // Will be set if needed
-		datasetMetricsClient: datasetMetricsClient,
-	}
-}
-
 // NewHTTPForwarderWithMetrics creates a new HTTP forwarder with metrics service and connection pooling
 func NewHTTPForwarderWithMetrics(cfg *config.Config, metricsService *MetricsService) *HTTPForwarder {
 	// Create custom transport with connection pooling

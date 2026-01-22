@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bytefreezer/goodies/log"
+	"github.com/bytefreezer/proxy/utils"
 )
 
 // Manager manages multiple input plugins with direct filesystem writes
@@ -245,19 +246,9 @@ func (m *Manager) GetUDPPorts() []int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// UDP-based plugin types
-	udpPluginTypes := map[string]bool{
-		"udp":     true,
-		"syslog":  true,
-		"netflow": true,
-		"sflow":   true,
-		"ipfix":   true,
-		"ebpf":    true,
-	}
-
 	var ports []int
 	for _, cfg := range m.configs {
-		if !udpPluginTypes[cfg.Type] {
+		if !UDPPluginTypes[cfg.Type] {
 			continue
 		}
 
@@ -266,13 +257,8 @@ func (m *Manager) GetUDPPorts() []int {
 			continue
 		}
 
-		switch p := cfg.Config["port"].(type) {
-		case int:
-			ports = append(ports, p)
-		case float64:
-			ports = append(ports, int(p))
-		case int64:
-			ports = append(ports, int(p))
+		if port, ok := utils.ToInt(cfg.Config["port"]); ok {
+			ports = append(ports, port)
 		}
 	}
 
