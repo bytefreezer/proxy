@@ -18,6 +18,7 @@ import (
 	"github.com/bytefreezer/proxy/alerts"
 	"github.com/bytefreezer/proxy/errors"
 	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/proxy/utils"
 )
 
 var k = koanf.New(".")
@@ -416,13 +417,8 @@ func validatePluginInputs(cfg *Config) error {
 
 		// Check for port conflicts (only for plugins that use ports)
 		if portValue, exists := input.Config["port"]; exists {
-			var port int
-			switch p := portValue.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			default:
+			port, ok := utils.ToInt(portValue)
+			if !ok {
 				return fmt.Errorf("plugin input %d (%s): port must be a number", i, input.Type)
 			}
 

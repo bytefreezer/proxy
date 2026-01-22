@@ -21,6 +21,7 @@ import (
 	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/config"
 	"github.com/bytefreezer/proxy/plugins"
+	"github.com/bytefreezer/proxy/utils"
 )
 
 // ControlProxyConfig represents the configuration fetched from control
@@ -545,14 +546,7 @@ func (s *ConfigPollingService) detectPortConflicts(remoteConfig *ControlProxyCon
 	// Collect ports from local config
 	for _, input := range s.cfg.Inputs {
 		if portValue, exists := input.Config["port"]; exists {
-			var port int
-			switch p := portValue.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			}
-			if port > 0 {
+			if port, ok := utils.ToInt(portValue); ok && port > 0 {
 				localPorts[port] = fmt.Sprintf("%s[%s]", input.Type, input.Name)
 			}
 		}
@@ -562,13 +556,7 @@ func (s *ConfigPollingService) detectPortConflicts(remoteConfig *ControlProxyCon
 	conflicts := []string{}
 	for _, pluginConfig := range remoteConfig.PluginConfigs {
 		if portValue, exists := pluginConfig["port"]; exists {
-			var port int
-			switch p := portValue.(type) {
-			case int:
-				port = p
-			case float64:
-				port = int(p)
-			}
+			port, _ := utils.ToInt(portValue)
 
 			if port > 0 {
 				if localPlugin, exists := localPorts[port]; exists {
