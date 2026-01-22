@@ -203,6 +203,11 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 // ReportWarning reports a warning to the control service via the error reporter
 // This is used by plugins to report configuration issues like kernel buffer limits
 func (s *SpoolingService) ReportWarning(tenantID, datasetID, warningType, message string) {
+	s.ReportWarningWithMetadata(tenantID, datasetID, warningType, message, nil)
+}
+
+// ReportWarningWithMetadata reports a warning with additional metadata to the control service
+func (s *SpoolingService) ReportWarningWithMetadata(tenantID, datasetID, warningType, message string, metadata map[string]interface{}) {
 	if s.config.ErrorReporter == nil {
 		log.Warnf("Warning (no reporter): [%s] %s (tenant=%s, dataset=%s)", warningType, message, tenantID, datasetID)
 		return
@@ -211,7 +216,12 @@ func (s *SpoolingService) ReportWarning(tenantID, datasetID, warningType, messag
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := s.config.ErrorReporter.ReportWarning(ctx, warningType, message, tenantID, datasetID)
+	var err error
+	if metadata != nil {
+		err = s.config.ErrorReporter.ReportWarningWithMetadata(ctx, warningType, message, tenantID, datasetID, metadata)
+	} else {
+		err = s.config.ErrorReporter.ReportWarning(ctx, warningType, message, tenantID, datasetID)
+	}
 	if err != nil {
 		log.Warnf("Failed to report warning to control: %v", err)
 	} else {

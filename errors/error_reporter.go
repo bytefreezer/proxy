@@ -239,6 +239,19 @@ func (er *ErrorReporter) ReportWarning(ctx context.Context, errorType, errorMess
 	return er.ReportErrorSimple(ctx, errorType, errorMessage, "warning", tenantID, datasetID)
 }
 
+// ReportWarningWithMetadata reports a warning with additional metadata
+func (er *ErrorReporter) ReportWarningWithMetadata(ctx context.Context, errorType, errorMessage string, tenantID, datasetID string, metadata map[string]interface{}) error {
+	report := ErrorReport{
+		ErrorType:    errorType,
+		ErrorMessage: errorMessage,
+		Severity:     "warning",
+		TenantID:     tenantID,
+		DatasetID:    datasetID,
+		Metadata:     metadata,
+	}
+	return er.ReportError(ctx, report)
+}
+
 // ResolveErrorsByType resolves all active errors of a specific type for a dataset
 // Called after successful plugin startup when no new errors occurred
 func (er *ErrorReporter) ResolveErrorsByType(ctx context.Context, errorType, datasetID string) error {

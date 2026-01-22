@@ -157,8 +157,13 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 	// Set read buffer size with verification and report if limited
 	bufferResult := plugins.SetUDPReadBufferWithCheck(conn, p.config.ReadBufferSize)
 	if bufferResult.Limited && bufferResult.Warning != "" {
-		// Report the kernel limitation to control service
-		spooler.ReportWarning(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning)
+		// Report the kernel limitation to control service with buffer details
+		metadata := map[string]interface{}{
+			"requested_size": bufferResult.RequestedSize,
+			"actual_size":    bufferResult.ActualSize,
+			"sysctl_cmd":     bufferResult.SysctlCmd,
+		}
+		spooler.ReportWarningWithMetadata(p.config.TenantID, p.config.DatasetID, "udp_buffer_limited", bufferResult.Warning, metadata)
 	} else {
 		// Buffer is OK - resolve any previous warnings
 		spooler.ResolveWarning(p.config.DatasetID, "udp_buffer_limited")
