@@ -155,8 +155,13 @@ func (s *SpoolingService) StoreRawMessage(tenantID, datasetID, bearerToken strin
 		return nil
 	}
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	// No mutex needed here - each message writes to a unique file (nanosecond timestamp + length + linecount)
+	// All operations below are thread-safe:
+	// - injectBfTs: creates new data, no shared state
+	// - ensureSpoolDirectoryExists: os.MkdirAll is atomic
+	// - generateSpoolPaths: only reads immutable config
+	// - os.MkdirAll: atomic at OS level
+	// - writeFileSync: unique filenames, no conflicts
 
 	// Inject BfTs (ByteFreezer Timestamp) into JSON data at ingestion time
 	// This is the canonical timestamp for when data entered the system

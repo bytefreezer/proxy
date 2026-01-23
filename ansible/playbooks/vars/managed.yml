@@ -25,8 +25,12 @@ paths:
   logrotate_path: "/etc/logrotate.d/bytefreezer-proxy"
 
 # Log rotation settings
+# Logs rotate when reaching 100MB OR daily, whichever comes first
+# Total logs limited to ~1GB (rotate_count * size + current file)
 logrotate:
   rotate_count: 7
+  size: "100M"
+  maxsize: "1G"
 
 # Application configuration
 config:

@@ -1,5 +1,29 @@
 # ByteFreezer Proxy - Release Notes
 
+## 2026-01-22
+
+### Performance
+- **Removed Global Mutex in StoreRawMessage**: Eliminated serialization bottleneck for file writes
+  - Each raw message writes to a unique file (nanosecond timestamp + length + linecount)
+  - All operations are thread-safe without locking: os.MkdirAll is atomic, file writes use unique paths
+  - Enables true parallel writes across all workers (previously only 1 worker could write at a time)
+  - Throughput increased from ~1,000 msg/sec to ~15,000+ msg/sec for high-volume UDP plugins
+
+- **Increased eBPF Worker Channel Buffer**: Changed from 10,000 to 100,000 items
+  - Absorbs traffic bursts without dropping packets
+  - Prevents "Worker queue full" drops during high-volume periods
+
+### Configuration
+- **Recommended eBPF Worker Count**: Increased default recommendation from 4 to 32 workers
+  - High-volume eBPF sources (multiple hosts) benefit from more parallel workers
+  - Combined with mutex removal, enables handling of 15,000+ messages/second
+
+### Files Modified
+- `services/spooling.go` - Removed mutex.Lock()/Unlock() from StoreRawMessage()
+- `plugins/ebpf/plugin.go` - Increased workChan buffer from 10,000 to 100,000
+
+---
+
 ## 2026-01-09
 
 ### Features

@@ -159,8 +159,8 @@ func (p *Plugin) Start(ctx context.Context, spooler plugins.SpoolingInterface) e
 
 	p.updateHealth(plugins.HealthStatusStarting, "Starting eBPF listener with direct spooling", "")
 
-	// Create work channel with buffer to absorb bursts
-	p.workChan = make(chan workItem, 10000)
+	// Create work channel with buffer to absorb bursts (100K to handle high-volume eBPF data)
+	p.workChan = make(chan workItem, 100000)
 
 	// Start worker pool
 	for i := 0; i < p.config.WorkerCount; i++ {
