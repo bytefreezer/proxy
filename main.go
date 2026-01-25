@@ -162,7 +162,7 @@ func main() {
 			cfg.AccountID,
 			cfg.BearerToken,
 			"bytefreezer-proxy",
-			instanceID,
+			instanceAPI,
 			instanceAPI,
 			reportInterval,
 			timeout,
