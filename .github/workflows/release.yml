@@ -112,34 +112,41 @@ jobs:
           ${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }} \
           config.yaml
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
-        path: release/${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+    # Artifact upload disabled - quota issues
+    # - name: Upload artifacts
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: ${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
+    #     path: release/${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
 
   docker:
     name: Build Docker Image
-    needs: build
+    needs: test
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download Linux binary artifact
-      uses: actions/download-artifact@v4
+    - name: Set up Go
+      uses: actions/setup-go@v4
       with:
-        name: ${{ env.BINARY_NAME }}-linux-amd64
-        path: ./artifacts
+        go-version: ${{ env.GO_VERSION }}
 
-    - name: Extract binary from tarball
+    - name: Configure git for private modules
+      run: git config --global url."https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+    - name: Build binary for Docker
+      env:
+        GOOS: linux
+        GOARCH: amd64
+        CGO_ENABLED: 0
       run: |
-        cd artifacts
-        tar -xzf *.tar.gz
-        mv ${{ env.BINARY_NAME }}-linux-amd64 ${{ env.BINARY_NAME }}
-        chmod +x ${{ env.BINARY_NAME }}
-        mv ${{ env.BINARY_NAME }} ../
-        cd ..
+        VERSION=${GITHUB_REF_NAME#v}
+        if [ "${{ github.ref_type }}" != "tag" ]; then
+          VERSION="main-${GITHUB_SHA:0:8}"
+        fi
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" -o ${{ env.BINARY_NAME }} .
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -191,24 +198,32 @@ jobs:
 
   debian:
     name: Build Debian Package
-    needs: build
+    needs: test
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download Linux binary artifact
-      uses: actions/download-artifact@v4
+    - name: Set up Go
+      uses: actions/setup-go@v4
       with:
-        name: bytefreezer-proxy-linux-amd64
-        path: ./binary
+        go-version: ${{ env.GO_VERSION }}
 
-    - name: Extract binary from tarball
+    - name: Configure git for private modules
+      run: git config --global url."https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+    - name: Build binary for Debian package
+      env:
+        GOOS: linux
+        GOARCH: amd64
+        CGO_ENABLED: 0
       run: |
-        cd binary
-        tar -xzf *.tar.gz
-        chmod +x bytefreezer-proxy-linux-amd64
+        VERSION=${GITHUB_REF_NAME#v}
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        mkdir -p binary
+        go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" -o binary/bytefreezer-proxy-linux-amd64 .
+        chmod +x binary/bytefreezer-proxy-linux-amd64
 
     - name: Install FPM for package building
       run: |
@@ -364,36 +379,36 @@ jobs:
           -C pkg \
           .
 
-    - name: Upload Debian package artifact
-      uses: actions/upload-artifact@v4
+    # Artifact upload disabled - quota issues
+    # - name: Upload Debian package artifact
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: debian-package
+    #     path: "*.deb"
+
+    - name: Upload deb to release
+      uses: softprops/action-gh-release@v2
       with:
-        name: debian-package
-        path: "*.deb"
+        files: "*.deb"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     name: Create Release
-    needs: [build, docker, debian]
+    needs: [docker, debian]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: ./artifacts
-
-    - name: Create Release with Assets
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
         draft: false
         prerelease: ${{ contains(github.ref_name, '-') }}
-        files: |
-          ./artifacts/*/*.tar.gz
-          ./artifacts/*/*.deb
         generate_release_notes: true
         body: |
           ## 🚀 ByteFreezer Proxy ${{ github.ref_name }}
