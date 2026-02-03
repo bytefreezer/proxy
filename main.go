@@ -146,7 +146,7 @@ func main() {
 			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
 			instanceID = "localhost"
 		}
-		if nodeName := os.Getenv("NODE_NAME"); nodeName != "" {
+		if nodeName := os.Getenv("NODE_NAME"); nodeName != "" && nodeName != instanceID {
 			// In K8s: instanceID is the pod name, NODE_NAME is the actual node
 			instanceID = fmt.Sprintf("%s.%s", nodeName, instanceID)
 			log.Infof("Running in Kubernetes on node %s, instance ID: %s", nodeName, instanceID)
