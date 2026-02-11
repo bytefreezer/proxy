@@ -56,9 +56,8 @@ type ErrorTrackingConfig struct {
 }
 
 type App struct {
-	Name      string `mapstructure:"name"`
-	Version   string `mapstructure:"version"`
-	GitCommit string `mapstructure:"-"` // Not loaded from config, set at runtime
+	Name    string `mapstructure:"name"`
+	Version string `mapstructure:"version"`
 }
 
 type LoggingConfig struct {

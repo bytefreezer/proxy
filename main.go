@@ -74,7 +74,6 @@ func main() {
 	}
 
 	// Set runtime build info from ldflags (overrides config file values)
-	cfg.App.GitCommit = gitCommit
 	cfg.App.Version = version
 
 	// Always validate configuration during startup
@@ -442,7 +441,6 @@ func buildHealthConfiguration(cfg *config.Config, instanceAPI string) map[string
 	return map[string]interface{}{
 		"service_type":    "bytefreezer-proxy",
 		"version":         cfg.App.Version,
-		"git_commit":      cfg.App.GitCommit,
 		"instance_api":    instanceAPI,
 		"report_interval": cfg.HealthReporting.ReportInterval,
 		"timeout":         fmt.Sprintf("%ds", cfg.HealthReporting.TimeoutSeconds),
