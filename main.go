@@ -73,8 +73,9 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Set runtime build info
+	// Set runtime build info from ldflags (overrides config file values)
 	cfg.App.GitCommit = gitCommit
+	cfg.App.Version = version
 
 	// Always validate configuration during startup
 	if err := config.ValidateConfig(&cfg); err != nil {
