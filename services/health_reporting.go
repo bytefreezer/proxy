@@ -335,12 +335,17 @@ func (h *HealthReportingService) determineStatus(healthy bool, metrics map[strin
 
 	// Check for UDP socket drops - if drops increased since last check, we're degraded
 	if drops, ok := metrics["udp_socket_drops_total"].(int64); ok && drops > 0 {
-		if drops > h.lastUDPDrops {
+		if h.lastUDPDrops == 0 {
+			// First check after startup: kernel counters are cumulative, so
+			// initialize baseline without reporting degraded
+			h.lastUDPDrops = drops
+		} else if drops > h.lastUDPDrops {
 			// New drops occurred since last check
 			h.lastUDPDrops = drops
 			return "degraded"
+		} else {
+			h.lastUDPDrops = drops
 		}
-		h.lastUDPDrops = drops
 	}
 
 	return "healthy"
