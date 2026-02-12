@@ -32,10 +32,19 @@ type UDPPortsProvider interface {
 	GetPortDatasetMap() []PortDatasetInfo
 }
 
+// PluginDetail contains summary info about an active plugin for health reporting
+type PluginDetail struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	DatasetID string `json:"dataset_id,omitempty"`
+}
+
 // PluginHealthProvider is an interface for checking plugin health
 type PluginHealthProvider interface {
 	GetPluginCount() int
 	GetExpectedPluginCount() int
+	GetPluginDetails() []PluginDetail
 }
 
 // HealthReportingService handles health reporting to the control service
@@ -301,6 +310,14 @@ func (h *HealthReportingService) reportingLoop() {
 			// Generate health report with configuration and metrics
 			healthy := h.isServiceHealthy()
 			configuration := h.config // Configuration updated on every report
+
+			// Inject current plugin/dataset details into configuration
+			if h.pluginHealthProvider != nil {
+				details := h.pluginHealthProvider.GetPluginDetails()
+				configuration["assigned_datasets"] = len(details)
+				configuration["plugins"] = details
+			}
+
 			metrics := h.generateMetrics()
 
 			// Determine status based on health and UDP drops

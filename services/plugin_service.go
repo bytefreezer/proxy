@@ -452,6 +452,31 @@ func (ps *PluginService) SetExpectedPluginCount(count int) {
 	ps.expectedPluginCount = count
 }
 
+// GetPluginDetails returns summary info about active plugins for health reporting
+func (ps *PluginService) GetPluginDetails() []PluginDetail {
+	if ps.pluginManager == nil {
+		return nil
+	}
+	configs := ps.pluginManager.GetConfigs()
+	details := make([]PluginDetail, 0, len(configs))
+	for _, cfg := range configs {
+		d := PluginDetail{
+			Name: cfg.Name,
+			Type: cfg.Type,
+		}
+		if cfg.Config != nil {
+			if tid, ok := cfg.Config["tenant_id"].(string); ok {
+				d.TenantID = tid
+			}
+			if did, ok := cfg.Config["dataset_id"].(string); ok {
+				d.DatasetID = did
+			}
+		}
+		details = append(details, d)
+	}
+	return details
+}
+
 // generateBatchIDWithDataHint generates a unique batch ID with data hint for new format
 func generateBatchIDWithDataHint(tenantID, datasetID, dataHint string) string {
 	return fmt.Sprintf("%s--%s--%d--%s", tenantID, datasetID, time.Now().UnixNano(), dataHint)
