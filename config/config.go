@@ -128,6 +128,9 @@ type Spooling struct {
 	KeepSrc                    bool   `mapstructure:"keep_src"`
 	QueueProcessingIntervalSec int    `mapstructure:"queue_processing_interval_seconds"`
 
+	// DLQ limits
+	DLQMaxSizeBytes int64 `mapstructure:"dlq_max_size_bytes"` // Hard limit on DLQ size; oldest files removed FIFO when exceeded (0 = unlimited)
+
 	// Organization settings
 	Organization       string `mapstructure:"organization"`          // "flat", "tenant_dataset", "date_tenant", "protocol_tenant"
 	PerTenantLimits    bool   `mapstructure:"per_tenant_limits"`     // Apply size limits per tenant instead of globally
@@ -210,6 +213,9 @@ func LoadConfig(cfgFile, envPrefix string, cfg *Config) error {
 	}
 	if cfg.Spooling.CleanupIntervalSec == 0 {
 		cfg.Spooling.CleanupIntervalSec = 300 // 5 minutes
+	}
+	if cfg.Spooling.DLQMaxSizeBytes == 0 {
+		cfg.Spooling.DLQMaxSizeBytes = 10737418240 // 10GB default
 	}
 
 	// Config mode defaults

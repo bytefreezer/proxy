@@ -113,7 +113,8 @@ func (s *SpoolingService) Start() error {
 	}
 
 	log.Info("Spooling service started - directory: " + s.directory +
-		", max size: " + fmt.Sprintf("%d", s.maxSize) + " bytes")
+		", max size: " + fmt.Sprintf("%d", s.maxSize) + " bytes" +
+		", dlq limit: " + fmt.Sprintf("%d", s.config.Spooling.DLQMaxSizeBytes) + " bytes")
 
 	// Process any orphaned queue files from previous session
 	if err := s.processOrphanedQueueFiles(); err != nil {
@@ -1320,6 +1321,7 @@ func (s *SpoolingService) cleanupWorker() {
 		case <-ticker.C:
 			s.moveAgedFilesToDLQ() // Move old undeliverable files to DLQ first
 			s.cleanupOldFiles()    // Then cleanup only safe files
+			s.enforceDLQLimit()    // FIFO eviction when DLQ exceeds hard limit
 			s.monitorDLQAndSpace()
 		}
 	}
@@ -3334,6 +3336,87 @@ func (s *SpoolingService) sendDLQAlert(severity, title, message, details string)
 		log.Warnf("DLQ ALERT [%s]: %s - %s", severity, title, message)
 	default:
 		log.Infof("DLQ ALERT [%s]: %s - %s", severity, title, message)
+	}
+}
+
+// dlqFileEntry represents a single DLQ data file for FIFO eviction
+type dlqFileEntry struct {
+	path    string
+	size    int64
+	modTime time.Time
+}
+
+// enforceDLQLimit removes oldest DLQ files (FIFO) when total DLQ size exceeds the configured hard limit
+func (s *SpoolingService) enforceDLQLimit() {
+	limit := s.config.Spooling.DLQMaxSizeBytes
+	if limit <= 0 {
+		return
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Collect all DLQ data files across all tenants/datasets
+	var entries []dlqFileEntry
+	var totalSize int64
+
+	err := filepath.Walk(s.directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+		if info.IsDir() {
+			return nil
+		}
+		// Only process data files inside dlq directories (skip .meta files)
+		if !strings.Contains(path, "/dlq/") || strings.HasSuffix(info.Name(), ".meta") {
+			return nil
+		}
+		entries = append(entries, dlqFileEntry{
+			path:    path,
+			size:    info.Size(),
+			modTime: info.ModTime(),
+		})
+		totalSize += info.Size()
+		return nil
+	})
+	if err != nil {
+		log.Warnf("Failed to walk DLQ directories for limit enforcement: %v", err)
+		return
+	}
+
+	if totalSize <= limit {
+		return
+	}
+
+	// Sort oldest first (FIFO)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].modTime.Before(entries[j].modTime)
+	})
+
+	removed := 0
+	freedBytes := int64(0)
+	for _, entry := range entries {
+		if totalSize <= limit {
+			break
+		}
+		// Remove data file
+		if err := os.Remove(entry.path); err != nil {
+			log.Warnf("Failed to remove DLQ file %s: %v", entry.path, err)
+			continue
+		}
+		// Remove corresponding .meta file
+		metaPath := strings.TrimSuffix(entry.path, ".gz") + ".meta"
+		os.Remove(metaPath) // best-effort
+
+		totalSize -= entry.size
+		freedBytes += entry.size
+		removed++
+	}
+
+	if removed > 0 {
+		log.Infof("DLQ limit enforcement: removed %d oldest files, freed %.1f MB (limit: %.1f GB, remaining: %.1f GB)",
+			removed, float64(freedBytes)/(1024*1024),
+			float64(limit)/(1024*1024*1024), float64(totalSize)/(1024*1024*1024))
 	}
 }
 

@@ -100,6 +100,7 @@ config:
     enabled: true
     directory: "/var/spool/bytefreezer-proxy"
     max_size_bytes: 1073741824
+    dlq_max_size_bytes: 10737418240  # 10GB
     retry_attempts: 5
     retry_interval_seconds: 60
     cleanup_interval_seconds: 300

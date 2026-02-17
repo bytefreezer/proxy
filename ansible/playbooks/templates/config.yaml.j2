@@ -75,6 +75,7 @@ spooling:
   enabled: {{ config.spooling.enabled | lower }}
   directory: "{{ config.spooling.directory }}"
   max_size_bytes: {{ config.spooling.max_size_bytes }}  # 1GB
+  dlq_max_size_bytes: {{ config.spooling.dlq_max_size_bytes | default(10737418240) }}  # oldest files removed FIFO when exceeded
   retry_attempts: {{ config.spooling.retry_attempts }}
   retry_interval_seconds: {{ config.spooling.retry_interval_seconds }}  # 1 minute
   cleanup_interval_seconds: {{ config.spooling.cleanup_interval_seconds }}  # 5 minutes
