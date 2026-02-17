@@ -1,5 +1,23 @@
 # ByteFreezer Proxy - Release Notes
 
+## 2026-02-17
+
+### Features
+- **DLQ Hard Size Limit with FIFO Eviction**: DLQ files were previously never deleted, allowing unbounded growth (observed 900GB on tp2, 510GB on tp1). New `dlq_max_size_bytes` config enforces a hard ceiling on total DLQ size. When exceeded, the oldest files are removed first (FIFO) during the cleanup cycle.
+  - Config: `spooling.dlq_max_size_bytes` (default: 10GB, set to 0 for unlimited/legacy behavior)
+  - Enforcement runs every cleanup cycle (default 5 minutes)
+  - Removes both `.gz` data and `.meta` files for evicted entries
+  - Logs count and bytes freed when eviction occurs
+
+### Files Modified
+- `config/config.go` - Added `DLQMaxSizeBytes` field to `Spooling` struct with 10GB default
+- `services/spooling.go` - Added `enforceDLQLimit()` method, wired into `cleanupWorker`
+- `config.yaml` - Added `dlq_max_size_bytes` setting
+- `ansible/playbooks/templates/config.yaml.j2` - Added `dlq_max_size_bytes` to template
+- `ansible/playbooks/vars/{demo,managed,onprem}.yml` - Set `dlq_max_size_bytes: 10737418240`
+
+---
+
 ## 2026-01-22
 
 ### Performance
