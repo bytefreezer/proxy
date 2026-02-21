@@ -289,8 +289,6 @@ func (cfg *Config) GetReceiverTimeout() time.Duration {
 	return time.Duration(cfg.Receiver.TimeoutSec) * time.Second
 }
 
-// GetRetryDelay is deprecated - HTTP-level retries are disabled in favor of file-level retries
-
 func (cfg *Config) GetUploadWorkerCount() int {
 	if cfg.Receiver.UploadWorkerCount <= 0 {
 		return 5 // Default to 5 upload workers (aligned with receiver)

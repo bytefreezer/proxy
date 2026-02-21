@@ -50,18 +50,6 @@ func NewSOCAlertClient(config AlertClientConfig) *SOCAlertClient {
 	}
 }
 
-func (client *SOCAlertClient) SendCriticalAlert(title, message, details string) error {
-	return client.sendAlert("critical", title, message, details)
-}
-
-func (client *SOCAlertClient) SendWarningAlert(title, message, details string) error {
-	return client.sendAlert("warning", title, message, details)
-}
-
-func (client *SOCAlertClient) SendInfoAlert(title, message, details string) error {
-	return client.sendAlert("info", title, message, details)
-}
-
 func (client *SOCAlertClient) SendAlert(severity, title, message, details string) error {
 	return client.sendAlert(severity, title, message, details)
 }
