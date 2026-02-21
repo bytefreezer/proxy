@@ -285,53 +285,40 @@ func (cfg *Config) InitializeComponents() error {
 	return nil
 }
 
+// intOrDefault returns value if positive, otherwise defaultVal
+func intOrDefault(value, defaultVal int) int {
+	if value <= 0 {
+		return defaultVal
+	}
+	return value
+}
+
 func (cfg *Config) GetReceiverTimeout() time.Duration {
 	return time.Duration(cfg.Receiver.TimeoutSec) * time.Second
 }
 
 func (cfg *Config) GetUploadWorkerCount() int {
-	if cfg.Receiver.UploadWorkerCount <= 0 {
-		return 5 // Default to 5 upload workers (aligned with receiver)
-	}
-	return cfg.Receiver.UploadWorkerCount
+	return intOrDefault(cfg.Receiver.UploadWorkerCount, 5)
 }
 
 func (cfg *Config) GetMaxIdleConns() int {
-	if cfg.Receiver.MaxIdleConns <= 0 {
-		return 10 // Default to 10 idle connections
-	}
-	return cfg.Receiver.MaxIdleConns
+	return intOrDefault(cfg.Receiver.MaxIdleConns, 10)
 }
 
 func (cfg *Config) GetMaxConnsPerHost() int {
-	if cfg.Receiver.MaxConnsPerHost <= 0 {
-		return 6 // Default to 6 connections per host
-	}
-	return cfg.Receiver.MaxConnsPerHost
+	return intOrDefault(cfg.Receiver.MaxConnsPerHost, 6)
 }
 
-// GetRetryMaxIdleConns returns the max idle connections for retry HTTP client
 func (cfg *Config) GetRetryMaxIdleConns() int {
-	if cfg.Receiver.RetryMaxIdleConns <= 0 {
-		return cfg.GetMaxIdleConns() // Default to same as upload client (10)
-	}
-	return cfg.Receiver.RetryMaxIdleConns
+	return intOrDefault(cfg.Receiver.RetryMaxIdleConns, cfg.GetMaxIdleConns())
 }
 
-// GetRetryMaxConnsPerHost returns the max connections per host for retry HTTP client
 func (cfg *Config) GetRetryMaxConnsPerHost() int {
-	if cfg.Receiver.RetryMaxConnsPerHost <= 0 {
-		return cfg.GetMaxConnsPerHost() // Default to same as upload client (6)
-	}
-	return cfg.Receiver.RetryMaxConnsPerHost
+	return intOrDefault(cfg.Receiver.RetryMaxConnsPerHost, cfg.GetMaxConnsPerHost())
 }
 
-// GetQueueProcessingInterval returns the queue processing interval with default fallback
 func (cfg *Config) GetQueueProcessingInterval() int {
-	if cfg.Spooling.QueueProcessingIntervalSec <= 0 {
-		return 30 // Default to 30 seconds for backward compatibility
-	}
-	return cfg.Spooling.QueueProcessingIntervalSec
+	return intOrDefault(cfg.Spooling.QueueProcessingIntervalSec, 30)
 }
 
 // validateIdentifiers validates all tenant and dataset identifiers in the configuration
