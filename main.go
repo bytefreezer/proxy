@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,6 +40,45 @@ var (
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
+
+// getDockerContainerID returns the short container ID if running inside Docker, empty string otherwise.
+func getDockerContainerID() string {
+	if _, err := os.Stat("/.dockerenv"); err != nil {
+		return ""
+	}
+	// Try /proc/self/cgroup (works for cgroup v1 and v2)
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		// cgroup v2: "0::/docker/<id>" or "0::/system.slice/docker-<id>.scope"
+		// cgroup v1: "12:memory:/docker/<id>"
+		if idx := strings.LastIndex(line, "/docker/"); idx != -1 {
+			id := line[idx+len("/docker/"):]
+			if len(id) >= 12 {
+				return id[:12]
+			}
+		}
+		if idx := strings.LastIndex(line, "/docker-"); idx != -1 {
+			id := strings.TrimSuffix(line[idx+len("/docker-"):], ".scope")
+			if len(id) >= 12 {
+				return id[:12]
+			}
+		}
+	}
+	// Fallback: /proc/1/cpuset
+	data, err = os.ReadFile("/proc/1/cpuset")
+	if err != nil {
+		return ""
+	}
+	cpuset := strings.TrimSpace(string(data))
+	id := filepath.Base(cpuset)
+	if len(id) >= 12 && id != "/" {
+		return id[:12]
+	}
+	return ""
+}
 
 func main() {
 	// Define command line flags
@@ -138,13 +178,18 @@ func main() {
 			timeout = 30 * time.Second // Default 30 seconds
 		}
 
-		// Get instance ID from hostname
+		// Get instance ID: prefer Docker container ID, then hostname
 		// If running in Kubernetes with NODE_NAME env var, use node.pod format
-		// This helps operators identify both the node and specific pod for debugging
-		instanceID, err := os.Hostname()
-		if err != nil {
-			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
-			instanceID = "localhost"
+		instanceID := getDockerContainerID()
+		if instanceID != "" {
+			log.Infof("Running in Docker container, instance ID: %s", instanceID)
+		} else {
+			var err error
+			instanceID, err = os.Hostname()
+			if err != nil {
+				log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+				instanceID = "localhost"
+			}
 		}
 		if nodeName := os.Getenv("NODE_NAME"); nodeName != "" && nodeName != instanceID {
 			// In K8s: instanceID is the pod name, NODE_NAME is the actual node
