@@ -1,20 +1,58 @@
-# Dockerfile.release - Minimal container for binary distribution
-# Used for extracting pre-built binaries from containers
-FROM scratch
+# Dockerfile.release - Runtime container for pre-built binary
+# Used by CI/CD: binary is built outside Docker, then copied in
+FROM alpine:3.19
 
-# Copy the statically-linked binary
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1000 -S bytefreezer && \
+    adduser -u 1000 -S bytefreezer -G bytefreezer -s /bin/sh -D
+
+# Create required directories
+RUN mkdir -p /etc/bytefreezer-proxy \
+             /var/log/bytefreezer-proxy \
+             /var/spool/bytefreezer-proxy && \
+    chown -R bytefreezer:bytefreezer /etc/bytefreezer-proxy \
+                                    /var/log/bytefreezer-proxy \
+                                    /var/spool/bytefreezer-proxy
+
+# Copy the pre-built binary
 COPY bytefreezer-proxy /bytefreezer-proxy
+RUN chmod +x /bytefreezer-proxy
 
-# Default entrypoint
+# Copy default configuration
+COPY config.yaml /etc/bytefreezer-proxy/config.yaml
+
+# Switch to non-root user
+USER bytefreezer
+
+# Environment
+ENV CONFIG_FILE=/etc/bytefreezer-proxy/config.yaml
+
+# Expose ports
+EXPOSE 8088/tcp 9090/tcp 5514/udp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8088/api/v1/health || exit 1
+
+WORKDIR /
+
 ENTRYPOINT ["/bytefreezer-proxy"]
+CMD ["--config", "/etc/bytefreezer-proxy/config.yaml"]
 
 # Metadata labels
 ARG VERSION=unknown
 ARG BUILD_TIME=unknown
 ARG GIT_COMMIT=unknown
 LABEL maintainer="ByteFreezer Team" \
-      org.opencontainers.image.title="ByteFreezer Proxy (Minimal)" \
-      org.opencontainers.image.description="Minimal distribution of ByteFreezer Proxy binary for extraction and deployment" \
+      org.opencontainers.image.title="ByteFreezer Proxy" \
+      org.opencontainers.image.description="Data streaming proxy with plugin architecture" \
       org.opencontainers.image.vendor="ByteFreezer" \
       org.opencontainers.image.source="https://github.com/bytefreezer/proxy" \
       org.opencontainers.image.version="${VERSION}" \
