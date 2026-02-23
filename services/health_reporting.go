@@ -190,12 +190,50 @@ func (h *HealthReportingService) Start() {
 	go h.reportingLoop()
 }
 
-// Stop stops health reporting
+// Stop stops health reporting and deregisters from control
 func (h *HealthReportingService) Stop() {
 	if h.enabled {
 		close(h.stopChan)
+		if err := h.Deregister(); err != nil {
+			log.Warnf("Failed to deregister service on shutdown: %v", err)
+		}
 		log.Info("Health reporting service stopped")
 	}
+}
+
+// Deregister removes this service instance from the control service
+func (h *HealthReportingService) Deregister() error {
+	if !h.enabled || h.controlURL == "" {
+		return nil
+	}
+
+	accountID := h.accountID
+	if accountID == "" {
+		accountID = "system"
+	}
+
+	url := fmt.Sprintf("%s/api/v1/accounts/%s/services/%s", h.controlURL, accountID, h.instanceID)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create deregister request: %w", err)
+	}
+
+	if h.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+h.bearerToken)
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to deregister service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("service deregistration failed with status %d", resp.StatusCode)
+	}
+
+	log.Infof("Successfully deregistered service %s (instance %s)", h.serviceType, h.instanceID)
+	return nil
 }
 
 // RegisterService registers this service instance with the control service
