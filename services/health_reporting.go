@@ -71,6 +71,7 @@ type HealthReportingService struct {
 	lastPortDrops        map[int]int64          // Track drops per port to detect new drops
 	errorReporter        ErrorReporter          // Error reporter for reporting per-dataset errors
 	uninstallChan        chan struct{}          // Signals that control plane requested uninstall
+	upgradeChan          chan string            // Carries the upgrade tag when control plane requests upgrade
 }
 
 // ErrorReporter is an interface for reporting errors to control
@@ -109,9 +110,10 @@ type HealthReportRequest struct {
 
 // HealthReportResponse represents a health report response
 type HealthReportResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Action  string `json:"action,omitempty"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	Action     string `json:"action,omitempty"`
+	UpgradeTag string `json:"upgrade_tag,omitempty"`
 }
 
 // NewHealthReportingService creates a new health reporting service
@@ -144,6 +146,7 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		startTime:     time.Now(),
 		lastPortDrops: make(map[int]int64),
 		uninstallChan: make(chan struct{}, 1),
+		upgradeChan:   make(chan string, 1),
 	}
 }
 
@@ -348,6 +351,12 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, status string, c
 				case h.uninstallChan <- struct{}{}:
 				default:
 				}
+			} else if reportResp.Action == "upgrade" && reportResp.UpgradeTag != "" {
+				log.Warnf("Upgrade directive received — target tag: %s", reportResp.UpgradeTag)
+				select {
+				case h.upgradeChan <- reportResp.UpgradeTag:
+				default:
+				}
 			}
 		}
 	}
@@ -359,6 +368,11 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, status string, c
 // UninstallChan returns a channel that signals when control plane requests uninstall
 func (h *HealthReportingService) UninstallChan() <-chan struct{} {
 	return h.uninstallChan
+}
+
+// UpgradeChan returns a channel that carries the upgrade tag when control plane requests upgrade
+func (h *HealthReportingService) UpgradeChan() <-chan string {
+	return h.upgradeChan
 }
 
 // reportingLoop runs the periodic health reporting
