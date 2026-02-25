@@ -7,6 +7,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -234,6 +236,18 @@ func main() {
 			healthReportingService.Stop()
 			selfCleanup("bytefreezer-proxy")
 			os.Exit(0)
+		}()
+
+		// Listen for upgrade directive from control plane
+		go func() {
+			tag := <-healthReportingService.UpgradeChan()
+			log.Warnf("Upgrade directive received — upgrading to %s", tag)
+			if err := selfUpgrade("proxy", tag); err != nil {
+				log.Errorf("Self-upgrade failed: %v", err)
+				return
+			}
+			healthReportingService.Stop()
+			os.Exit(0) // systemd restarts with new binary
 		}()
 	} else {
 		log.Info("Health reporting is disabled")
@@ -465,6 +479,49 @@ func main() {
 	}
 
 	log.Info("ByteFreezer Proxy stopped")
+}
+
+// selfUpgrade downloads a .deb from GitHub releases and installs it via dpkg
+func selfUpgrade(repoName, tag string) error {
+	// Strip "v" prefix from tag to get version (e.g., "v1.0.0-rc.0226" → "1.0.0-rc.0226")
+	ver := strings.TrimPrefix(tag, "v")
+	url := fmt.Sprintf("https://github.com/bytefreezer/%s/releases/download/%s/bytefreezer-%s_%s_amd64.deb",
+		repoName, tag, repoName, ver)
+
+	log.Infof("Downloading upgrade package from %s", url)
+
+	resp, err := http.Get(url) // #nosec G107 -- URL constructed from trusted release tag
+	if err != nil {
+		return fmt.Errorf("failed to download .deb: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with HTTP %d", resp.StatusCode)
+	}
+
+	tmpFile, err := os.CreateTemp("", "bytefreezer-upgrade-*.deb")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write .deb to disk: %w", err)
+	}
+	tmpFile.Close()
+
+	log.Infof("Installing upgrade package %s", tmpPath)
+	// #nosec G204 -- tmpPath is a temp file we just created, not user input
+	out, err := exec.Command("dpkg", "-i", tmpPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dpkg -i failed: %w — output: %s", err, string(out))
+	}
+
+	log.Infof("Upgrade package installed — dpkg output: %s", string(out))
+	return nil
 }
 
 // selfCleanup attempts to remove the service binary and systemd unit (best-effort)
