@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync/atomic"
@@ -69,6 +70,7 @@ type HealthReportingService struct {
 	lastUDPDrops         int64                  // Track previous UDP drops to detect new drops
 	lastPortDrops        map[int]int64          // Track drops per port to detect new drops
 	errorReporter        ErrorReporter          // Error reporter for reporting per-dataset errors
+	uninstallChan        chan struct{}          // Signals that control plane requested uninstall
 }
 
 // ErrorReporter is an interface for reporting errors to control
@@ -109,6 +111,7 @@ type HealthReportRequest struct {
 type HealthReportResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Action  string `json:"action,omitempty"`
 }
 
 // NewHealthReportingService creates a new health reporting service
@@ -140,6 +143,7 @@ func NewHealthReportingService(controlURL, accountID, bearerToken, serviceType, 
 		diskPath:      "/", // Default to root filesystem
 		startTime:     time.Now(),
 		lastPortDrops: make(map[int]int64),
+		uninstallChan: make(chan struct{}, 1),
 	}
 }
 
@@ -333,8 +337,28 @@ func (h *HealthReportingService) SendHealthReport(healthy bool, status string, c
 		return fmt.Errorf("health report failed with status %d", resp.StatusCode)
 	}
 
+	// Parse response to check for pending actions from control plane
+	respBody, err := io.ReadAll(resp.Body)
+	if err == nil && len(respBody) > 0 {
+		var reportResp HealthReportResponse
+		if err := sonic.Unmarshal(respBody, &reportResp); err == nil && reportResp.Action != "" {
+			log.Warnf("Received action directive from control plane: %s", reportResp.Action)
+			if reportResp.Action == "uninstall" {
+				select {
+				case h.uninstallChan <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
+
 	log.Debugf("Successfully sent health report for %s (healthy: %v)", h.serviceType, healthy)
 	return nil
+}
+
+// UninstallChan returns a channel that signals when control plane requests uninstall
+func (h *HealthReportingService) UninstallChan() <-chan struct{} {
+	return h.uninstallChan
 }
 
 // reportingLoop runs the periodic health reporting
