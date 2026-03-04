@@ -1,89 +1,71 @@
-# ByteFreezer Proxy Configuration
+# ByteFreezer Proxy Configuration — Docker-ready defaults
+#
+# This config ships inside the Docker image. Secrets (account_id, bearer_token,
+# control_url) are empty and MUST be supplied via environment variables or a
+# volume-mounted config file override.
 #
 # IMPORTANT: Kernel Tuning for High-Volume UDP
 # =============================================
 # For reliable UDP ingestion at high rates, configure these kernel parameters:
 #
-#   # Maximum socket receive buffer size (16MB allows 8MB request)
 #   sudo sysctl -w net.core.rmem_max=16777216
-#
-#   # Default socket receive buffer size
 #   sudo sysctl -w net.core.rmem_default=8388608
-#
-#   # Network backlog queue length
 #   sudo sysctl -w net.core.netdev_max_backlog=50000
 #
-# To make permanent, add to /etc/sysctl.conf:
-#   net.core.rmem_max=16777216
-#   net.core.rmem_default=8388608
-#   net.core.netdev_max_backlog=50000
-#
-# Then run: sudo sysctl -p
-#
+# To make permanent, add to /etc/sysctl.conf and run: sudo sysctl -p
 
 app:
   name: bytefreezer-proxy
-  version: 0.0.2
+  version: 1.0.0
 
-# Logging configuration
 logging:
   level: info
   encoding: console
 
-# API server configuration
 server:
   api_port: 8008
 
 # Plugin-based input configuration (populated from Control)
-#just keep it as is, proxy gets its config from control
 inputs: []
 
-# Account-based configuration - proxy polls Control for all tenants + datasets
-# IMPORTANT: bearer_token is the account-specific API key used for ALL authentication
-account_id: "ejq73vgnw26p"
-# tenant_id: "customer-1"  # Optional: Only required if account_id is not set
-bearer_token: "REPLACE_WITH_AWX_VARIABLE_bytefreezer_proxy_bearer_token"  # Account-specific API key for all auth (config polling AND health reporting)
-control_url: "http://192.168.86.103:8082"
-config_mode: "control-only"  # local-only | control-only
+# Account-based configuration — proxy polls Control for all tenants + datasets
+account_id: ""
+bearer_token: ""
+control_url: ""
+config_mode: "control-only"
 
 # Configuration polling from Control
 config_polling:
   enabled: true
-  interval_seconds: 60  # Poll every 60 seconds
-  timeout_seconds: 30
+  interval_seconds: 30
+  timeout_seconds: 10
   cache_directory: "/var/cache/bytefreezer-proxy"
   retry_on_error: true
 
-# Bytefreezer-receiver configuration
+# Receiver configuration (Docker service name default)
 receiver:
-  base_url: "http://localhost:8081"
+  base_url: "http://receiver:8080"
   timeout_seconds: 30
-  upload_worker_count: 5    # Number of upload workers (aligned with receiver)
-  max_idle_conns: 10        # HTTP connection pool size
-  max_conns_per_host: 6     # Max connections per host
-
-  # Dedicated retry HTTP client configuration (defaults to same values as upload client)
-  # retry_max_idle_conns: 10      # HTTP connection pool size for retries (optional)
-  # retry_max_conns_per_host: 6   # Max connections per host for retries (optional)
+  upload_worker_count: 5
+  max_idle_conns: 10
+  max_conns_per_host: 6
 
 # Batch processing configuration
 batching:
   enabled: true
-  max_lines: 0          # Max lines per batch (0 = disabled)
-  max_bytes: 10485760   # Max bytes per batch - 10MB (0 = disabled)
-  timeout_seconds: 60   # 1 minute timeout
+  max_lines: 10000
+  max_bytes: 10485760   # 10MB
+  timeout_seconds: 30
   compression_enabled: true
   compression_level: 6
 
 # SOC alerting configuration
-# no soc yet, this is just a placeholder
 soc:
   enabled: false
   endpoint: ""
   timeout_seconds: 30
 
-# OpenTelemetry configuration (disabled by default)
-# this is a placeholder for future observability features
+# OpenTelemetry configuration
 otel:
   enabled: false
   service_name: "bytefreezer-proxy"
@@ -94,30 +76,29 @@ otel:
 spooling:
   enabled: true
   directory: "/var/spool/bytefreezer-proxy"
-  max_size_bytes: 1073741824  # 1GB
-  dlq_max_size_bytes: 10737418240  # 10GB - oldest files removed FIFO when exceeded
+  max_size_bytes: 1073741824       # 1GB
+  dlq_max_size_bytes: 10737418240  # 10GB
   retry_attempts: 5
-  retry_interval_seconds: 60  # 1 minute
-  cleanup_interval_seconds: 300  # 5 minutes
-  keep_src: false # If true, keep source files after successful upload
+  retry_interval_seconds: 60
+  cleanup_interval_seconds: 300
+  keep_src: false
 
-# Development mode
 dev: false
 
-# Health reporting configuration for service registration and monitoring
+# Health reporting to control plane
 health_reporting:
   enabled: true
-  report_interval: 30  # seconds
+  report_interval: 30
   timeout_seconds: 10
   register_on_startup: true
 
-# Tenant validation configuration (Layer 4 optimization - proactive tenant status checking)
+# Tenant validation (proactive status checking)
 tenant_validation:
   enabled: true
-  cache_ttl_seconds: 300  # 5 minutes for active tenants
-  inactive_cache_ttl_seconds: 3600  # 1 hour for inactive tenants (reduces API load)
+  cache_ttl_seconds: 300
+  inactive_cache_ttl_seconds: 3600
   timeout_seconds: 5
 
-# Error tracking configuration
+# Error tracking
 error_tracking:
-  enabled: true  # Enable error reporting to control service
+  enabled: true
