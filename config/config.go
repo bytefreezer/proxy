@@ -352,7 +352,29 @@ func validateIdentifiers(cfg *Config) error {
 
 // ValidateConfig validates the entire configuration including plugin inputs and port conflicts
 func ValidateConfig(cfg *Config) error {
-	return validateIdentifiers(cfg)
+	if err := validateIdentifiers(cfg); err != nil {
+		return err
+	}
+
+	// Warn on misconfigured health reporting
+	if cfg.HealthReporting.Enabled && cfg.HealthReporting.ReportInterval <= 0 {
+		log.Warnf("CONFIG WARNING: health_reporting.enabled=true but report_interval=%d — health reports will use default interval", cfg.HealthReporting.ReportInterval)
+	}
+
+	// Warn on missing API port
+	if cfg.Server.ApiPort <= 0 {
+		log.Warnf("CONFIG WARNING: server.api_port=%d — API server will bind to random port, health checks will fail", cfg.Server.ApiPort)
+	}
+
+	// Log effective config summary
+	log.Infof("=== EFFECTIVE CONFIG ===")
+	log.Infof("  server.api_port: %d", cfg.Server.ApiPort)
+	log.Infof("  config_mode: %s", cfg.ConfigMode)
+	log.Infof("  control_url: %s", cfg.ControlURL)
+	log.Infof("  health_reporting.enabled: %v, report_interval: %ds", cfg.HealthReporting.Enabled, cfg.HealthReporting.ReportInterval)
+	log.Infof("  spooling.enabled: %v", cfg.Spooling.Enabled)
+
+	return nil
 }
 
 // validatePluginInputs validates plugin inputs for duplicate dataset names and other conflicts

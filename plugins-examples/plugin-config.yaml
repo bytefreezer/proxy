@@ -104,4 +104,4 @@ otel:
 # Housekeeping
 housekeeping:
   enabled: true
-  intervalseconds: 300
+  interval_seconds: 300
