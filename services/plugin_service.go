@@ -38,7 +38,8 @@ type PluginService struct {
 	uploadWorkers       []*UploadWorker        // Upload worker instances (aligned with receiver)
 	workerCount         int                    // Number of upload workers
 	expectedPluginCount int                    // Expected number of plugins from config
-	mu                  sync.RWMutex           // Protects expectedPluginCount
+	managerStarted      bool                   // True if pluginManager.Start() was already called (by Reload)
+	mu                  sync.RWMutex           // Protects expectedPluginCount and managerStarted
 }
 
 // NewPluginService creates a new plugin service
@@ -97,8 +98,14 @@ func NewPluginService(cfg *config.Config, forwarder *HTTPForwarder, spoolingServ
 func (ps *PluginService) Start() error {
 	log.Info("Starting plugin service")
 
-	// Start plugin manager
-	if err := ps.pluginManager.Start(); err != nil {
+	// Start plugin manager (skip if Reload() already started it)
+	ps.mu.RLock()
+	alreadyStarted := ps.managerStarted
+	ps.mu.RUnlock()
+
+	if alreadyStarted {
+		log.Info("Plugin manager already started by Reload() — skipping pluginManager.Start()")
+	} else if err := ps.pluginManager.Start(); err != nil {
 		return fmt.Errorf("failed to start plugin manager: %w", err)
 	}
 
@@ -228,6 +235,11 @@ func (ps *PluginService) Reload(newInputConfigs []plugins.PluginConfig) error {
 		}
 		return fmt.Errorf("failed to start new plugins: %w", err)
 	}
+
+	// Mark manager as started so Start() won't double-start
+	ps.mu.Lock()
+	ps.managerStarted = true
+	ps.mu.Unlock()
 
 	log.Infof("✅ Plugin service reloaded successfully with %d plugins", len(newInputConfigs))
 	if len(portChanges) > 0 {
