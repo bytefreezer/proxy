@@ -194,17 +194,20 @@ type ConfigPollingService struct {
 	lastAuthError       time.Time
 }
 
-// NewConfigPollingService creates a new configuration polling service
-func NewConfigPollingService(cfg *config.Config, onConfigChange func(*ControlProxyConfig) error) (*ConfigPollingService, error) {
+// NewConfigPollingService creates a new configuration polling service.
+// instanceID should be the same ID used by health reporting (includes HOST_HOSTNAME prefix in Docker).
+func NewConfigPollingService(cfg *config.Config, instanceID string, onConfigChange func(*ControlProxyConfig) error) (*ConfigPollingService, error) {
 	if cfg.ControlURL == "" {
 		return nil, fmt.Errorf("control_url is required for config polling")
 	}
 
-	// Get instance ID from hostname
-	instanceID, err := os.Hostname()
-	if err != nil {
-		log.Warnf("Failed to get hostname, using 'localhost': %v", err)
-		instanceID = "localhost"
+	if instanceID == "" {
+		var err error
+		instanceID, err = os.Hostname()
+		if err != nil {
+			log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+			instanceID = "localhost"
+		}
 	}
 
 	pollingInterval := time.Duration(cfg.ConfigPolling.IntervalSeconds) * time.Second
