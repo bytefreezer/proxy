@@ -99,9 +99,13 @@ func (ps *PluginService) Start() error {
 	log.Info("Starting plugin service")
 
 	// Start plugin manager (skip if Reload() already started it)
-	ps.mu.RLock()
+	// Use write lock for atomic check-and-set to prevent race with Reload()
+	ps.mu.Lock()
 	alreadyStarted := ps.managerStarted
-	ps.mu.RUnlock()
+	if !alreadyStarted {
+		ps.managerStarted = true
+	}
+	ps.mu.Unlock()
 
 	if alreadyStarted {
 		log.Info("Plugin manager already started by Reload() — skipping pluginManager.Start()")
