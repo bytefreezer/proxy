@@ -134,6 +134,23 @@ func main() {
 		log.Info("Dataset metrics client disabled (no control URL configured)")
 	}
 
+	// Build instance ID: host:containerID for Docker, node.pod for K8s, hostname for bare metal
+	// This is used by both health reporting and config polling to ensure consistent naming
+	instanceID, _ := os.Hostname()
+	if instanceID == "" {
+		instanceID = "localhost"
+	}
+	if isDockerContainer() {
+		if hostHostname := os.Getenv("HOST_HOSTNAME"); hostHostname != "" && hostHostname != instanceID {
+			instanceID = fmt.Sprintf("%s:%s", hostHostname, instanceID)
+		}
+		log.Infof("Running in Docker container, instance ID: %s", instanceID)
+	}
+	if nodeName := os.Getenv("NODE_NAME"); nodeName != "" && nodeName != instanceID {
+		instanceID = fmt.Sprintf("%s.%s", nodeName, instanceID)
+		log.Infof("Running in Kubernetes on node %s, instance ID: %s", nodeName, instanceID)
+	}
+
 	// Initialize health reporting service
 	var healthReportingService *services.HealthReportingService
 	if cfg.HealthReporting.Enabled && cfg.ControlURL != "" {
@@ -145,22 +162,6 @@ func main() {
 		timeout := time.Duration(cfg.HealthReporting.TimeoutSeconds) * time.Second
 		if timeout <= 0 {
 			timeout = 30 * time.Second // Default 30 seconds
-		}
-
-		// Build instance ID: host:containerID for Docker, node.pod for K8s, hostname for bare metal
-		instanceID, _ := os.Hostname()
-		if instanceID == "" {
-			instanceID = "localhost"
-		}
-		if isDockerContainer() {
-			if hostHostname := os.Getenv("HOST_HOSTNAME"); hostHostname != "" {
-				instanceID = fmt.Sprintf("%s:%s", hostHostname, instanceID)
-			}
-			log.Infof("Running in Docker container, instance ID: %s", instanceID)
-		}
-		if nodeName := os.Getenv("NODE_NAME"); nodeName != "" && nodeName != instanceID {
-			instanceID = fmt.Sprintf("%s.%s", nodeName, instanceID)
-			log.Infof("Running in Kubernetes on node %s, instance ID: %s", nodeName, instanceID)
 		}
 
 		// Determine instance API URL without protocol (proxy API endpoint)
@@ -331,7 +332,7 @@ func main() {
 		}
 
 		// Create config polling service
-		configPollingService, err := services.NewConfigPollingService(&cfg, onConfigChange)
+		configPollingService, err := services.NewConfigPollingService(&cfg, instanceID, onConfigChange)
 		if err != nil {
 			log.Fatalf("Failed to create config polling service: %v", err)
 		}
