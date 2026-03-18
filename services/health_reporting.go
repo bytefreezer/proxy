@@ -208,6 +208,19 @@ func (h *HealthReportingService) Stop() {
 	}
 }
 
+// ReportUninstalling sends a final health report with status "uninstalling" before cleanup.
+// This tells the control plane the service is intentionally shutting down (not a network issue).
+func (h *HealthReportingService) ReportUninstalling() {
+	if !h.enabled {
+		return
+	}
+	if err := h.SendHealthReport(false, "uninstalling", h.config, nil); err != nil {
+		log.Warnf("Failed to send uninstalling report: %v", err)
+	} else {
+		log.Infof("Sent final 'uninstalling' health report to control plane")
+	}
+}
+
 // Deregister removes this service instance from the control service
 func (h *HealthReportingService) Deregister() error {
 	if !h.enabled || h.controlURL == "" {
