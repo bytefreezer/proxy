@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	controlclient "github.com/bytefreezer/goodies/control-client"
 	"github.com/bytefreezer/goodies/log"
 	"github.com/bytefreezer/proxy/api"
 	"github.com/bytefreezer/proxy/config"
@@ -352,6 +353,39 @@ func main() {
 	} else {
 		log.Infof("Config polling disabled (mode: %s, control_url: %s, polling_enabled: %v)",
 			cfg.ConfigMode, cfg.ControlURL, cfg.ConfigPolling.Enabled)
+	}
+
+	// Initialize change observer for fast config refresh
+	if cfg.ControlURL != "" {
+		observerClient := controlclient.NewClient(controlclient.Config{
+			BaseURL:        cfg.ControlURL,
+			APIKey:         cfg.BearerToken,
+			TimeoutSeconds: 10,
+		})
+		changeObserver := controlclient.NewChangeObserver(observerClient, cfg.AccountID, 15*time.Second)
+		changeObserver.SetLogFunc(func(format string, args ...interface{}) {
+			log.Infof(format, args...)
+		})
+		triggerPoll := func() {
+			if svcs.ConfigPollingService != nil {
+				go func() {
+					if err := svcs.ConfigPollingService.TriggerPoll(); err != nil {
+						log.Warnf("Change-triggered config poll failed: %v", err)
+					}
+				}()
+			}
+		}
+		changeObserver.OnChange(controlclient.ChangeCategoryProxyConfig, func() {
+			log.Info("Change detected: proxy_config — triggering immediate config poll")
+			triggerPoll()
+		})
+		changeObserver.OnChange(controlclient.ChangeCategoryDatasets, func() {
+			log.Info("Change detected: datasets — triggering immediate config poll")
+			triggerPoll()
+		})
+		changeObserver.Start()
+		defer changeObserver.Stop()
+		log.Info("Change observer started — polling every 15s for config/dataset changes")
 	}
 
 	// Start plugin service

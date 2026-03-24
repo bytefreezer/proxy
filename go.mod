@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.10
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.40.4
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.7
-	github.com/bytedance/sonic v1.14.1
+	github.com/bytedance/sonic v1.14.2
 	github.com/bytefreezer/goodies/log v0.1.0
 	github.com/knadh/koanf/parsers/yaml v0.1.0
 	github.com/knadh/koanf/providers/env v0.1.0
@@ -49,7 +49,7 @@ require (
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -107,3 +107,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+require github.com/bytefreezer/goodies/control-client v0.1.0
+
+replace github.com/bytefreezer/goodies/control-client => ../goodies/control-client
