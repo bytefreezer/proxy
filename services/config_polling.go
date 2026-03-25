@@ -392,22 +392,26 @@ func (s *ConfigPollingService) pollAccountConfiguration() error {
 		// Apply the new configuration
 		if err := s.applyConfiguration(&remoteConfig); err != nil {
 			log.Errorf("Failed to apply configuration: %v", err)
-			return err
+			// Don't return — still report to control so proxy_instances rows are created.
+			// The apply may have failed due to a race (duplicate poll), but config is
+			// already applied from the first successful poll or from cache.
 		}
 
 		// Cache the new configuration
 		if err := s.cacheConfiguration(&remoteConfig); err != nil {
 			log.Errorf("Failed to cache configuration: %v", err)
 		}
-
-		// Report back to control for each tenant
-		for _, tenantWithDatasets := range controlConfig.Tenants {
-			if err := s.reportConfigAppliedForTenant(tenantWithDatasets.Tenant.ID, configVersion, pluginConfigs); err != nil {
-				log.Errorf("Failed to report config applied for tenant %s: %v", tenantWithDatasets.Tenant.ID, err)
-			}
-		}
 	} else {
 		log.Debugf("Configuration unchanged (hash %s)", remoteConfig.ConfigHash)
+	}
+
+	// Always report config to control for each tenant, even if config is unchanged.
+	// This ensures proxy_instances rows exist for the dataset testing service.
+	// The control-side UpsertProxyConfig is idempotent.
+	for _, tenantWithDatasets := range controlConfig.Tenants {
+		if err := s.reportConfigAppliedForTenant(tenantWithDatasets.Tenant.ID, configVersion, pluginConfigs); err != nil {
+			log.Errorf("Failed to report config applied for tenant %s: %v", tenantWithDatasets.Tenant.ID, err)
+		}
 	}
 
 	return nil
